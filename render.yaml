@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: chess-opening-analyzer
+    env: python
+    buildCommand: |
+      cd frontend && npm install && npm run build &&
+      cd ../backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: LICHESS_CLIENT_ID
+        value: chess-opening-analyzer
+      - key: REDIRECT_URI
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
