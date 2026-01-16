@@ -95,9 +95,6 @@ function StudyPicker({
               onChange={() => toggleStudy(study.id)}
             />
             <span>{study.name}</span>
-            <span style={{ color: "#666", fontSize: "0.85rem" }}>
-              ({study.chapters?.length || 0} chapters)
-            </span>
           </div>
         ))}
       </div>
