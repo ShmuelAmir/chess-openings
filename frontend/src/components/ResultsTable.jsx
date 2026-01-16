@@ -1,4 +1,4 @@
-function ResultsTable({ results }) {
+function ResultsTable({ results, totalGames, filteredByOpening }) {
   if (!results || results.length === 0) {
     return (
       <div className="empty-state">
@@ -8,6 +8,12 @@ function ResultsTable({ results }) {
           <li>No games matched your filters</li>
           <li>Your repertoire studies don't cover these openings</li>
         </ul>
+        {totalGames > 0 && (
+          <p style={{ marginTop: "1rem", color: "#666" }}>
+            ({totalGames} games fetched, {filteredByOpening || 0} matched your
+            opening names)
+          </p>
+        )}
       </div>
     );
   }
@@ -21,8 +27,14 @@ function ResultsTable({ results }) {
     <div>
       <div className="stats">
         <div className="stat">
-          <div className="stat-value">{results.length}</div>
-          <div className="stat-label">Games Analyzed</div>
+          <div className="stat-value">{totalGames || 0}</div>
+          <div className="stat-label">Total Games</div>
+        </div>
+        <div className="stat">
+          <div className="stat-value" style={{ color: "#3498db" }}>
+            {filteredByOpening || 0}
+          </div>
+          <div className="stat-label">Opening Matched</div>
         </div>
         <div className="stat">
           <div className="stat-value" style={{ color: "#e74c3c" }}>
@@ -42,6 +54,7 @@ function ResultsTable({ results }) {
         <thead>
           <tr>
             <th>Game</th>
+            <th>Color</th>
             <th>Opening</th>
             <th>Move #</th>
             <th>Result</th>
@@ -62,6 +75,11 @@ function ResultsTable({ results }) {
                 >
                   View
                 </a>
+              </td>
+              <td>
+                <span className={`color-badge ${result.user_color}`}>
+                  {result.user_color === "white" ? "♔" : "♚"}
+                </span>
               </td>
               <td>{result.opening_name}</td>
               <td>{result.move_number}</td>

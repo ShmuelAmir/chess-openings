@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 
-function StudyPicker({ token, selectedStudies, onSelectionChange }) {
+function StudyPicker({
+  token,
+  selectedStudies,
+  onSelectionChange,
+  onStudiesLoaded,
+}) {
   const [studies, setStudies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,7 +25,12 @@ function StudyPicker({ token, selectedStudies, onSelectionChange }) {
       }
 
       const data = await response.json();
-      setStudies(data.studies || []);
+      const loadedStudies = data.studies || [];
+      setStudies(loadedStudies);
+      // Pass studies to parent for filtering
+      if (onStudiesLoaded) {
+        onStudiesLoaded(loadedStudies);
+      }
     } catch (err) {
       setError(err.message);
     } finally {

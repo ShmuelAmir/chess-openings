@@ -146,10 +146,13 @@ async def get_chess_com_archives(username: str):
 async def analyze_games(
     study_ids: list[str] = Query(...),
     chess_com_username: str = Query(...),
-    year: int = Query(...),
-    month: int = Query(...),
-    time_class: str = Query(None),
+    from_year: int = Query(...),
+    from_month: int = Query(...),
+    to_year: int = Query(...),
+    to_month: int = Query(...),
+    time_classes: list[str] = Query(None),
     rated: bool = Query(None),
+    study_names: list[str] = Query(None),
     authorization: str = Header(...),
 ):
     """Analyze games against repertoire and find deviations."""
@@ -157,39 +160,56 @@ async def analyze_games(
     
     # Fetch studies and build repertoire
     repertoire_builder = RepertoireBuilder()
+    collected_study_names = []
+    
     async with LichessClient(token=token) as lichess:
+        account = await lichess.get_account()
+        studies = await lichess.get_user_studies(account["username"])
+        
         for study_id in study_ids:
             pgn = await lichess.get_study_pgn(study_id)
-            # Get study name from study list
-            account = await lichess.get_account()
-            studies = await lichess.get_user_studies(account["username"])
             study_name = next(
                 (s["name"] for s in studies if s["id"] == study_id),
                 "Unknown Opening"
             )
+            collected_study_names.append(study_name)
             repertoire_builder.add_study(pgn, study_name)
     
     repertoire = repertoire_builder.build()
     
-    # Fetch Chess.com games
+    # Use study names for pre-filtering Chess.com games by opening
+    opening_filters = study_names if study_names else collected_study_names
+    
+    # Fetch Chess.com games for the date range (pre-filtered by opening name from eco URL)
     async with ChessComClient() as chess_com:
-        games = await chess_com.get_games(
+        games, total_games = await chess_com.get_games_for_range(
             username=chess_com_username,
-            year=year,
-            month=month,
-            time_class=time_class,
+            from_year=from_year,
+            from_month=from_month,
+            to_year=to_year,
+            to_month=to_month,
+            time_classes=time_classes,
             rated=rated,
+            opening_filters=opening_filters,
         )
     
-    # Analyze each game
+    # Analyze each game against the full repertoire tree
     analyzer = DeviationAnalyzer(repertoire)
     results = []
+    
     for game in games:
         result = analyzer.analyze_game(game, chess_com_username)
         if result:
+            # Add the Chess.com opening name to the result
+            result["chess_com_opening"] = game.get("opening_name", "")
             results.append(result)
     
-    return {"results": results}
+    return {
+        "results": results,
+        "total_games": total_games,
+        "filtered_by_opening": len(games),
+        "analyzed_with_deviations": len(results),
+    }
 
 
 # Serve frontend static files in production

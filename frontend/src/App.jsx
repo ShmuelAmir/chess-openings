@@ -9,8 +9,11 @@ function App() {
     localStorage.getItem("lichess_token")
   );
   const [lichessUser, setLichessUser] = useState(null);
+  const [studies, setStudies] = useState([]); // All user studies
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [results, setResults] = useState(null);
+  const [totalGames, setTotalGames] = useState(0);
+  const [matchedGames, setMatchedGames] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -64,16 +67,24 @@ function App() {
     try {
       const params = new URLSearchParams({
         chess_com_username: filters.username,
-        year: filters.year,
-        month: filters.month,
-        ...selectedStudies.map((id) => ["study_ids", id]),
+        from_year: filters.fromYear,
+        from_month: filters.fromMonth,
+        to_year: filters.toYear,
+        to_month: filters.toMonth,
       });
 
       // Add study_ids properly
       selectedStudies.forEach((id) => params.append("study_ids", id));
 
-      if (filters.timeClass) {
-        params.append("time_class", filters.timeClass);
+      // Add study names for filtering games by opening
+      const selectedStudyNames = studies
+        .filter((s) => selectedStudies.includes(s.id))
+        .map((s) => s.name);
+      selectedStudyNames.forEach((name) => params.append("study_names", name));
+
+      // Add time classes (multiple selection)
+      if (filters.timeClasses && filters.timeClasses.length > 0) {
+        filters.timeClasses.forEach((tc) => params.append("time_classes", tc));
       }
       if (filters.ratedOnly) {
         params.append("rated", "true");
@@ -90,6 +101,8 @@ function App() {
 
       const data = await response.json();
       setResults(data.results);
+      setTotalGames(data.total_games || 0);
+      setMatchedGames(data.filtered_by_opening || 0);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -97,8 +110,10 @@ function App() {
     }
   };
 
+  const hasResults = results !== null || loading;
+
   return (
-    <div className="app">
+    <div className={`app ${hasResults ? "with-results" : ""}`}>
       <h1>♟️ Chess Opening Analyzer</h1>
       <p style={{ textAlign: "center", marginBottom: "2rem", color: "#aaa" }}>
         Compare your Chess.com games against your Chessly repertoire (via
@@ -107,41 +122,53 @@ function App() {
 
       {error && <div className="error">{error}</div>}
 
-      <div className="section">
-        <h2>1. Connect Lichess Account</h2>
-        <LichessAuth
-          user={lichessUser}
-          onLogin={handleLogin}
-          onLogout={handleLogout}
-        />
-      </div>
-
-      {lichessToken && lichessUser && (
-        <>
+      <div className={hasResults ? "main-layout" : "centered-layout"}>
+        <div className="setup-panel">
           <div className="section">
-            <h2>2. Select Your Repertoire Studies</h2>
-            <StudyPicker
-              token={lichessToken}
-              selectedStudies={selectedStudies}
-              onSelectionChange={setSelectedStudies}
+            <h2>1. Connect Lichess Account</h2>
+            <LichessAuth
+              user={lichessUser}
+              onLogin={handleLogin}
+              onLogout={handleLogout}
             />
           </div>
 
-          <div className="section">
-            <h2>3. Fetch & Analyze Chess.com Games</h2>
-            <GameFilters onAnalyze={handleAnalyze} loading={loading} />
-          </div>
+          {lichessToken && lichessUser && (
+            <>
+              <div className="section">
+                <h2>2. Select Your Repertoire Studies</h2>
+                <StudyPicker
+                  token={lichessToken}
+                  selectedStudies={selectedStudies}
+                  onSelectionChange={setSelectedStudies}
+                  onStudiesLoaded={setStudies}
+                />
+              </div>
 
-          {loading && <div className="loading">Analyzing games...</div>}
-
-          {results && (
-            <div className="section">
-              <h2>4. Results</h2>
-              <ResultsTable results={results} />
-            </div>
+              <div className="section">
+                <h2>3. Fetch & Analyze Chess.com Games</h2>
+                <GameFilters onAnalyze={handleAnalyze} loading={loading} />
+              </div>
+            </>
           )}
-        </>
-      )}
+        </div>
+
+        {hasResults && (
+          <div className="results-panel">
+            <div className="section results-section">
+              <h2>4. Results</h2>
+              {loading && <div className="loading">Analyzing games...</div>}
+              {!loading && results && (
+                <ResultsTable
+                  results={results}
+                  totalGames={totalGames}
+                  filteredByOpening={matchedGames}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
