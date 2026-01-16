@@ -27,14 +27,8 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
     <div>
       <div className="stats">
         <div className="stat">
-          <div className="stat-value">{totalGames || 0}</div>
-          <div className="stat-label">Total Games</div>
-        </div>
-        <div className="stat">
-          <div className="stat-value" style={{ color: "#3498db" }}>
-            {filteredByOpening || 0}
-          </div>
-          <div className="stat-label">Opening Matched</div>
+          <div className="stat-value">{results.length}</div>
+          <div className="stat-label">Total Results</div>
         </div>
         <div className="stat">
           <div className="stat-value" style={{ color: "#e74c3c" }}>
@@ -49,6 +43,11 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
           <div className="stat-label">Opponent Left Book</div>
         </div>
       </div>
+
+      <p className="filter-info">
+        Analyzed {filteredByOpening || 0} games matching your openings (from{" "}
+        {totalGames || 0} total)
+      </p>
 
       <table className="results-table">
         <thead>
@@ -77,9 +76,10 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                 </a>
               </td>
               <td>
-                <span className={`color-badge ${result.user_color}`}>
-                  {result.user_color === "white" ? "♔" : "♚"}
-                </span>
+                <span
+                  className={`color-dot ${result.user_color}`}
+                  title={result.user_color}
+                ></span>
               </td>
               <td>{result.opening_name}</td>
               <td>{result.move_number}</td>

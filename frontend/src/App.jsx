@@ -89,6 +89,9 @@ function App() {
       if (filters.ratedOnly) {
         params.append("rated", "true");
       }
+      if (filters.colorFilter && filters.colorFilter !== "both") {
+        params.append("color", filters.colorFilter);
+      }
 
       const response = await fetch(`/api/analyze?${params}`, {
         method: "POST",

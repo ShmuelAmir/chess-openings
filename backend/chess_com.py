@@ -44,6 +44,7 @@ class ChessComClient:
         month: int,
         time_classes: Optional[list[str]] = None,
         rated: Optional[bool] = None,
+        color: Optional[str] = None,
         opening_filters: Optional[list[str]] = None,
     ) -> tuple[list[dict], int]:
         """
@@ -55,6 +56,7 @@ class ChessComClient:
             month: Month (1-12)
             time_classes: Filter by time controls (list of: bullet, blitz, rapid, daily)
             rated: Filter by rated/casual
+            color: Filter by user's color ("white" or "black")
             opening_filters: List of opening name keywords to filter by
         
         Returns:
@@ -67,6 +69,7 @@ class ChessComClient:
         raw_games = response.json().get("games", [])
         games = []
         total_after_basic_filters = 0
+        username_lower = username.lower()
         
         for game in raw_games:
             # Apply time class filter (multiple selection)
@@ -74,6 +77,15 @@ class ChessComClient:
                 continue
             if rated is not None and game.get("rated") != rated:
                 continue
+            
+            # Apply color filter
+            if color:
+                white_player = game.get("white", {}).get("username", "").lower()
+                is_white = white_player == username_lower
+                if color == "white" and not is_white:
+                    continue
+                if color == "black" and is_white:
+                    continue
             
             total_after_basic_filters += 1
             
@@ -118,6 +130,7 @@ class ChessComClient:
         to_month: int,
         time_classes: Optional[list[str]] = None,
         rated: Optional[bool] = None,
+        color: Optional[str] = None,
         opening_filters: Optional[list[str]] = None,
     ) -> tuple[list[dict], int]:
         """
@@ -129,6 +142,7 @@ class ChessComClient:
             to_year, to_month: End of range (inclusive)
             time_classes: Filter by time controls
             rated: Filter by rated/casual
+            color: Filter by user's color ("white" or "black")
             opening_filters: List of opening name keywords to filter by
         
         Returns:
@@ -148,6 +162,7 @@ class ChessComClient:
                     month=current_month,
                     time_classes=time_classes,
                     rated=rated,
+                    color=color,
                     opening_filters=opening_filters,
                 )
                 all_games.extend(games)

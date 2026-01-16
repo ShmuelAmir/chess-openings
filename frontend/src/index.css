@@ -205,6 +205,42 @@ select:focus {
   font-weight: 500;
 }
 
+/* Color Filter */
+.color-filter-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.color-filter-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  border: 2px solid #333;
+  background: transparent;
+  color: #888;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.color-filter-pill:hover {
+  border-color: #555;
+  color: #aaa;
+}
+
+.color-filter-pill.active {
+  border-color: #81b64c;
+  background: rgba(129, 182, 76, 0.15);
+  color: #81b64c;
+}
+
+.color-dot.small {
+  width: 14px;
+  height: 14px;
+}
+
 /* Date Range Section */
 .date-range-section {
   margin-bottom: 1rem;
@@ -293,6 +329,12 @@ select:focus {
   border: 1px solid #81b64c;
 }
 
+.filter-info {
+  color: #666;
+  font-size: 0.85rem;
+  margin: 0.5rem 0 0.5rem 0;
+}
+
 .results-table {
   width: 100%;
   border-collapse: collapse;
@@ -334,24 +376,22 @@ select:focus {
   color: #f39c12;
 }
 
-.color-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
-  font-size: 1.2rem;
+.color-dot {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #555;
 }
 
-.color-badge.white {
-  background: #f0f0f0;
-  color: #333;
+.color-dot.white {
+  background: linear-gradient(135deg, #fff 0%, #ddd 100%);
+  border-color: #888;
 }
 
-.color-badge.black {
-  background: #333;
-  color: #f0f0f0;
+.color-dot.black {
+  background: linear-gradient(135deg, #444 0%, #222 100%);
+  border-color: #666;
 }
 
 .link {

@@ -152,6 +152,7 @@ async def analyze_games(
     to_month: int = Query(...),
     time_classes: list[str] = Query(None),
     rated: bool = Query(None),
+    color: str = Query(None),  # "white", "black", or None for both
     study_names: list[str] = Query(None),
     authorization: str = Header(...),
 ):
@@ -190,6 +191,7 @@ async def analyze_games(
             to_month=to_month,
             time_classes=time_classes,
             rated=rated,
+            color=color,
             opening_filters=opening_filters,
         )
     

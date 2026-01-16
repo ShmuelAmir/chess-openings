@@ -13,6 +13,7 @@ function GameFilters({ onAnalyze, loading }) {
     rapid: true,
     daily: false,
   });
+  const [colorFilter, setColorFilter] = useState("both"); // "white", "black", or "both"
   const [ratedOnly, setRatedOnly] = useState(false);
 
   const handleTimeClassToggle = (tc) => {
@@ -39,6 +40,7 @@ function GameFilters({ onAnalyze, loading }) {
       toYear,
       toMonth,
       timeClasses: selectedTimeClasses.length > 0 ? selectedTimeClasses : null,
+      colorFilter,
       ratedOnly,
     });
   };
@@ -137,6 +139,13 @@ function GameFilters({ onAnalyze, loading }) {
           >
             Last 6 months
           </button>
+          <button
+            type="button"
+            className="secondary small"
+            onClick={() => selectLastNMonths(12)}
+          >
+            Last year
+          </button>
         </div>
 
         <div className="date-range-row">
@@ -229,6 +238,33 @@ function GameFilters({ onAnalyze, loading }) {
               Select All
             </button>
           )}
+        </div>
+      </div>
+
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Play As</label>
+          <div className="color-filter-row">
+            {[
+              { id: "both", label: "Both" },
+              { id: "white", label: "White", dot: true },
+              { id: "black", label: "Black", dot: true },
+            ].map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={`color-filter-pill ${
+                  colorFilter === opt.id ? "active" : ""
+                }`}
+                onClick={() => setColorFilter(opt.id)}
+              >
+                {opt.dot && (
+                  <span className={`color-dot small ${opt.id}`}></span>
+                )}
+                <span>{opt.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
