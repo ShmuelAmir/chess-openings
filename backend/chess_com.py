@@ -104,6 +104,7 @@ class ChessComClient:
             
             games.append({
                 "url": game.get("url", ""),
+                "date": game.get("end_time"),  # Unix timestamp
                 "time_class": game.get("time_class", ""),
                 "time_control": game.get("time_control", ""),
                 "rated": game.get("rated", False),

@@ -1,4 +1,11 @@
+import { useState } from "react";
+
 function ResultsTable({ results, totalGames, filteredByOpening }) {
+  const [sortConfig, setSortConfig] = useState({
+    key: "game_date",
+    direction: "desc",
+  });
+
   if (!results || results.length === 0) {
     return (
       <div className="empty-state">
@@ -21,6 +28,42 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
   const deviations = results.filter((r) => r.result_type === "deviation");
   const opponentLeft = results.filter(
     (r) => r.result_type === "opponent_left_book"
+  );
+
+  // Sort results
+  const sortedResults = [...results].sort((a, b) => {
+    const aVal = a[sortConfig.key];
+    const bVal = b[sortConfig.key];
+
+    if (aVal === null || aVal === undefined) return 1;
+    if (bVal === null || bVal === undefined) return -1;
+
+    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    return sortConfig.direction === "asc" ? comparison : -comparison;
+  });
+
+  const handleSort = (key) => {
+    setSortConfig({
+      key,
+      direction:
+        sortConfig.key === key && sortConfig.direction === "asc"
+          ? "desc"
+          : "asc",
+    });
+  };
+
+  const SortHeader = ({ label, sortKey }) => (
+    <th
+      onClick={() => handleSort(sortKey)}
+      style={{ cursor: "pointer", userSelect: "none" }}
+    >
+      {label}
+      {sortConfig.key === sortKey && (
+        <span style={{ marginLeft: "0.5rem", color: "#81b64c" }}>
+          {sortConfig.direction === "asc" ? "↑" : "↓"}
+        </span>
+      )}
+    </th>
   );
 
   return (
@@ -53,9 +96,11 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
         <thead>
           <tr>
             <th>Game</th>
+            <SortHeader label="Date" sortKey="game_date" />
             <th>Color</th>
-            <th>Opening</th>
-            <th>Move #</th>
+            <th>Study</th>
+            <SortHeader label="Opening" sortKey="opening_name" />
+            <SortHeader label="Move #" sortKey="move_number" />
             <th>Result</th>
             <th>Your Move</th>
             <th>Correct Move</th>
@@ -63,7 +108,7 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
           </tr>
         </thead>
         <tbody>
-          {results.map((result, i) => (
+          {sortedResults.map((result, i) => (
             <tr key={i}>
               <td>
                 <a
@@ -75,11 +120,15 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                   View
                 </a>
               </td>
+              <td className="date-cell">{result.game_date || "—"}</td>
               <td>
                 <span
                   className={`color-dot ${result.user_color}`}
                   title={result.user_color}
                 ></span>
+              </td>
+              <td>
+                <span className="study-name">{result.study_name || "—"}</span>
               </td>
               <td>{result.opening_name}</td>
               <td>{result.move_number}</td>
@@ -99,7 +148,20 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
               </td>
               <td>
                 {result.result_type === "deviation" ? (
-                  <span className="move-good">{result.correct_move}</span>
+                  <span
+                    className={
+                      result.variation_count > 1
+                        ? "move-good multiple-variations"
+                        : "move-good"
+                    }
+                    title={
+                      result.variation_count > 1
+                        ? `${result.variation_count} variations available in your repertoire`
+                        : ""
+                    }
+                  >
+                    {result.correct_move}
+                  </span>
                 ) : (
                   <span style={{ color: "#888" }}>
                     Opponent played: {result.opponent_move}

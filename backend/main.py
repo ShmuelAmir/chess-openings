@@ -174,7 +174,7 @@ async def analyze_games(
                 "Unknown Opening"
             )
             collected_study_names.append(study_name)
-            repertoire_builder.add_study(pgn, study_name)
+            repertoire_builder.add_study(pgn, study_name, study_name)
     
     repertoire = repertoire_builder.build()
     

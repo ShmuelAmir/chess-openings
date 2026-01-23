@@ -54,9 +54,40 @@ h2 {
   align-items: start;
 }
 
+.main-layout.collapsed {
+  grid-template-columns: 0 1fr;
+}
+
 .setup-panel {
   position: sticky;
   top: 1rem;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.setup-panel.collapsed {
+  width: 0;
+  opacity: 0;
+}
+
+.collapse-btn {
+  position: absolute;
+  left: -2rem;
+  top: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 4px;
+  background: #0f3460;
+  color: #81b64c;
+  border: 1px solid #333;
+  font-size: 0.9rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.collapse-btn:hover {
+  background: #1a4a7a;
 }
 
 .results-panel {
@@ -368,6 +399,13 @@ select:focus {
   font-weight: bold;
 }
 
+.move-good.multiple-variations {
+  color: #3498db;
+  font-style: italic;
+  cursor: help;
+  text-decoration: underline dotted;
+}
+
 .result-deviation {
   color: #e74c3c;
 }
@@ -376,12 +414,95 @@ select:focus {
   color: #f39c12;
 }
 
+.date-cell {
+  font-size: 0.9rem;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+/* Charts */
+.charts-section {
+  margin-top: 1rem;
+}
+
+.charts {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.charts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.charts-header h2 {
+  margin: 0;
+  color: #aaa;
+}
+
+.granularity {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.granularity label {
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+.pill {
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: #0f3460;
+  color: #ddd;
+  border: 1px solid #2c3e50;
+  cursor: pointer;
+}
+
+.pill.active {
+  background: #81b64c;
+  color: #0b2218;
+  border-color: #6aa63a;
+}
+
+.chart-block {
+  background: #0f1d3a;
+  border: 1px solid #243b55;
+  border-radius: 10px;
+  padding: 1rem 1rem 0.5rem;
+}
+
+.chart-block h3 {
+  font-size: 1rem;
+  color: #bbb;
+  margin: 0 0 0.5rem 0.25rem;
+}
+
 .color-dot {
   display: inline-block;
   width: 20px;
   height: 20px;
   border-radius: 50%;
   border: 2px solid #555;
+}
+
+.color-dot.white {
+  background: linear-gradient(135deg, #fff 0%, #ddd 100%);
+  border-color: #888;
+}
+
+.color-dot.black {
+  background: linear-gradient(135deg, #444 0%, #222 100%);
+  border-color: #666;
+}
+
+.study-name {
+  font-size: 0.85rem;
+  color: #999;
 }
 
 .color-dot.white {

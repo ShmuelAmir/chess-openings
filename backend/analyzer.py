@@ -4,6 +4,7 @@ Deviation Analyzer - Compares games against repertoire
 import chess
 from dataclasses import dataclass
 from typing import Optional
+from datetime import datetime
 
 from repertoire import Repertoire, RepertoireNode
 
@@ -16,10 +17,13 @@ class DeviationResult:
     result_type: str  # "deviation" or "opponent_left_book"
     move_number: int
     user_color: str  # "white" or "black"
+    game_date: Optional[str] = None  # Game date (YYYY-MM-DD)
+    study_name: Optional[str] = None  # Study/chapter this came from
     your_move: Optional[str] = None  # What you played (for deviations)
     correct_move: Optional[str] = None  # What you should have played
     opponent_move: Optional[str] = None  # What opponent played (when they left book)
     fen: Optional[str] = None  # Position FEN for analysis link
+    variation_count: Optional[int] = None  # Number of variations available
     
     def to_dict(self) -> dict:
         return {
@@ -28,10 +32,13 @@ class DeviationResult:
             "result_type": self.result_type,
             "move_number": self.move_number,
             "user_color": self.user_color,
+            "game_date": self.game_date,
+            "study_name": self.study_name,
             "your_move": self.your_move,
             "correct_move": self.correct_move,
             "opponent_move": self.opponent_move,
             "fen": self.fen,
+            "variation_count": self.variation_count,
             "analysis_url": f"https://lichess.org/analysis/{self.fen.replace(' ', '_')}" if self.fen else None,
         }
 
@@ -92,29 +99,60 @@ class DeviationAnalyzer:
             if move_san not in current_node.children:
                 if is_your_move:
                     # You deviated from your repertoire
-                    # Find what the correct move should be
+                    # Find what the correct move(s) should be
                     correct_moves = list(current_node.children.keys())
-                    correct_move = correct_moves[0] if correct_moves else None
+                    variation_count = len(correct_moves)
                     
-                    if correct_move:
+                    if correct_moves:
+                        # Format correct move display
+                        if variation_count == 1:
+                            correct_move = correct_moves[0]
+                        else:
+                            # Multiple variations available
+                            variation_nums = ", ".join([str(i+1) for i in range(min(variation_count, 5))])
+                            if variation_count > 5:
+                                variation_nums += "..."
+                            correct_move = f"Multiple variations ({variation_nums})"
+                        
+                        # Format game date from Unix timestamp
+                        game_date = None
+                        if game.get("date"):
+                            try:
+                                game_date = datetime.fromtimestamp(game.get("date")).strftime("%Y-%m-%d")
+                            except (ValueError, TypeError, OSError):
+                                game_date = None
+                        
                         return DeviationResult(
                             game_url=game.get("url", ""),
                             opening_name=current_node.opening_name or "Unknown",
                             result_type="deviation",
                             move_number=current_move_number,
                             user_color="white" if user_color == chess.WHITE else "black",
+                            game_date=game_date,
+                            study_name=current_node.study_name,
                             your_move=move_san,
                             correct_move=correct_move,
                             fen=board.fen(),
+                            variation_count=variation_count,
                         ).to_dict()
                 else:
                     # Opponent played a move not in your repertoire
+                    # Format game date from Unix timestamp
+                    game_date = None
+                    if game.get("date"):
+                        try:
+                            game_date = datetime.fromtimestamp(game.get("date")).strftime("%Y-%m-%d")
+                        except (ValueError, TypeError, OSError):
+                            game_date = None
+                    
                     return DeviationResult(
                         game_url=game.get("url", ""),
                         opening_name=current_node.opening_name or "Unknown",
                         result_type="opponent_left_book",
                         move_number=current_move_number,
                         user_color="white" if user_color == chess.WHITE else "black",
+                        game_date=game_date,
+                        study_name=current_node.study_name,
                         opponent_move=move_san,
                         fen=board.fen(),
                     ).to_dict()

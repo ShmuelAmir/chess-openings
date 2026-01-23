@@ -3,6 +3,7 @@ import LichessAuth from "./components/LichessAuth";
 import StudyPicker from "./components/StudyPicker";
 import GameFilters from "./components/GameFilters";
 import ResultsTable from "./components/ResultsTable";
+import Charts from "./components/Charts";
 
 function App() {
   const [lichessToken, setLichessToken] = useState(
@@ -16,7 +17,7 @@ function App() {
   const [matchedGames, setMatchedGames] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // Fetch Lichess user info when token is available
   useEffect(() => {
     if (lichessToken) {
@@ -125,8 +126,21 @@ function App() {
 
       {error && <div className="error">{error}</div>}
 
-      <div className={hasResults ? "main-layout" : "centered-layout"}>
-        <div className="setup-panel">
+      <div
+        className={`${hasResults ? "main-layout" : "centered-layout"} ${
+          hasResults && sidebarCollapsed ? "collapsed" : ""
+        }`}
+      >
+        <div className={`setup-panel ${sidebarCollapsed ? "collapsed" : ""}`}>
+          {hasResults && (
+            <button
+              className="collapse-btn"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              title={sidebarCollapsed ? "Expand" : "Collapse"}
+            >
+              {sidebarCollapsed ? "→" : "←"}
+            </button>
+          )}
           <div className="section">
             <h2>1. Connect Lichess Account</h2>
             <LichessAuth
@@ -169,6 +183,16 @@ function App() {
                 />
               )}
             </div>
+
+            {!loading && results && (
+              <div className="section charts-section">
+                <Charts
+                  results={results}
+                  totalGames={totalGames}
+                  filteredByOpening={matchedGames}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
