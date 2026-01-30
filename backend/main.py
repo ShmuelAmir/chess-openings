@@ -168,7 +168,17 @@ async def analyze_games(
         studies = await lichess.get_user_studies(account["username"])
         
         for study_id in study_ids:
-            pgn = await lichess.get_study_pgn(study_id)
+            try:
+                pgn = await lichess.get_study_pgn(study_id)
+            except Exception as e:
+                study_name = next(
+                    (s["name"] for s in studies if s["id"] == study_id),
+                    study_id
+                )
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Cannot access study '{study_name}' ({study_id}). Make sure the study is public, unlisted, or you are the owner."
+                )
             study_name = next(
                 (s["name"] for s in studies if s["id"] == study_id),
                 "Unknown Opening"

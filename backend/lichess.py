@@ -77,5 +77,12 @@ class LichessClient:
             f"/api/study/{study_id}.pgn",
             headers={"Accept": "application/x-chess-pgn"},
         )
+        if response.status_code == 403:
+            raise httpx.HTTPStatusError(
+                f"Access denied to study {study_id}. The study may be private or you may not have permission to access it. "
+                f"Make sure the study is either public, unlisted, or you are the owner.",
+                request=response.request,
+                response=response,
+            )
         response.raise_for_status()
         return response.text
