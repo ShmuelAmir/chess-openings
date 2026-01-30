@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-function GameFilters({ onAnalyze, loading }) {
+function GameFilters({ onAnalyze, loading, showUsernameField = true }) {
   const currentDate = new Date();
   const [username, setUsername] = useState("");
   const [fromYear, setFromYear] = useState(currentDate.getFullYear());
@@ -26,7 +26,7 @@ function GameFilters({ onAnalyze, loading }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!username.trim()) return;
+    if (showUsernameField && !username.trim()) return;
 
     // Get selected time classes as array
     const selectedTimeClasses = Object.entries(timeClasses)
@@ -94,18 +94,20 @@ function GameFilters({ onAnalyze, loading }) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="form-row">
-        <div className="form-group" style={{ flex: 2 }}>
-          <label>Chess.com Username</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter your Chess.com username"
-            required
-          />
+      {showUsernameField && (
+        <div className="form-row">
+          <div className="form-group" style={{ flex: 2 }}>
+            <label>Chess.com Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter your Chess.com username"
+              required
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="date-range-section">
         <label className="section-label">Date Range</label>
@@ -281,7 +283,12 @@ function GameFilters({ onAnalyze, loading }) {
 
       <button
         type="submit"
-        disabled={loading || !username.trim() || noneSelected || !isValidRange}
+        disabled={
+          loading ||
+          (showUsernameField && !username.trim()) ||
+          noneSelected ||
+          !isValidRange
+        }
       >
         {loading ? "Analyzing..." : "Analyze Games"}
       </button>
