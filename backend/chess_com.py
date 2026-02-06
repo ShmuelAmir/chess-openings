@@ -209,31 +209,58 @@ class ChessComClient:
         """
         Check if an opening name matches any of the filter keywords.
         
-        Uses fuzzy matching - checks if key words from filter appear in opening name.
+        Uses fuzzy matching - checks if the main opening system keyword appears.
         """
         if not opening_name:
             return False
         
         opening_lower = opening_name.lower()
+
+        print(f"Checking opening '{opening_name}' against filters: {filters}")
+        
+        def normalize_word(word):
+            """Normalize word for comparison (remove plural 's')."""
+            if word.endswith('s') and len(word) > 3:
+                return word[:-1]
+            return word
         
         for filter_name in filters:
             filter_lower = filter_name.lower()
             
-            # Extract key words from filter (ignore common words)
-            ignore_words = {'opening', 'defense', 'defence', 'attack', 'game', 'variation', 'system', 'the', 'a', 'an'}
-            filter_words = [w for w in filter_lower.split() if w not in ignore_words and len(w) > 2]
-            
-            # Check if main keyword matches
-            if filter_words:
-                # Match if the main opening name word appears
-                main_word = filter_words[0]
-                if main_word in opening_lower:
-                    return True
-            
-            # Also check for exact containment
+            # Check for exact containment first
             if filter_lower in opening_lower or opening_lower in filter_lower:
+                print(f"  ✓ Matched '{filter_name}': exact containment")
                 return True
+            
+            # Extract the main opening system (first meaningful word)
+            ignore_words = {'opening', 'defense', 'defence', 'attack', 'game', 'variation', 'system', 'the', 'a', 'an', 'for', 'by', 'in', 'on', 'white', 'black', 'both', 'old', 'new'}
+            
+            # Get main keywords from filter
+            filter_parts = []
+            for part in filter_lower.split():
+                subparts = part.split('-')
+                for subpart in subparts:
+                    if subpart not in ignore_words and len(subpart) > 2:
+                        filter_parts.append(normalize_word(subpart))
+            
+            # Get main keywords from opening
+            opening_parts = []
+            for part in opening_lower.split():
+                subparts = part.split('-')
+                for subpart in subparts:
+                    if subpart not in ignore_words and len(subpart) > 2:
+                        opening_parts.append(normalize_word(subpart))
+            
+            # Check if ANY keyword from filter matches ANY keyword from opening
+            # This is more lenient - match if they share at least one main concept
+            if filter_parts and opening_parts:
+                has_match = any(f in opening_parts for f in filter_parts)
+                if has_match:
+                    matched_words = [f for f in filter_parts if f in opening_parts]
+                    print(f"  ✓ Matched '{filter_name}': shared concepts {matched_words}")
+                    return True
         
+        print(f"  ✗ No match")
         return False
     
     def _parse_pgn(self, pgn_str: str) -> dict:
