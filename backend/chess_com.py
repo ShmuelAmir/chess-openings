@@ -210,6 +210,7 @@ class ChessComClient:
         Check if an opening name matches any of the filter keywords.
         
         Uses fuzzy matching - checks if the main opening system keyword appears.
+        Filters can be either study names or actual opening names from repertoire.
         """
         if not opening_name:
             return False
@@ -227,13 +228,13 @@ class ChessComClient:
         for filter_name in filters:
             filter_lower = filter_name.lower()
             
-            # Check for exact containment first
+            # Check for exact containment first (case-insensitive)
             if filter_lower in opening_lower or opening_lower in filter_lower:
                 print(f"  ✓ Matched '{filter_name}': exact containment")
                 return True
             
-            # Extract the main opening system (first meaningful word)
-            ignore_words = {'opening', 'defense', 'defence', 'attack', 'game', 'variation', 'system', 'the', 'a', 'an', 'for', 'by', 'in', 'on', 'white', 'black', 'both', 'old', 'new'}
+            # Extract the main opening system keywords
+            ignore_words = {'opening', 'defense', 'defence', 'attack', 'game', 'variation', 'system', 'the', 'a', 'an', 'for', 'by', 'in', 'on', 'white', 'black', 'both', 'old', 'new', 'closed', 'english'}
             
             # Get main keywords from filter
             filter_parts = []

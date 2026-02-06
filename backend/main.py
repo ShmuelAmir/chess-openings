@@ -188,8 +188,22 @@ async def analyze_games(
     
     repertoire = repertoire_builder.build()
     
-    # Use study names for pre-filtering Chess.com games by opening
-    opening_filters = study_names if study_names else collected_study_names
+    # Use actual opening names from the repertoire for filtering (not study names)
+    # Extract all unique opening names that appear in the repertoire
+    def extract_opening_names(node):
+        """Recursively extract all opening names from the repertoire tree."""
+        names = set()
+        if node.opening_name:
+            names.add(node.opening_name)
+        for child in node.children.values():
+            names.update(extract_opening_names(child))
+        return names
+    
+    repertoire_opening_names = extract_opening_names(repertoire.white_tree)
+    repertoire_opening_names.update(extract_opening_names(repertoire.black_tree))
+    
+    # Use repertoire opening names for pre-filtering Chess.com games by opening
+    opening_filters = list(repertoire_opening_names) if repertoire_opening_names else collected_study_names
     
     # Fetch Chess.com games for the date range (pre-filtered by opening name from eco URL)
     async with ChessComClient() as chess_com:

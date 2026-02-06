@@ -27,6 +27,8 @@ class Repertoire:
     """Complete repertoire with separate trees for White and Black."""
     white_tree: RepertoireNode = field(default_factory=RepertoireNode)
     black_tree: RepertoireNode = field(default_factory=RepertoireNode)
+    # FEN position index: maps FEN string -> (opening_name, study_name, variation_count)
+    position_index: dict[str, tuple[str, str, int]] = field(default_factory=dict)
     
     def get_tree(self, color: chess.Color) -> RepertoireNode:
         """Get the repertoire tree for a specific color."""
@@ -48,6 +50,8 @@ class RepertoireBuilder:
         """Process all studies and build the repertoire trees."""
         for pgn, opening_name, study_name in self._studies:
             self._process_study(pgn, opening_name, study_name)
+        # Build FEN position index for transposition handling
+        self._build_fen_index()
         return self.repertoire
     
     def _process_study(self, pgn: str, opening_name: str, study_name: str):
@@ -70,6 +74,36 @@ class RepertoireBuilder:
             
             full_chapter_name = f"{study_name} - {chapter_name}"
             self._process_game(game, opening_name, full_chapter_name)
+    
+    def _build_fen_index(self):
+        """Build FEN position index by traversing the white repertoire tree."""
+        def traverse_tree(node: RepertoireNode, board: chess.Board):
+            """Recursively traverse tree and index FEN positions."""
+            fen = board.fen()
+            if fen and node.opening_name:
+                # Count variations available at this position
+                variation_count = len(node.children)
+                # Store the opening and study info for this FEN
+                self.repertoire.position_index[fen] = (
+                    node.opening_name,
+                    node.study_name,
+                    variation_count,
+                )
+            
+            # Traverse all child positions
+            for move_san, child_node in node.children.items():
+                try:
+                    move = board.parse_san(move_san)
+                    board.push(move)
+                    traverse_tree(child_node, board)
+                    board.pop()
+                except ValueError:
+                    # Invalid move, skip
+                    pass
+        
+        # Start from white's perspective
+        board = chess.Board()
+        traverse_tree(self.repertoire.white_tree, board)
     
     def _process_game(self, game: chess.pgn.Game, opening_name: str, study_name: str):
         """Process a single game/chapter from a study."""
