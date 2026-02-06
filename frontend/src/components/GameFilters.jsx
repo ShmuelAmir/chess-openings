@@ -116,16 +116,16 @@ function GameFilters({ onAnalyze, loading, showUsernameField = true }) {
           <button
             type="button"
             className="secondary small"
-            onClick={() => selectFullYear(currentDate.getFullYear())}
+            onClick={() => selectLastNMonths(0.25)}
           >
-            {currentDate.getFullYear()}
+            Last week
           </button>
           <button
             type="button"
             className="secondary small"
-            onClick={() => selectFullYear(currentDate.getFullYear() - 1)}
+            onClick={() => selectLastNMonths(1)}
           >
-            {currentDate.getFullYear() - 1}
+            Last month
           </button>
           <button
             type="button"

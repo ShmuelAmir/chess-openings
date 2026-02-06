@@ -97,24 +97,7 @@ class DeviationAnalyzer:
             
             # Check if this move exists in repertoire
             if move_san not in current_node.children:
-                # Try FEN lookup for transpositions
-                current_fen = board.fen()
-                fen_match = self.repertoire.position_index.get(current_fen)
-                
-                if fen_match and is_your_move:
-                    # Position exists in repertoire via transposition!
-                    # This is not a deviation - they're just following a different move order
-                    opening_name, study_name, variation_count = fen_match
-                    # Continue analyzing from this position
-                    # For now, we report this as "followed book via transposition"
-                    # Don't report as a deviation since the position is in the repertoire
-                    board.push_san(move_san)
-                    continue
-                elif fen_match and not is_your_move:
-                    # Opponent's move, position is in repertoire
-                    board.push_san(move_san)
-                    continue
-                
+                # Move not in repertoire
                 if is_your_move:
                     # You deviated from your repertoire
                     # Find what the correct move(s) should be
@@ -155,6 +138,7 @@ class DeviationAnalyzer:
                         ).to_dict()
                 else:
                     # Opponent played a move not in your repertoire
+                    # This is the actual deviation - report and stop
                     # Format game date from Unix timestamp
                     game_date = None
                     if game.get("date"):
@@ -174,24 +158,14 @@ class DeviationAnalyzer:
                         opponent_move=move_san,
                         fen=board.fen(),
                     ).to_dict()
+                
+                # If we get here without returning, it means no correct moves (dead end in tree)
+                # Stop analysis
+                break
             
             # Move to next node in tree
             if move_san in current_node.children:
                 current_node = current_node.children[move_san]
-            else:
-                # Move not directly in tree, but check if position exists via transposition
-                # Try to find the node that matches the current FEN
-                next_board = board.copy()
-                next_board.push_san(move_san)
-                next_fen = next_board.fen()
-                
-                fen_match = self.repertoire.position_index.get(next_fen)
-                if fen_match:
-                    # Found the transposed position, update current_node
-                    # by searching the tree to find a matching node
-                    opening_name, study_name, _ = fen_match
-                    current_node.opening_name = opening_name
-                    current_node.study_name = study_name
             
             # Apply move to board for FEN tracking
             try:
