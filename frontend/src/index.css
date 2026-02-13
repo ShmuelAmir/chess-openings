@@ -400,6 +400,11 @@ select:focus {
   font-weight: bold;
 }
 
+.move-opponent {
+  color: #f39c12;
+  font-weight: bold;
+}
+
 .move-good.multiple-variations {
   color: #3498db;
   font-style: italic;

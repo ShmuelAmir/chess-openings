@@ -139,6 +139,21 @@ class DeviationAnalyzer:
                 else:
                     # Opponent played a move not in your repertoire
                     # This is the actual deviation - report and stop
+                    # Find what the repertoire expected
+                    expected_moves = list(current_node.children.keys())
+                    variation_count = len(expected_moves)
+                    
+                    if expected_moves:
+                        if variation_count == 1:
+                            correct_move = expected_moves[0]
+                        else:
+                            moves_display = ", ".join(expected_moves[:5])
+                            if variation_count > 5:
+                                moves_display += f", ..."
+                            correct_move = moves_display
+                    else:
+                        correct_move = None
+                    
                     # Format game date from Unix timestamp
                     game_date = None
                     if game.get("date"):
@@ -156,6 +171,8 @@ class DeviationAnalyzer:
                         game_date=game_date,
                         study_name=current_node.study_name,
                         opponent_move=move_san,
+                        correct_move=correct_move,
+                        variation_count=variation_count,
                         fen=board.fen(),
                     ).to_dict()
                 

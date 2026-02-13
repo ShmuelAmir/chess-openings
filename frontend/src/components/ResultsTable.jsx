@@ -27,7 +27,7 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
 
   const deviations = results.filter((r) => r.result_type === "deviation");
   const opponentLeft = results.filter(
-    (r) => r.result_type === "opponent_left_book"
+    (r) => r.result_type === "opponent_left_book",
   );
 
   // Sort results
@@ -102,7 +102,7 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
             <SortHeader label="Opening" sortKey="opening_name" />
             <SortHeader label="Move #" sortKey="move_number" />
             <th>Result</th>
-            <th>Your Move</th>
+            <th>Move Played</th>
             <th>Correct Move</th>
             <th>Analyze</th>
           </tr>
@@ -143,30 +143,24 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                 {result.result_type === "deviation" ? (
                   <span className="move-bad">{result.your_move}</span>
                 ) : (
-                  <span style={{ color: "#888" }}>—</span>
+                  <span className="move-opponent">{result.opponent_move}</span>
                 )}
               </td>
               <td>
-                {result.result_type === "deviation" ? (
-                  <span
-                    className={
-                      result.variation_count > 1
-                        ? "move-good multiple-variations"
-                        : "move-good"
-                    }
-                    title={
-                      result.variation_count > 1
-                        ? `${result.variation_count} variations available in your repertoire`
-                        : ""
-                    }
-                  >
-                    {result.correct_move}
-                  </span>
-                ) : (
-                  <span style={{ color: "#888" }}>
-                    Opponent played: {result.opponent_move}
-                  </span>
-                )}
+                <span
+                  className={
+                    result.variation_count > 1
+                      ? "move-good multiple-variations"
+                      : "move-good"
+                  }
+                  title={
+                    result.variation_count > 1
+                      ? `${result.variation_count} variations available in your repertoire`
+                      : ""
+                  }
+                >
+                  {result.correct_move}
+                </span>
               </td>
               <td>
                 {result.analysis_url && (
