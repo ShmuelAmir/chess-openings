@@ -238,6 +238,172 @@ async def analyze_games(
     }
 
 
+@app.post("/api/opening-stats")
+async def opening_stats(
+    chess_com_username: str = Query(...),
+    from_year: int = Query(...),
+    from_month: int = Query(...),
+    to_year: int = Query(...),
+    to_month: int = Query(...),
+    time_classes: list[str] = Query(None),
+    rated: bool = Query(None),
+    color: str = Query(None),  # "white", "black", or None for both
+):
+    """Get opening distribution statistics from Chess.com games."""
+    from collections import defaultdict
+    from datetime import datetime
+    
+    # Fetch Chess.com games for the date range (no opening filter)
+    async with ChessComClient() as chess_com:
+        games, total_games = await chess_com.get_games_for_range(
+            username=chess_com_username,
+            from_year=from_year,
+            from_month=from_month,
+            to_year=to_year,
+            to_month=to_month,
+            time_classes=time_classes,
+            rated=rated,
+            color=color,
+            opening_filters=None,  # Get all openings
+        )
+    
+    username_lower = chess_com_username.lower()
+    
+    # Aggregate statistics
+    opening_counts = defaultdict(int)
+    opening_wins = defaultdict(int)
+    opening_draws = defaultdict(int)
+    opening_losses = defaultdict(int)
+    category_counts = defaultdict(int)
+    time_series = defaultdict(lambda: defaultdict(int))  # {month: {opening: count}}
+    
+    for game in games:
+        opening_name = game.get("opening_name", "") or "Unknown"
+        if not opening_name:
+            opening_name = "Unknown"
+        
+        # Count openings
+        opening_counts[opening_name] += 1
+        
+        # Determine result for user
+        is_white = game.get("white", "").lower() == username_lower
+        result = game.get("result", "")
+        
+        if result == "win":
+            if is_white:
+                opening_wins[opening_name] += 1
+            else:
+                opening_losses[opening_name] += 1
+        elif result == "lose" or result == "checkmated" or result == "timeout" or result == "resigned" or result == "abandoned":
+            if is_white:
+                opening_losses[opening_name] += 1
+            else:
+                opening_wins[opening_name] += 1
+        else:
+            # Draw or other result
+            opening_draws[opening_name] += 1
+        
+        # Categorize opening (e4, d4, c4, Nf3, etc.)
+        category = categorize_opening(opening_name)
+        category_counts[category] += 1
+        
+        # Time series data (by month)
+        date_ts = game.get("date")
+        if date_ts:
+            dt = datetime.fromtimestamp(date_ts)
+            month_key = f"{dt.year}-{dt.month:02d}"
+            time_series[month_key][opening_name] += 1
+    
+    # Build response
+    # Top openings by count
+    top_openings = sorted(
+        [(name, count) for name, count in opening_counts.items()],
+        key=lambda x: x[1],
+        reverse=True
+    )[:20]
+    
+    # Opening performance data
+    opening_performance = []
+    for name, count in top_openings:
+        wins = opening_wins.get(name, 0)
+        draws = opening_draws.get(name, 0)
+        losses = opening_losses.get(name, 0)
+        total = wins + draws + losses
+        win_rate = (wins / total * 100) if total > 0 else 0
+        opening_performance.append({
+            "opening": name,
+            "games": count,
+            "wins": wins,
+            "draws": draws,
+            "losses": losses,
+            "win_rate": round(win_rate, 1),
+        })
+    
+    # Category breakdown
+    categories = [
+        {"category": cat, "count": count}
+        for cat, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+    
+    # Time series for top 5 openings
+    top_5_names = [name for name, _ in top_openings[:5]]
+    trends = []
+    for month_key in sorted(time_series.keys()):
+        entry = {"month": month_key}
+        for opening_name in top_5_names:
+            entry[opening_name] = time_series[month_key].get(opening_name, 0)
+        trends.append(entry)
+    
+    return {
+        "total_games": len(games),
+        "unique_openings": len(opening_counts),
+        "top_openings": opening_performance,
+        "categories": categories,
+        "trends": trends,
+        "top_opening_names": top_5_names,
+    }
+
+
+def categorize_opening(opening_name: str) -> str:
+    """Categorize an opening by its first move family."""
+    name_lower = opening_name.lower()
+    
+    # e4 openings
+    e4_keywords = ["sicilian", "italian", "spanish", "ruy lopez", "french", "caro-kann", 
+                   "scandinavian", "alekhine", "pirc", "modern", "king's pawn", "scotch",
+                   "petroff", "petrov", "vienna", "bishop's opening", "center game",
+                   "king's gambit", "philidor", "two knights"]
+    
+    # d4 openings
+    d4_keywords = ["queen's gambit", "king's indian", "slav", "gruenfeld", "grunfeld",
+                   "nimzo", "queen's indian", "dutch", "london", "trompowsky", "torre",
+                   "colle", "catalan", "bogo", "benoni", "semi-slav"]
+    
+    # c4 openings
+    c4_keywords = ["english"]
+    
+    # Nf3 openings
+    nf3_keywords = ["reti", "réti"]
+    
+    for kw in e4_keywords:
+        if kw in name_lower:
+            return "e4 Openings"
+    
+    for kw in d4_keywords:
+        if kw in name_lower:
+            return "d4 Openings"
+    
+    for kw in c4_keywords:
+        if kw in name_lower:
+            return "c4 Openings"
+    
+    for kw in nf3_keywords:
+        if kw in name_lower:
+            return "Nf3 Openings"
+    
+    return "Other"
+
+
 # Serve frontend static files in production
 if os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")

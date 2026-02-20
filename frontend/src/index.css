@@ -820,3 +820,184 @@ select:focus {
   padding: 0.6rem 1rem;
   font-size: 0.9rem;
 }
+
+/* Header Navigation */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.header-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.nav-link {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  color: #aaa;
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+  color: #eee;
+  background: rgba(129, 182, 76, 0.1);
+}
+
+.nav-link.active {
+  color: #81b64c;
+  background: rgba(129, 182, 76, 0.15);
+  font-weight: 500;
+}
+
+/* Opening Distribution Page */
+.opening-layout {
+  grid-template-columns: 350px 1fr;
+}
+
+.opening-filters {
+  max-width: 350px;
+}
+
+.section-subtitle {
+  color: #888;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+/* Opening Charts */
+.opening-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.chart-card {
+  background: #1a1a2e;
+  border-radius: 10px;
+  padding: 1.25rem;
+  border: 1px solid #333;
+}
+
+.chart-card h3 {
+  color: #81b64c;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.chart-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.toggle-btn {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  background: #16213e;
+  border: 1px solid #333;
+  color: #aaa;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle-btn:hover {
+  border-color: #555;
+  color: #eee;
+}
+
+.toggle-btn.active {
+  background: #0f3460;
+  border-color: #81b64c;
+  color: #81b64c;
+}
+
+/* Stats Table */
+.stats-table-wrapper {
+  overflow-x: auto;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.stats-table th,
+.stats-table td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #333;
+}
+
+.stats-table th {
+  color: #888;
+  font-weight: 500;
+}
+
+.stats-table td.opening-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-table td.win {
+  color: #81b64c;
+}
+
+.stats-table td.draw {
+  color: #f39c12;
+}
+
+.stats-table td.loss {
+  color: #e74c3c;
+}
+
+.win-rate {
+  font-weight: 500;
+}
+
+.win-rate.positive {
+  color: #81b64c;
+}
+
+.win-rate.negative {
+  color: #e74c3c;
+}
+
+/* Summary Stats */
+.stats-summary {
+  background: #0f3460;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.summary-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #eee;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-label {
+  font-size: 0.8rem;
+  color: #888;
+}
