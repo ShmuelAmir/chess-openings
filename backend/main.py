@@ -315,16 +315,16 @@ async def opening_stats(
             time_series[month_key][opening_name] += 1
     
     # Build response
-    # Top openings by count
-    top_openings = sorted(
+    # All openings by count (no limit)
+    all_openings = sorted(
         [(name, count) for name, count in opening_counts.items()],
         key=lambda x: x[1],
         reverse=True
-    )[:20]
+    )
     
     # Opening performance data
     opening_performance = []
-    for name, count in top_openings:
+    for name, count in all_openings:
         wins = opening_wins.get(name, 0)
         draws = opening_draws.get(name, 0)
         losses = opening_losses.get(name, 0)
@@ -346,7 +346,7 @@ async def opening_stats(
     ]
     
     # Time series for top 5 openings
-    top_5_names = [name for name, _ in top_openings[:5]]
+    top_5_names = [name for name, _ in all_openings[:5]]
     trends = []
     for month_key in sorted(time_series.keys()):
         entry = {"month": month_key}

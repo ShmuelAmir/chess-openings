@@ -92,92 +92,96 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
         {totalGames || 0} total)
       </p>
 
-      <table className="results-table">
-        <thead>
-          <tr>
-            <th>Game</th>
-            <SortHeader label="Date" sortKey="game_date" />
-            <th>Color</th>
-            <th>Study</th>
-            <SortHeader label="Opening" sortKey="opening_name" />
-            <SortHeader label="Move #" sortKey="move_number" />
-            <th>Result</th>
-            <th>Move Played</th>
-            <th>Correct Move</th>
-            <th>Analyze</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedResults.map((result, i) => (
-            <tr key={i}>
-              <td>
-                <a
-                  href={result.game_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                >
-                  View
-                </a>
-              </td>
-              <td className="date-cell">{result.game_date || "—"}</td>
-              <td>
-                <span
-                  className={`color-dot ${result.user_color}`}
-                  title={result.user_color}
-                ></span>
-              </td>
-              <td>
-                <span className="study-name">{result.study_name || "—"}</span>
-              </td>
-              <td>{result.opening_name}</td>
-              <td>{result.move_number}</td>
-              <td>
-                {result.result_type === "deviation" ? (
-                  <span className="result-deviation">You deviated</span>
-                ) : (
-                  <span className="result-opponent">Opponent left book</span>
-                )}
-              </td>
-              <td>
-                {result.result_type === "deviation" ? (
-                  <span className="move-bad">{result.your_move}</span>
-                ) : (
-                  <span className="move-opponent">{result.opponent_move}</span>
-                )}
-              </td>
-              <td>
-                <span
-                  className={
-                    result.variation_count > 1
-                      ? "move-good multiple-variations"
-                      : "move-good"
-                  }
-                  title={
-                    result.variation_count > 1
-                      ? `${result.variation_count} variations available in your repertoire`
-                      : ""
-                  }
-                >
-                  {result.correct_move}
-                </span>
-              </td>
-              <td>
-                {result.analysis_url && (
+      <div className="results-table-scroll">
+        <table className="results-table">
+          <thead>
+            <tr>
+              <th>Game</th>
+              <SortHeader label="Date" sortKey="game_date" />
+              <th>Color</th>
+              <th>Study</th>
+              <SortHeader label="Opening" sortKey="opening_name" />
+              <SortHeader label="Move #" sortKey="move_number" />
+              <th>Result</th>
+              <th>Move Played</th>
+              <th>Correct Move</th>
+              <th>Analyze</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedResults.map((result, i) => (
+              <tr key={i}>
+                <td>
                   <a
-                    href={result.analysis_url}
+                    href={result.game_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="link"
                   >
-                    🔗 Lichess
+                    View
                   </a>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </td>
+                <td className="date-cell">{result.game_date || "—"}</td>
+                <td>
+                  <span
+                    className={`color-dot ${result.user_color}`}
+                    title={result.user_color}
+                  ></span>
+                </td>
+                <td>
+                  <span className="study-name">{result.study_name || "—"}</span>
+                </td>
+                <td>{result.opening_name}</td>
+                <td>{result.move_number}</td>
+                <td>
+                  {result.result_type === "deviation" ? (
+                    <span className="result-deviation">You deviated</span>
+                  ) : (
+                    <span className="result-opponent">Opponent left book</span>
+                  )}
+                </td>
+                <td>
+                  {result.result_type === "deviation" ? (
+                    <span className="move-bad">{result.your_move}</span>
+                  ) : (
+                    <span className="move-opponent">
+                      {result.opponent_move}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <span
+                    className={
+                      result.variation_count > 1
+                        ? "move-good multiple-variations"
+                        : "move-good"
+                    }
+                    title={
+                      result.variation_count > 1
+                        ? `${result.variation_count} variations available in your repertoire`
+                        : ""
+                    }
+                  >
+                    {result.correct_move}
+                  </span>
+                </td>
+                <td>
+                  {result.analysis_url && (
+                    <a
+                      href={result.analysis_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="link"
+                    >
+                      🔗 Lichess
+                    </a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

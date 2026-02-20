@@ -33,7 +33,7 @@ function formatDateLabel(dateStr, granularity) {
   // weekly: year-week
   const firstJan = new Date(d.getFullYear(), 0, 1);
   const week = Math.ceil(
-    ((d - firstJan) / 86400000 + firstJan.getDay() + 1) / 7
+    ((d - firstJan) / 86400000 + firstJan.getDay() + 1) / 7,
   );
   return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
 }
@@ -44,31 +44,30 @@ export default function Charts({
   filteredByOpening = 0,
 }) {
   const [granularity, setGranularity] = useState("month"); // "week" | "month"
-  const [selectedOpening, setSelectedOpening] = useState("");
 
   const deviations = useMemo(
     () => results.filter((r) => r.result_type === "deviation"),
-    [results]
+    [results],
   );
   const opponentLeft = useMemo(
     () => results.filter((r) => r.result_type === "opponent_left_book"),
-    [results]
+    [results],
   );
 
   // 1) Deviation Rate Over Time
   const timeSeries = useMemo(() => {
     const byPeriod = groupBy(
       results.filter((r) => r.game_date),
-      (r) => formatDateLabel(r.game_date, granularity)
+      (r) => formatDateLabel(r.game_date, granularity),
     );
     const data = Object.entries(byPeriod)
       .map(([period, items]) => {
         const total = items.length;
         const yourDev = items.filter(
-          (i) => i.result_type === "deviation"
+          (i) => i.result_type === "deviation",
         ).length;
         const oppLeft = items.filter(
-          (i) => i.result_type === "opponent_left_book"
+          (i) => i.result_type === "opponent_left_book",
         ).length;
         return {
           period,
@@ -87,41 +86,29 @@ export default function Charts({
     const rows = Object.entries(byOpening).map(([opening, items]) => {
       const yourDev = items.filter((i) => i.result_type === "deviation").length;
       const oppLeft = items.filter(
-        (i) => i.result_type === "opponent_left_book"
+        (i) => i.result_type === "opponent_left_book",
       ).length;
       return { opening, yourDev, oppLeft, total: items.length };
     });
     return rows.sort((a, b) => b.total - a.total).slice(0, 15); // top 15 openings
   }, [results]);
 
-  // 3) Move Number Distribution (histogram buckets)
+  // 3) Move Number Distribution (individual bars 1-15)
   const moveBuckets = useMemo(() => {
-    const buckets = {
-      "1-5": 0,
-      "6-10": 0,
-      "11-15": 0,
-      "16-20": 0,
-      "21+": 0,
-    };
+    const counts = {};
+    for (let i = 1; i <= 15; i++) {
+      counts[i] = 0;
+    }
     deviations.forEach((d) => {
       const m = d.move_number || 0;
-      if (m <= 5) buckets["1-5"]++;
-      else if (m <= 10) buckets["6-10"]++;
-      else if (m <= 15) buckets["11-15"]++;
-      else if (m <= 20) buckets["16-20"]++;
-      else buckets["21+"]++;
+      if (m >= 1 && m <= 15) {
+        counts[m]++;
+      }
     });
-    return Object.entries(buckets).map(([range, count]) => ({ range, count }));
-  }, [deviations]);
-
-  // 4) Color Analysis (pie)
-  const colorPie = useMemo(() => {
-    const white = deviations.filter((d) => d.user_color === "white").length;
-    const black = deviations.filter((d) => d.user_color === "black").length;
-    return [
-      { name: "White", value: white },
-      { name: "Black", value: black },
-    ];
+    return Object.entries(counts).map(([move, count]) => ({
+      range: move,
+      count,
+    }));
   }, [deviations]);
 
   // 5) Variation Distribution per Opening (stacked bar)
@@ -136,30 +123,6 @@ export default function Charts({
     });
     return rows.sort((a, b) => b.total - a.total).slice(0, 12); // top 12 openings
   }, [deviations]);
-
-  // Opening options for Chapter Distribution selector
-  const openingOptions = useMemo(() => {
-    const set = new Set(
-      (results || []).map((r) => r.opening_name || "Unknown")
-    );
-    return Array.from(set).sort();
-  }, [results]);
-
-  // Initialize default selected opening when results change
-  React.useEffect(() => {
-    if (!selectedOpening) {
-      if (openingOptions.includes("Vienna")) {
-        setSelectedOpening("Vienna");
-      } else if (openingOptions.length > 0) {
-        setSelectedOpening(openingOptions[0]);
-      }
-    } else if (
-      !openingOptions.includes(selectedOpening) &&
-      openingOptions.length > 0
-    ) {
-      setSelectedOpening(openingOptions[0]);
-    }
-  }, [openingOptions, selectedOpening]);
 
   function extractChapterName(studyName = "") {
     if (!studyName) return "Unknown";
@@ -176,21 +139,17 @@ export default function Charts({
     return studyName.trim();
   }
 
-  // 6) Chapter Distribution for selected opening
+  // 6) Chapter Distribution across all openings
   const chapterDistribution = useMemo(() => {
-    if (!selectedOpening) return [];
-    const filtered = (results || []).filter(
-      (r) => (r.opening_name || "Unknown") === selectedOpening
-    );
-    const byChapter = groupBy(filtered, (r) =>
-      extractChapterName(r.study_name)
+    const byChapter = groupBy(results || [], (r) =>
+      extractChapterName(r.study_name),
     );
     const rows = Object.entries(byChapter).map(([chapter, items]) => ({
       chapter,
       count: items.length,
     }));
     return rows.sort((a, b) => b.count - a.count).slice(0, 20); // top 20 chapters
-  }, [results, selectedOpening]);
+  }, [results]);
 
   const COLORS = ["#81b64c", "#f39c12", "#3498db", "#e74c3c", "#9b59b6"]; // general palette
 
@@ -301,33 +260,6 @@ export default function Charts({
         </ResponsiveContainer>
       </div>
 
-      {/* 4. Color Analysis */}
-      <div className="chart-block">
-        <h3>Color Analysis</h3>
-        <ResponsiveContainer width="100%" height={260}>
-          <PieChart>
-            <Tooltip />
-            <Legend />
-            <Pie
-              data={colorPie}
-              dataKey="value"
-              nameKey="name"
-              cx="50%"
-              cy="50%"
-              outerRadius={80}
-              label
-            >
-              {colorPie.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={COLORS[index % COLORS.length]}
-                />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-
       {/* 5. Variation Distribution per Opening */}
       <div className="chart-block">
         <h3>Variation Distribution per Opening (Top 12)</h3>
@@ -361,44 +293,9 @@ export default function Charts({
         </ResponsiveContainer>
       </div>
 
-      {/* 6. Chapter Distribution for Selected Opening */}
+      {/* 6. Chapter Distribution */}
       <div className="chart-block">
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            justifyContent: "space-between",
-          }}
-        >
-          <h3 style={{ margin: 0 }}>
-            Chapter Distribution — {selectedOpening || ""}
-          </h3>
-          <div>
-            <label
-              style={{ marginRight: 8, color: "#aaa", fontSize: "0.9rem" }}
-            >
-              Opening:
-            </label>
-            <select
-              value={selectedOpening}
-              onChange={(e) => setSelectedOpening(e.target.value)}
-              style={{
-                background: "#0f3460",
-                color: "#eee",
-                border: "1px solid #2c3e50",
-                borderRadius: 6,
-                padding: "0.35rem 0.5rem",
-              }}
-            >
-              {openingOptions.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <h3>Chapter Distribution (Top 20)</h3>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart
             data={chapterDistribution}

@@ -99,6 +99,10 @@ class DeviationAnalyzer:
             if move_san not in current_node.children:
                 # Move not in repertoire
                 if is_your_move:
+                    # Skip move 1 deviations - that's just "not this opening", not a deviation
+                    if current_move_number == 1:
+                        return None
+                    
                     # You deviated from your repertoire
                     # Find what the correct move(s) should be
                     correct_moves = list(current_node.children.keys())
