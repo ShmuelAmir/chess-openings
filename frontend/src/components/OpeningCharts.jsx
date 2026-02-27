@@ -27,7 +27,7 @@ const COLORS = [
 ];
 
 export default function OpeningCharts({ data }) {
-  const [showAllOpenings, setShowAllOpenings] = useState(true);
+  const [showAllOpenings, setShowAllOpenings] = useState(false);
 
   if (!data) return null;
 

@@ -1,6 +1,11 @@
 import { useState } from "react";
 
-function GameFilters({ onAnalyze, loading, showUsernameField = true }) {
+function GameFilters({
+  onAnalyze,
+  loading,
+  showUsernameField = true,
+  buttonText = "Analyze Games",
+}) {
   const currentDate = new Date();
   const [username, setUsername] = useState("");
   const [fromYear, setFromYear] = useState(currentDate.getFullYear());
@@ -290,7 +295,7 @@ function GameFilters({ onAnalyze, loading, showUsernameField = true }) {
           !isValidRange
         }
       >
-        {loading ? "Analyzing..." : "Analyze Games"}
+        {loading ? "Analyzing..." : buttonText}
       </button>
       {noneSelected && (
         <p className="error-text">Please select at least one time control</p>

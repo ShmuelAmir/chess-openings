@@ -41,6 +41,26 @@ h2 {
   margin-bottom: 1.5rem;
 }
 
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0.5rem;
+}
+
+.section-header h2 {
+  margin-bottom: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sync-btn.small {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 /* Centered layout (before results) */
 .centered-layout {
   max-width: 600px;
@@ -564,6 +584,44 @@ select:focus {
   margin-bottom: 1rem;
 }
 
+/* Sync section styles */
+.sync-status {
+  margin-bottom: 1rem;
+}
+
+.sync-status p {
+  margin: 0;
+  color: #aaa;
+}
+
+.sync-status .last-sync {
+  color: #666;
+  font-size: 0.9em;
+}
+
+.sync-message {
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.sync-message.success {
+  background: #1a4a1a;
+  color: #81b64c;
+}
+
+.sync-btn {
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+.hint {
+  font-size: 0.85em;
+  color: #888;
+  margin-top: 0.5rem;
+}
+
 .empty-state {
   text-align: center;
   padding: 2rem;
@@ -645,7 +703,7 @@ select:focus {
   background: #16213e;
   border: 1px solid #333;
   border-radius: 12px;
-  min-width: 280px;
+  min-width: 310px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 100;
   overflow: hidden;
@@ -703,6 +761,22 @@ select:focus {
 .profile-account .account-type {
   font-size: 0.8rem;
   color: #888;
+}
+
+.profile-account .cache-info {
+  font-size: 0.75rem;
+  color: #666;
+}
+
+.profile-account .account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  align-items: flex-end;
+}
+
+.text-btn.sync {
+  color: #4a9eff;
 }
 
 .text-btn {

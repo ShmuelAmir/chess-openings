@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 
 const AuthContext = createContext(null);
 
@@ -10,6 +16,11 @@ export function AuthProvider({ children }) {
   const [chessComUsername, setChessComUsername] = useState(
     localStorage.getItem("chess_com_username") || "",
   );
+
+  // Cache/sync state
+  const [cacheStatus, setCacheStatus] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
 
   // Fetch Lichess user info when token is available
   useEffect(() => {
@@ -54,6 +65,56 @@ export function AuthProvider({ children }) {
   const handleChessComClear = () => {
     localStorage.removeItem("chess_com_username");
     setChessComUsername("");
+    setCacheStatus(null);
+  };
+
+  // Fetch cache status
+  const fetchCacheStatus = useCallback(async () => {
+    if (!chessComUsername) {
+      setCacheStatus(null);
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/chess-com/cache-status/${chessComUsername}`,
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setCacheStatus(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch cache status:", err);
+    }
+  }, [chessComUsername]);
+
+  // Fetch cache status when username changes
+  useEffect(() => {
+    fetchCacheStatus();
+  }, [fetchCacheStatus]);
+
+  // Sync games from Chess.com
+  const syncGames = async () => {
+    if (!chessComUsername || syncing) return;
+
+    setSyncing(true);
+    setSyncError(null);
+
+    try {
+      const response = await fetch(`/api/chess-com/sync/${chessComUsername}`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Sync failed");
+      }
+
+      await fetchCacheStatus();
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const isConnected = lichessToken && lichessUser && chessComUsername;
@@ -67,6 +128,12 @@ export function AuthProvider({ children }) {
     handleLogout,
     handleChessComSave,
     handleChessComClear,
+    // Cache/sync
+    cacheStatus,
+    syncing,
+    syncError,
+    syncGames,
+    fetchCacheStatus,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

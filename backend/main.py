@@ -12,10 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from datetime import datetime
+
 from lichess import LichessClient
 from chess_com import ChessComClient
 from repertoire import RepertoireBuilder
 from analyzer import DeviationAnalyzer
+from game_cache import get_game_cache
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -114,26 +117,6 @@ async def get_study_pgn(study_id: str, authorization: str = Header(...)):
         return {"pgn": pgn}
 
 
-@app.get("/api/chess-com/games/{username}")
-async def get_chess_com_games(
-    username: str,
-    year: int = Query(...),
-    month: int = Query(...),
-    time_class: str = Query(None),  # bullet, blitz, rapid, daily
-    rated: bool = Query(None),
-):
-    """Fetch games from Chess.com for a specific month."""
-    async with ChessComClient() as client:
-        games = await client.get_games(
-            username=username,
-            year=year,
-            month=month,
-            time_class=time_class,
-            rated=rated,
-        )
-        return {"games": games}
-
-
 @app.get("/api/chess-com/archives/{username}")
 async def get_chess_com_archives(username: str):
     """Get available game archives for a Chess.com user."""
@@ -202,22 +185,25 @@ async def analyze_games(
     repertoire_opening_names = extract_opening_names(repertoire.white_tree)
     repertoire_opening_names.update(extract_opening_names(repertoire.black_tree))
     
-    # Use repertoire opening names for pre-filtering Chess.com games by opening
-    opening_filters = list(repertoire_opening_names) if repertoire_opening_names else collected_study_names
+    # Get games from cache (filtered by basic criteria)
+    cache = get_game_cache()
+    all_games = cache.get_cached_games(
+        username=chess_com_username,
+        time_classes=time_classes,
+        rated=rated,
+        color=color,
+        from_year=from_year,
+        from_month=from_month,
+        to_year=to_year,
+        to_month=to_month,
+    )
     
-    # Fetch Chess.com games for the date range (pre-filtered by opening name from eco URL)
-    async with ChessComClient() as chess_com:
-        games, total_games = await chess_com.get_games_for_range(
-            username=chess_com_username,
-            from_year=from_year,
-            from_month=from_month,
-            to_year=to_year,
-            to_month=to_month,
-            time_classes=time_classes,
-            rated=rated,
-            color=color,
-            opening_filters=opening_filters,
-        )
+    total_games = len(all_games)
+    
+    # Don't pre-filter by opening name - the DeviationAnalyzer will check
+    # if the game's moves match any position in our repertoire tree.
+    # This is more accurate than string-matching opening names.
+    games = all_games
     
     # Analyze each game against the full repertoire tree
     analyzer = DeviationAnalyzer(repertoire)
@@ -249,23 +235,21 @@ async def opening_stats(
     rated: bool = Query(None),
     color: str = Query(None),  # "white", "black", or None for both
 ):
-    """Get opening distribution statistics from Chess.com games."""
+    """Get opening distribution statistics from cached Chess.com games."""
     from collections import defaultdict
-    from datetime import datetime
     
-    # Fetch Chess.com games for the date range (no opening filter)
-    async with ChessComClient() as chess_com:
-        games, total_games = await chess_com.get_games_for_range(
-            username=chess_com_username,
-            from_year=from_year,
-            from_month=from_month,
-            to_year=to_year,
-            to_month=to_month,
-            time_classes=time_classes,
-            rated=rated,
-            color=color,
-            opening_filters=None,  # Get all openings
-        )
+    # Get games from cache (filtered by basic criteria)
+    cache = get_game_cache()
+    games = cache.get_cached_games(
+        username=chess_com_username,
+        time_classes=time_classes,
+        rated=rated,
+        color=color,
+        from_year=from_year,
+        from_month=from_month,
+        to_year=to_year,
+        to_month=to_month,
+    )
     
     username_lower = chess_com_username.lower()
     
@@ -402,6 +386,157 @@ def categorize_opening(opening_name: str) -> str:
             return "Nf3 Openings"
     
     return "Other"
+
+
+# ================== Game Cache Endpoints ==================
+
+@app.get("/api/chess-com/cache-status/{username}")
+async def get_cache_status(username: str):
+    """Get cache status for a Chess.com user."""
+    cache = get_game_cache()
+    sync_status = cache.get_sync_status(username)
+    game_count = cache.count_games(username)
+    
+    return {
+        "username": username,
+        "cached_games": game_count,
+        "last_sync_at": sync_status["last_sync_at"] if sync_status else None,
+        "last_synced_year": sync_status["last_synced_year"] if sync_status else None,
+        "last_synced_month": sync_status["last_synced_month"] if sync_status else None,
+    }
+
+
+@app.post("/api/chess-com/sync/{username}")
+async def sync_chess_com_games(username: str):
+    """
+    Sync games from Chess.com to local cache.
+    
+    Only fetches new games since the last sync.
+    Always re-fetches the current month (games may still be played).
+    """
+    cache = get_game_cache()
+    sync_status = cache.get_sync_status(username)
+    
+    # Get current date
+    now = datetime.now()
+    current_year, current_month = now.year, now.month
+    
+    # Determine starting point for sync
+    async with ChessComClient() as client:
+        # Get available archives from Chess.com
+        try:
+            archives = await client.get_archives(username)
+        except Exception as e:
+            raise HTTPException(status_code=404, detail=f"User '{username}' not found on Chess.com")
+        
+        if not archives:
+            return {
+                "new_games": 0,
+                "total_games": 0,
+                "message": "No games found on Chess.com"
+            }
+        
+        # Parse archive URLs to get (year, month) tuples
+        # Archive URL format: https://api.chess.com/pub/player/{username}/games/2024/01
+        available_months = []
+        for archive_url in archives:
+            parts = archive_url.rstrip('/').split('/')
+            if len(parts) >= 2:
+                try:
+                    year = int(parts[-2])
+                    month = int(parts[-1])
+                    available_months.append((year, month))
+                except ValueError:
+                    continue
+        
+        if not available_months:
+            return {
+                "new_games": 0,
+                "total_games": 0,
+                "message": "Could not parse archive dates"
+            }
+        
+        # Get already cached months
+        cached_months = cache.get_cached_months(username)
+        
+        # Determine which months to fetch:
+        # 1. All months not yet cached
+        # 2. Always re-fetch current month (new games may exist)
+        months_to_fetch = []
+        for year, month in available_months:
+            is_current_month = (year == current_year and month == current_month)
+            is_cached = (year, month) in cached_months
+            
+            if not is_cached or is_current_month:
+                months_to_fetch.append((year, month))
+        
+        # Fetch games for each month
+        new_games_count = 0
+        for year, month in months_to_fetch:
+            try:
+                games = await client.get_all_games_for_month(username, year, month)
+                if games:
+                    cache.save_games(username, games, year, month)
+                    new_games_count += len(games)
+            except Exception as e:
+                # Log but continue with other months
+                print(f"Error fetching {year}/{month} for {username}: {e}")
+                continue
+    
+    # Update sync status
+    cache.update_sync_status(username, current_year, current_month)
+    
+    total_games = cache.count_games(username)
+    
+    return {
+        "new_games": new_games_count,
+        "total_games": total_games,
+        "months_synced": len(months_to_fetch),
+        "message": f"Synced {new_games_count} games from {len(months_to_fetch)} months"
+    }
+
+
+@app.get("/api/chess-com/cached-games/{username}")
+async def get_cached_games(
+    username: str,
+    time_classes: list[str] = Query(None),
+    rated: bool = Query(None),
+    color: str = Query(None),
+    from_year: int = Query(None),
+    from_month: int = Query(None),
+    to_year: int = Query(None),
+    to_month: int = Query(None),
+):
+    """Get cached games for a user with optional filters."""
+    cache = get_game_cache()
+    
+    games = cache.get_cached_games(
+        username=username,
+        time_classes=time_classes,
+        rated=rated,
+        color=color,
+        from_year=from_year,
+        from_month=from_month,
+        to_year=to_year,
+        to_month=to_month,
+    )
+    
+    # Remove internal fields before returning
+    for game in games:
+        game.pop("fetched_at", None)
+    
+    return {
+        "games": games,
+        "total": len(games),
+    }
+
+
+@app.delete("/api/chess-com/cache/{username}")
+async def clear_cache(username: str):
+    """Clear cached games for a user."""
+    cache = get_game_cache()
+    cache.clear_user_cache(username)
+    return {"message": f"Cache cleared for {username}"}
 
 
 # Serve frontend static files in production

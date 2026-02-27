@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import StudyPicker from "../components/StudyPicker";
 import GameFilters from "../components/GameFilters";
@@ -6,7 +6,7 @@ import ResultsTable from "../components/ResultsTable";
 import Charts from "../components/Charts";
 
 export default function AnalysisPage() {
-  const { lichessToken, chessComUsername } = useAuth();
+  const { lichessToken, chessComUsername, cacheStatus } = useAuth();
 
   const [studies, setStudies] = useState([]);
   const [selectedStudies, setSelectedStudies] = useState([]);
@@ -17,89 +17,146 @@ export default function AnalysisPage() {
   const [error, setError] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  const handleAnalyze = async (filters) => {
+  // Current filters state
+  const [activeFilters, setActiveFilters] = useState(null);
+
+  // Load games and analyze
+  const loadGames = useCallback(
+    async (filters = null) => {
+      if (!chessComUsername || !lichessToken) return;
+      if (selectedStudies.length === 0) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const currentDate = new Date();
+        const defaultFilters = filters ||
+          activeFilters || {
+            fromYear: currentDate.getFullYear(),
+            fromMonth: 1,
+            toYear: currentDate.getFullYear(),
+            toMonth: currentDate.getMonth() + 1,
+            timeClasses: ["bullet", "blitz", "rapid"],
+            colorFilter: "both",
+            ratedOnly: false,
+          };
+
+        const params = new URLSearchParams({
+          chess_com_username: chessComUsername,
+          from_year: defaultFilters.fromYear,
+          from_month: defaultFilters.fromMonth,
+          to_year: defaultFilters.toYear,
+          to_month: defaultFilters.toMonth,
+        });
+
+        selectedStudies.forEach((id) => params.append("study_ids", id));
+
+        const selectedStudyNames = studies
+          .filter((s) => selectedStudies.includes(s.id))
+          .map((s) => s.name);
+        selectedStudyNames.forEach((name) =>
+          params.append("study_names", name),
+        );
+
+        if (
+          defaultFilters.timeClasses &&
+          defaultFilters.timeClasses.length > 0
+        ) {
+          defaultFilters.timeClasses.forEach((tc) =>
+            params.append("time_classes", tc),
+          );
+        }
+        if (defaultFilters.ratedOnly) {
+          params.append("rated", "true");
+        }
+        if (
+          defaultFilters.colorFilter &&
+          defaultFilters.colorFilter !== "both"
+        ) {
+          params.append("color", defaultFilters.colorFilter);
+        }
+
+        const response = await fetch(`/api/analyze?${params}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lichessToken}` },
+        });
+
+        if (!response.ok) {
+          throw new Error("Analysis failed");
+        }
+
+        const data = await response.json();
+        setResults(data.results);
+        setTotalGames(data.total_games || 0);
+        setMatchedGames(data.filtered_by_opening || 0);
+        setActiveFilters(defaultFilters);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [chessComUsername, lichessToken, selectedStudies, studies, activeFilters],
+  );
+
+  // Debounce timer ref
+  const debounceRef = useRef(null);
+
+  // Auto-load when studies are selected (with debounce)
+  useEffect(() => {
+    // Clear any pending debounce
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // If no studies selected, clear results immediately
     if (selectedStudies.length === 0) {
-      setError("Please select at least one study");
+      setResults(null);
+      setTotalGames(0);
+      setMatchedGames(0);
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setResults(null);
-
-    try {
-      const params = new URLSearchParams({
-        chess_com_username: chessComUsername,
-        from_year: filters.fromYear,
-        from_month: filters.fromMonth,
-        to_year: filters.toYear,
-        to_month: filters.toMonth,
-      });
-
-      // Add study_ids properly
-      selectedStudies.forEach((id) => params.append("study_ids", id));
-
-      // Add study names for filtering games by opening
-      const selectedStudyNames = studies
-        .filter((s) => selectedStudies.includes(s.id))
-        .map((s) => s.name);
-      selectedStudyNames.forEach((name) => params.append("study_names", name));
-
-      // Add time classes (multiple selection)
-      if (filters.timeClasses && filters.timeClasses.length > 0) {
-        filters.timeClasses.forEach((tc) => params.append("time_classes", tc));
-      }
-      if (filters.ratedOnly) {
-        params.append("rated", "true");
-      }
-      if (filters.colorFilter && filters.colorFilter !== "both") {
-        params.append("color", filters.colorFilter);
-      }
-
-      const response = await fetch(`/api/analyze?${params}`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${lichessToken}` },
-      });
-
-      if (!response.ok) {
-        throw new Error("Analysis failed");
-      }
-
-      const data = await response.json();
-      setResults(data.results);
-      setTotalGames(data.total_games || 0);
-      setMatchedGames(data.filtered_by_opening || 0);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    // Debounce the API call
+    if (cacheStatus?.cached_games > 0) {
+      debounceRef.current = setTimeout(() => {
+        loadGames();
+      }, 300);
     }
-  };
 
-  const hasResults = results !== null || loading;
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [selectedStudies, cacheStatus]);
+
+  const handleApplyFilters = async (filters) => {
+    if (selectedStudies.length === 0) {
+      setError("Select a repertoire study first");
+      return;
+    }
+    loadGames(filters);
+  };
 
   return (
     <>
       {error && <div className="error">{error}</div>}
 
-      <div
-        className={`${hasResults ? "main-layout" : "centered-layout"} ${
-          hasResults && sidebarCollapsed ? "collapsed" : ""
-        }`}
-      >
+      <div className={`main-layout ${sidebarCollapsed ? "collapsed" : ""}`}>
         <div className={`setup-panel ${sidebarCollapsed ? "collapsed" : ""}`}>
-          {hasResults && (
-            <button
-              className="collapse-btn"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              title={sidebarCollapsed ? "Expand" : "Collapse"}
-            >
-              {sidebarCollapsed ? "→" : "←"}
-            </button>
-          )}
+          <button
+            className="collapse-btn"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? "Expand" : "Collapse"}
+          >
+            {sidebarCollapsed ? "→" : "←"}
+          </button>
 
+          {/* Study Picker */}
           <div className="section">
-            <h2>1. Select Your Repertoire Studies</h2>
+            <h2>Repertoire Studies</h2>
             <StudyPicker
               token={lichessToken}
               selectedStudies={selectedStudies}
@@ -108,31 +165,57 @@ export default function AnalysisPage() {
             />
           </div>
 
+          {/* Filters */}
           <div className="section">
-            <h2>2. Fetch & Analyze Games</h2>
+            <h2>Filters</h2>
             <GameFilters
-              onAnalyze={handleAnalyze}
+              onAnalyze={handleApplyFilters}
               loading={loading}
               showUsernameField={false}
+              buttonText="Apply Filters"
             />
           </div>
         </div>
 
-        {hasResults && (
-          <div className="results-panel">
-            <div className="section results-section">
-              <h2>3. Results</h2>
-              {loading && <div className="loading">Analyzing games...</div>}
-              {!loading && results && (
+        <div className="results-panel">
+          {!chessComUsername && (
+            <div className="empty-state">
+              <p>Set your Chess.com username on the home page to get started</p>
+            </div>
+          )}
+
+          {chessComUsername && !cacheStatus?.cached_games && (
+            <div className="empty-state">
+              <p>Click "Sync" to fetch your Chess.com games</p>
+            </div>
+          )}
+
+          {chessComUsername &&
+            cacheStatus?.cached_games > 0 &&
+            selectedStudies.length === 0 &&
+            !loading &&
+            !results && (
+              <div className="empty-state">
+                <p>Select a repertoire study to analyze your games</p>
+              </div>
+            )}
+
+          {loading && (
+            <div className="section">
+              <div className="loading">Analyzing games...</div>
+            </div>
+          )}
+
+          {!loading && results && (
+            <>
+              <div className="section results-section">
                 <ResultsTable
                   results={results}
                   totalGames={totalGames}
                   filteredByOpening={matchedGames}
                 />
-              )}
-            </div>
+              </div>
 
-            {!loading && results && (
               <div className="section charts-section">
                 <Charts
                   results={results}
@@ -140,9 +223,9 @@ export default function AnalysisPage() {
                   filteredByOpening={matchedGames}
                 />
               </div>
-            )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
     </>
   );
