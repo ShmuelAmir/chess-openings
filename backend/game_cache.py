@@ -73,6 +73,8 @@ class GameCache:
         from_month: Optional[int] = None,
         to_year: Optional[int] = None,
         to_month: Optional[int] = None,
+        from_ts: Optional[int] = None,
+        to_ts: Optional[int] = None,
     ) -> list[dict]:
         """
         Get cached games for a user with optional filters.
@@ -112,6 +114,15 @@ class GameCache:
                     continue
             
             # Date range filter
+            game_ts = game.get("date")
+            if from_ts is not None or to_ts is not None:
+                if game_ts is None:
+                    continue
+                if from_ts is not None and game_ts < from_ts:
+                    continue
+                if to_ts is not None and game_ts > to_ts:
+                    continue
+
             if from_year and from_month:
                 game_date = (game["year"], game["month"])
                 if game_date < (from_year, from_month):

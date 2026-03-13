@@ -20,15 +20,20 @@ export default function OpeningDistributionPage() {
 
       try {
         const currentDate = new Date();
+        const nowTs = Math.floor(Date.now() / 1000);
+        const weekAgoTs = nowTs - 7 * 24 * 60 * 60;
+        const weekAgoDate = new Date(weekAgoTs * 1000);
         const defaultFilters = filters ||
           activeFilters || {
-            fromYear: currentDate.getFullYear(),
-            fromMonth: 1,
+            fromYear: weekAgoDate.getFullYear(),
+            fromMonth: weekAgoDate.getMonth() + 1,
             toYear: currentDate.getFullYear(),
             toMonth: currentDate.getMonth() + 1,
-            timeClasses: ["bullet", "blitz", "rapid"],
+            fromTimestamp: weekAgoTs,
+            toTimestamp: nowTs,
+            timeClasses: ["rapid"],
             colorFilter: "both",
-            ratedOnly: false,
+            ratedOnly: true,
           };
 
         const params = new URLSearchParams({
@@ -38,6 +43,13 @@ export default function OpeningDistributionPage() {
           to_year: defaultFilters.toYear,
           to_month: defaultFilters.toMonth,
         });
+
+        if (defaultFilters.fromTimestamp) {
+          params.append("from_ts", defaultFilters.fromTimestamp);
+        }
+        if (defaultFilters.toTimestamp) {
+          params.append("to_ts", defaultFilters.toTimestamp);
+        }
 
         if (
           defaultFilters.timeClasses &&

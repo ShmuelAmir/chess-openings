@@ -1,5 +1,15 @@
 import { useState } from "react";
 
+const WEEK_SECONDS = 7 * 24 * 60 * 60;
+
+function getLastWeekRange() {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    fromTs: now - WEEK_SECONDS,
+    toTs: now,
+  };
+}
+
 function GameFilters({
   onAnalyze,
   loading,
@@ -7,19 +17,25 @@ function GameFilters({
   buttonText = "Analyze Games",
 }) {
   const currentDate = new Date();
+  const initialLastWeekRange = getLastWeekRange();
+  const initialFromDate = new Date(initialLastWeekRange.fromTs * 1000);
   const [username, setUsername] = useState("");
-  const [fromYear, setFromYear] = useState(currentDate.getFullYear());
-  const [fromMonth, setFromMonth] = useState(1);
+  const [fromYear, setFromYear] = useState(initialFromDate.getFullYear());
+  const [fromMonth, setFromMonth] = useState(initialFromDate.getMonth() + 1);
   const [toYear, setToYear] = useState(currentDate.getFullYear());
   const [toMonth, setToMonth] = useState(currentDate.getMonth() + 1);
   const [timeClasses, setTimeClasses] = useState({
-    bullet: true,
-    blitz: true,
+    bullet: false,
+    blitz: false,
     rapid: true,
     daily: false,
   });
   const [colorFilter, setColorFilter] = useState("both"); // "white", "black", or "both"
-  const [ratedOnly, setRatedOnly] = useState(false);
+  const [ratedOnly, setRatedOnly] = useState(true);
+  const [fromTimestamp, setFromTimestamp] = useState(
+    initialLastWeekRange.fromTs,
+  );
+  const [toTimestamp, setToTimestamp] = useState(initialLastWeekRange.toTs);
 
   const handleTimeClassToggle = (tc) => {
     setTimeClasses((prev) => ({ ...prev, [tc]: !prev[tc] }));
@@ -44,6 +60,8 @@ function GameFilters({
       fromMonth,
       toYear,
       toMonth,
+      fromTimestamp,
+      toTimestamp,
       timeClasses: selectedTimeClasses.length > 0 ? selectedTimeClasses : null,
       colorFilter,
       ratedOnly,
@@ -84,6 +102,8 @@ function GameFilters({
     setFromMonth(1);
     setToYear(year);
     setToMonth(12);
+    setFromTimestamp(null);
+    setToTimestamp(null);
   };
 
   const selectLastNMonths = (n) => {
@@ -95,6 +115,21 @@ function GameFilters({
     setFromMonth(start.getMonth() + 1);
     setToYear(end.getFullYear());
     setToMonth(end.getMonth() + 1);
+    setFromTimestamp(null);
+    setToTimestamp(null);
+  };
+
+  const selectLastWeek = () => {
+    const range = getLastWeekRange();
+    const start = new Date(range.fromTs * 1000);
+    const end = new Date(range.toTs * 1000);
+
+    setFromYear(start.getFullYear());
+    setFromMonth(start.getMonth() + 1);
+    setToYear(end.getFullYear());
+    setToMonth(end.getMonth() + 1);
+    setFromTimestamp(range.fromTs);
+    setToTimestamp(range.toTs);
   };
 
   return (
@@ -121,7 +156,7 @@ function GameFilters({
           <button
             type="button"
             className="secondary small"
-            onClick={() => selectLastNMonths(0.25)}
+            onClick={selectLastWeek}
           >
             Last week
           </button>
@@ -160,7 +195,11 @@ function GameFilters({
             <span className="date-label">From</span>
             <select
               value={fromMonth}
-              onChange={(e) => setFromMonth(Number(e.target.value))}
+              onChange={(e) => {
+                setFromMonth(Number(e.target.value));
+                setFromTimestamp(null);
+                setToTimestamp(null);
+              }}
             >
               {months.map((name, i) => (
                 <option key={i} value={i + 1}>
@@ -170,7 +209,11 @@ function GameFilters({
             </select>
             <select
               value={fromYear}
-              onChange={(e) => setFromYear(Number(e.target.value))}
+              onChange={(e) => {
+                setFromYear(Number(e.target.value));
+                setFromTimestamp(null);
+                setToTimestamp(null);
+              }}
             >
               {years.map((y) => (
                 <option key={y} value={y}>
@@ -186,7 +229,11 @@ function GameFilters({
             <span className="date-label">To</span>
             <select
               value={toMonth}
-              onChange={(e) => setToMonth(Number(e.target.value))}
+              onChange={(e) => {
+                setToMonth(Number(e.target.value));
+                setFromTimestamp(null);
+                setToTimestamp(null);
+              }}
             >
               {months.map((name, i) => (
                 <option key={i} value={i + 1}>
@@ -196,7 +243,11 @@ function GameFilters({
             </select>
             <select
               value={toYear}
-              onChange={(e) => setToYear(Number(e.target.value))}
+              onChange={(e) => {
+                setToYear(Number(e.target.value));
+                setFromTimestamp(null);
+                setToTimestamp(null);
+              }}
             >
               {years.map((y) => (
                 <option key={y} value={y}>

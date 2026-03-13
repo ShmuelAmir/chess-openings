@@ -14,7 +14,7 @@ class DeviationResult:
     """Result of analyzing a single game."""
     game_url: str
     opening_name: str
-    result_type: str  # "deviation" or "opponent_left_book"
+    result_type: str  # "deviation", "opponent_left_book", or "book_completed"
     move_number: int
     user_color: str  # "white" or "black"
     game_date: Optional[str] = None  # Game date (YYYY-MM-DD)
@@ -86,7 +86,14 @@ class DeviationAnalyzer:
             return None
         
         board = chess.Board()
-        move_number = 1
+
+        # Format game date from Unix timestamp
+        game_date = None
+        if game.get("date"):
+            try:
+                game_date = datetime.fromtimestamp(game.get("date")).strftime("%Y-%m-%d")
+            except (ValueError, TypeError, OSError):
+                game_date = None
         
         for i, move_san in enumerate(moves):
             is_white_move = (i % 2 == 0)
@@ -94,6 +101,7 @@ class DeviationAnalyzer:
                           (not is_white_move and user_color == chess.BLACK)
             
             current_move_number = (i // 2) + 1
+            game_opening_name = game.get("opening_name") or None
             
             # Check if this move exists in repertoire
             if move_san not in current_node.children:
@@ -119,17 +127,9 @@ class DeviationAnalyzer:
                                 moves_display += f", ..."
                             correct_move = moves_display
                         
-                        # Format game date from Unix timestamp
-                        game_date = None
-                        if game.get("date"):
-                            try:
-                                game_date = datetime.fromtimestamp(game.get("date")).strftime("%Y-%m-%d")
-                            except (ValueError, TypeError, OSError):
-                                game_date = None
-                        
                         return DeviationResult(
                             game_url=game.get("url", ""),
-                            opening_name=current_node.opening_name or "Unknown",
+                            opening_name=current_node.opening_name or game_opening_name or "Unknown",
                             result_type="deviation",
                             move_number=current_move_number,
                             user_color="white" if user_color == chess.WHITE else "black",
@@ -140,8 +140,28 @@ class DeviationAnalyzer:
                             fen=board.fen(),
                             variation_count=variation_count,
                         ).to_dict()
+
+                    # No expected move from repertoire: line was completed correctly,
+                    # and game continued beyond your study depth.
+                    return DeviationResult(
+                        game_url=game.get("url", ""),
+                        opening_name=current_node.opening_name or game_opening_name or "Unknown",
+                        result_type="book_completed",
+                        move_number=max(1, current_move_number - 1),
+                        user_color="white" if user_color == chess.WHITE else "black",
+                        game_date=game_date,
+                        study_name=current_node.study_name,
+                        correct_move="All book moves correct",
+                        fen=board.fen(),
+                        variation_count=0,
+                    ).to_dict()
                 else:
                     # Opponent played a move not in your repertoire
+                    # If this happens on move 1, it's a different opening family
+                    # and should not be included in this study's results.
+                    if current_move_number == 1:
+                        return None
+
                     # This is the actual deviation - report and stop
                     # Find what the repertoire expected
                     expected_moves = list(current_node.children.keys())
@@ -158,17 +178,28 @@ class DeviationAnalyzer:
                     else:
                         correct_move = None
                     
-                    # Format game date from Unix timestamp
-                    game_date = None
-                    if game.get("date"):
-                        try:
-                            game_date = datetime.fromtimestamp(game.get("date")).strftime("%Y-%m-%d")
-                        except (ValueError, TypeError, OSError):
-                            game_date = None
+                    # If no expected move exists, book line already ended correctly.
+                    if variation_count == 0:
+                        return DeviationResult(
+                            game_url=game.get("url", ""),
+                            opening_name=current_node.opening_name or game_opening_name or "Unknown",
+                            result_type="book_completed",
+                            move_number=current_move_number,
+                            user_color="white" if user_color == chess.WHITE else "black",
+                            game_date=game_date,
+                            study_name=current_node.study_name,
+                            correct_move="All book moves correct",
+                            fen=board.fen(),
+                            variation_count=0,
+                        ).to_dict()
                     
                     return DeviationResult(
                         game_url=game.get("url", ""),
-                        opening_name=current_node.opening_name or "Unknown",
+                        opening_name=(
+                            game_opening_name
+                            if current_move_number == 1 and game_opening_name
+                            else (current_node.opening_name or game_opening_name or "Unknown")
+                        ),
                         result_type="opponent_left_book",
                         move_number=current_move_number,
                         user_color="white" if user_color == chess.WHITE else "black",
@@ -180,8 +211,7 @@ class DeviationAnalyzer:
                         fen=board.fen(),
                     ).to_dict()
                 
-                # If we get here without returning, it means no correct moves (dead end in tree)
-                # Stop analysis
+                # Safety fallback
                 break
             
             # Move to next node in tree
@@ -195,5 +225,16 @@ class DeviationAnalyzer:
                 # Invalid move, stop analysis
                 break
         
-        # Game followed book entirely (or book ran out without deviation)
-        return None
+        # Game followed the repertoire for all played moves.
+        return DeviationResult(
+            game_url=game.get("url", ""),
+            opening_name=current_node.opening_name or game.get("opening_name") or "Unknown",
+            result_type="book_completed",
+            move_number=(len(moves) + 1) // 2,
+            user_color="white" if user_color == chess.WHITE else "black",
+            game_date=game_date,
+            study_name=current_node.study_name,
+            correct_move="All book moves correct",
+            fen=board.fen(),
+            variation_count=len(current_node.children),
+        ).to_dict()

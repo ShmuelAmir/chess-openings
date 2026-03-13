@@ -145,8 +145,10 @@ class RepertoireBuilder:
                     is_your_turn=(turn == chess.WHITE),
                 )
             white_child = white_tree.children[move_san]
-            white_child.opening_name = opening_name
-            white_child.study_name = study_name
+            if white_child.opening_name is None:
+                white_child.opening_name = opening_name
+            if white_child.study_name is None:
+                white_child.study_name = study_name
             
             # Black tree: positions from Black's perspective
             if move_san not in black_tree.children:
@@ -156,8 +158,10 @@ class RepertoireBuilder:
                     is_your_turn=(turn == chess.BLACK),
                 )
             black_child = black_tree.children[move_san]
-            black_child.opening_name = opening_name
-            black_child.study_name = study_name
+            if black_child.opening_name is None:
+                black_child.opening_name = opening_name
+            if black_child.study_name is None:
+                black_child.study_name = study_name
             
             # Recursively process this variation
             self._process_node(

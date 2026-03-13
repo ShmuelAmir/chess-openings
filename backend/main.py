@@ -133,6 +133,8 @@ async def analyze_games(
     from_month: int = Query(...),
     to_year: int = Query(...),
     to_month: int = Query(...),
+    from_ts: int = Query(None),
+    to_ts: int = Query(None),
     time_classes: list[str] = Query(None),
     rated: bool = Query(None),
     color: str = Query(None),  # "white", "black", or None for both
@@ -196,6 +198,8 @@ async def analyze_games(
         from_month=from_month,
         to_year=to_year,
         to_month=to_month,
+        from_ts=from_ts,
+        to_ts=to_ts,
     )
     
     total_games = len(all_games)
@@ -231,6 +235,8 @@ async def opening_stats(
     from_month: int = Query(...),
     to_year: int = Query(...),
     to_month: int = Query(...),
+    from_ts: int = Query(None),
+    to_ts: int = Query(None),
     time_classes: list[str] = Query(None),
     rated: bool = Query(None),
     color: str = Query(None),  # "white", "black", or None for both
@@ -249,6 +255,8 @@ async def opening_stats(
         from_month=from_month,
         to_year=to_year,
         to_month=to_month,
+        from_ts=from_ts,
+        to_ts=to_ts,
     )
     
     username_lower = chess_com_username.lower()

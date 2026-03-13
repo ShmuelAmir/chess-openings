@@ -29,6 +29,9 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
   const opponentLeft = results.filter(
     (r) => r.result_type === "opponent_left_book",
   );
+  const completedBook = results.filter(
+    (r) => r.result_type === "book_completed",
+  );
 
   // Sort results
   const sortedResults = [...results].sort((a, b) => {
@@ -85,6 +88,12 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
           </div>
           <div className="stat-label">Opponent Left Book</div>
         </div>
+        <div className="stat">
+          <div className="stat-value" style={{ color: "#81b64c" }}>
+            {completedBook.length}
+          </div>
+          <div className="stat-label">Book Completed</div>
+        </div>
       </div>
 
       <p className="filter-info">
@@ -110,7 +119,14 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
           </thead>
           <tbody>
             {sortedResults.map((result, i) => (
-              <tr key={i}>
+              <tr
+                key={i}
+                className={
+                  result.result_type === "book_completed"
+                    ? "row-book-completed"
+                    : ""
+                }
+              >
                 <td>
                   <a
                     href={result.game_url}
@@ -136,6 +152,11 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                 <td>
                   {result.result_type === "deviation" ? (
                     <span className="result-deviation">You deviated</span>
+                  ) : result.result_type === "book_completed" ? (
+                    <span className="result-completed-badge">
+                      <span className="completed-check">✓</span>
+                      <span>All moves correct</span>
+                    </span>
                   ) : (
                     <span className="result-opponent">Opponent left book</span>
                   )}
@@ -143,6 +164,8 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                 <td>
                   {result.result_type === "deviation" ? (
                     <span className="move-bad">{result.your_move}</span>
+                  ) : result.result_type === "book_completed" ? (
+                    <span>—</span>
                   ) : (
                     <span className="move-opponent">
                       {result.opponent_move}
@@ -152,17 +175,23 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                 <td>
                   <span
                     className={
-                      result.variation_count > 1
-                        ? "move-good multiple-variations"
-                        : "move-good"
+                      result.result_type === "book_completed"
+                        ? "move-good"
+                        : result.variation_count > 1
+                          ? "move-good multiple-variations"
+                          : "move-good"
                     }
                     title={
-                      result.variation_count > 1
-                        ? `${result.variation_count} variations available in your repertoire`
-                        : ""
+                      result.result_type === "book_completed"
+                        ? ""
+                        : result.variation_count > 1
+                          ? `${result.variation_count} variations available in your repertoire`
+                          : ""
                     }
                   >
-                    {result.correct_move}
+                    {result.result_type === "book_completed"
+                      ? "All book moves correct"
+                      : result.correct_move}
                   </span>
                 </td>
                 <td>
