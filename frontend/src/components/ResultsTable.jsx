@@ -195,9 +195,15 @@ function ResultsTable({ results, totalGames, filteredByOpening }) {
                   </span>
                 </td>
                 <td>
-                  {result.analysis_url && (
+                  {(result.chapter_url ||
+                    result.study_url ||
+                    result.analysis_url) && (
                     <a
-                      href={result.analysis_url}
+                      href={
+                        result.chapter_url ||
+                        result.study_url ||
+                        result.analysis_url
+                      }
                       target="_blank"
                       rel="noopener noreferrer"
                       className="link"

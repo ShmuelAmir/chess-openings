@@ -19,6 +19,8 @@ class DeviationResult:
     user_color: str  # "white" or "black"
     game_date: Optional[str] = None  # Game date (YYYY-MM-DD)
     study_name: Optional[str] = None  # Study/chapter this came from
+    study_id: Optional[str] = None  # Lichess study ID
+    chapter_id: Optional[str] = None  # Lichess chapter ID
     your_move: Optional[str] = None  # What you played (for deviations)
     correct_move: Optional[str] = None  # What you should have played
     opponent_move: Optional[str] = None  # What opponent played (when they left book)
@@ -34,6 +36,14 @@ class DeviationResult:
             "user_color": self.user_color,
             "game_date": self.game_date,
             "study_name": self.study_name,
+            "study_id": self.study_id,
+            "study_url": f"https://lichess.org/study/{self.study_id}" if self.study_id else None,
+            "chapter_id": self.chapter_id,
+            "chapter_url": (
+                f"https://lichess.org/study/{self.study_id}/{self.chapter_id}"
+                if self.study_id and self.chapter_id
+                else None
+            ),
             "your_move": self.your_move,
             "correct_move": self.correct_move,
             "opponent_move": self.opponent_move,
@@ -135,6 +145,8 @@ class DeviationAnalyzer:
                             user_color="white" if user_color == chess.WHITE else "black",
                             game_date=game_date,
                             study_name=current_node.study_name,
+                            study_id=current_node.study_id,
+                            chapter_id=current_node.chapter_id,
                             your_move=move_san,
                             correct_move=correct_move,
                             fen=board.fen(),
@@ -151,6 +163,8 @@ class DeviationAnalyzer:
                         user_color="white" if user_color == chess.WHITE else "black",
                         game_date=game_date,
                         study_name=current_node.study_name,
+                        study_id=current_node.study_id,
+                        chapter_id=current_node.chapter_id,
                         correct_move="All book moves correct",
                         fen=board.fen(),
                         variation_count=0,
@@ -188,6 +202,8 @@ class DeviationAnalyzer:
                             user_color="white" if user_color == chess.WHITE else "black",
                             game_date=game_date,
                             study_name=current_node.study_name,
+                            study_id=current_node.study_id,
+                            chapter_id=current_node.chapter_id,
                             correct_move="All book moves correct",
                             fen=board.fen(),
                             variation_count=0,
@@ -205,6 +221,8 @@ class DeviationAnalyzer:
                         user_color="white" if user_color == chess.WHITE else "black",
                         game_date=game_date,
                         study_name=current_node.study_name,
+                        study_id=current_node.study_id,
+                        chapter_id=current_node.chapter_id,
                         opponent_move=move_san,
                         correct_move=correct_move,
                         variation_count=variation_count,
@@ -234,6 +252,8 @@ class DeviationAnalyzer:
             user_color="white" if user_color == chess.WHITE else "black",
             game_date=game_date,
             study_name=current_node.study_name,
+            study_id=current_node.study_id,
+            chapter_id=current_node.chapter_id,
             correct_move="All book moves correct",
             fen=board.fen(),
             variation_count=len(current_node.children),

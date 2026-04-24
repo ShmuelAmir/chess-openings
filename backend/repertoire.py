@@ -2,6 +2,7 @@
 Repertoire Parser - Builds a move tree from Lichess study PGNs
 """
 import io
+import re
 import chess
 import chess.pgn
 from dataclasses import dataclass, field
@@ -18,6 +19,10 @@ class RepertoireNode:
     opening_name: Optional[str] = None
     # The study name this came from
     study_name: Optional[str] = None
+    # Lichess study ID this line came from
+    study_id: Optional[str] = None
+    # Lichess chapter ID this line came from
+    chapter_id: Optional[str] = None
     # Is this a position where it's your turn to move?
     is_your_turn: bool = False
 
@@ -37,24 +42,40 @@ class Repertoire:
 
 class RepertoireBuilder:
     """Builds a repertoire from Lichess study PGNs."""
+
+    _LICHESS_STUDY_SITE_RE = re.compile(
+        r"https?://(?:www\.)?lichess\.org/study/([A-Za-z0-9]{8})(?:/([A-Za-z0-9]{8}))?"
+    )
     
     def __init__(self):
         self.repertoire = Repertoire()
-        self._studies: list[tuple[str, str, str]] = []  # (pgn, opening_name, study_name)
+        self._studies: list[tuple[str, str, str, Optional[str]]] = []  # (pgn, opening_name, study_name, study_id)
     
-    def add_study(self, pgn: str, opening_name: str, study_name: Optional[str] = None):
+    def add_study(
+        self,
+        pgn: str,
+        opening_name: str,
+        study_name: Optional[str] = None,
+        study_id: Optional[str] = None,
+    ):
         """Add a study PGN to be processed."""
-        self._studies.append((pgn, opening_name, study_name or opening_name))
+        self._studies.append((pgn, opening_name, study_name or opening_name, study_id))
     
     def build(self) -> Repertoire:
         """Process all studies and build the repertoire trees."""
-        for pgn, opening_name, study_name in self._studies:
-            self._process_study(pgn, opening_name, study_name)
+        for pgn, opening_name, study_name, study_id in self._studies:
+            self._process_study(pgn, opening_name, study_name, study_id)
         # Build FEN position index for transposition handling
         self._build_fen_index()
         return self.repertoire
     
-    def _process_study(self, pgn: str, opening_name: str, study_name: str):
+    def _process_study(
+        self,
+        pgn: str,
+        opening_name: str,
+        study_name: str,
+        study_id: Optional[str],
+    ):
         """Process a single study PGN (may contain multiple chapters/games)."""
         pgn_io = io.StringIO(pgn)
         
@@ -66,6 +87,7 @@ class RepertoireBuilder:
             # Extract chapter name from PGN headers
             # Lichess uses the game name or title as chapter name
             chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
+            chapter_id = self._extract_chapter_id(game.headers.get("Site"))
             
             # Remove redundant study name prefix if present
             # E.g., "Vienna: Accepted" -> just "Accepted"
@@ -73,7 +95,24 @@ class RepertoireBuilder:
                 chapter_name = chapter_name.split(":", 1)[1].strip()
             
             full_chapter_name = f"{study_name} - {chapter_name}"
-            self._process_game(game, opening_name, full_chapter_name)
+            self._process_game(
+                game,
+                opening_name,
+                full_chapter_name,
+                study_id,
+                chapter_id,
+            )
+
+    def _extract_chapter_id(self, site_header: Optional[str]) -> Optional[str]:
+        """Extract the chapter ID from Lichess PGN Site header URL."""
+        if not site_header:
+            return None
+
+        match = self._LICHESS_STUDY_SITE_RE.search(site_header)
+        if not match:
+            return None
+
+        return match.group(2)
     
     def _build_fen_index(self):
         """Build FEN position index by traversing the white repertoire tree."""
@@ -105,7 +144,14 @@ class RepertoireBuilder:
         board = chess.Board()
         traverse_tree(self.repertoire.white_tree, board)
     
-    def _process_game(self, game: chess.pgn.Game, opening_name: str, study_name: str):
+    def _process_game(
+        self,
+        game: chess.pgn.Game,
+        opening_name: str,
+        study_name: str,
+        study_id: Optional[str],
+        chapter_id: Optional[str],
+    ):
         """Process a single game/chapter from a study."""
         # Process the main line and all variations
         self._process_node(
@@ -115,6 +161,8 @@ class RepertoireBuilder:
             chess.WHITE,  # White moves first
             opening_name,
             study_name,
+            study_id,
+            chapter_id,
         )
     
     def _process_node(
@@ -125,6 +173,8 @@ class RepertoireBuilder:
         turn: chess.Color,
         opening_name: str,
         study_name: str,
+        study_id: Optional[str],
+        chapter_id: Optional[str],
     ):
         """Recursively process a game node and its variations."""
         # Get the current position's tree node based on perspective
@@ -142,6 +192,8 @@ class RepertoireBuilder:
                 white_tree.children[move_san] = RepertoireNode(
                     opening_name=opening_name,
                     study_name=study_name,
+                    study_id=study_id,
+                    chapter_id=chapter_id,
                     is_your_turn=(turn == chess.WHITE),
                 )
             white_child = white_tree.children[move_san]
@@ -149,12 +201,18 @@ class RepertoireBuilder:
                 white_child.opening_name = opening_name
             if white_child.study_name is None:
                 white_child.study_name = study_name
+            if white_child.study_id is None:
+                white_child.study_id = study_id
+            if white_child.chapter_id is None:
+                white_child.chapter_id = chapter_id
             
             # Black tree: positions from Black's perspective
             if move_san not in black_tree.children:
                 black_tree.children[move_san] = RepertoireNode(
                     opening_name=opening_name,
                     study_name=study_name,
+                    study_id=study_id,
+                    chapter_id=chapter_id,
                     is_your_turn=(turn == chess.BLACK),
                 )
             black_child = black_tree.children[move_san]
@@ -162,6 +220,10 @@ class RepertoireBuilder:
                 black_child.opening_name = opening_name
             if black_child.study_name is None:
                 black_child.study_name = study_name
+            if black_child.study_id is None:
+                black_child.study_id = study_id
+            if black_child.chapter_id is None:
+                black_child.chapter_id = chapter_id
             
             # Recursively process this variation
             self._process_node(
@@ -171,4 +233,6 @@ class RepertoireBuilder:
                 not turn,  # Alternate turns
                 opening_name,
                 study_name,
+                study_id,
+                chapter_id,
             )
