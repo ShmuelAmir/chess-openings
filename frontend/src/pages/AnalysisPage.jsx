@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useAnalysis } from "../context/AnalysisContext";
+import { syncOrchestrator } from "../context/SyncOrchestrator";
 import StudyPicker from "../components/StudyPicker";
 import GameFilters from "../components/GameFilters";
 import ResultsTable from "../components/ResultsTable";
@@ -32,31 +33,42 @@ export default function AnalysisPage() {
     }
   }, [lichessToken, fetchStudies]);
 
-  // Auto-analyze when studies are selected and cache is available
+  // Auto-analyze when cache becomes ready or studies change
   useEffect(() => {
-    // Clear any pending debounce
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
     // If no studies selected, do nothing (results already cleared by selectStudies)
     if (selectedStudies.length === 0) {
       return;
     }
 
-    // Only auto-analyze if cache has games
-    if (cacheStatus?.cached_games > 0) {
+    // Handle cache-ready event: trigger analysis after debounce
+    const handleCacheReady = () => {
+      // Clear any pending debounce
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+
       debounceRef.current = setTimeout(() => {
         analyzeGames();
       }, 300);
-    }
+    };
 
-    return () => {
+    // Handle cache-cleared event: clear results
+    const handleCacheCleared = () => {
       if (debounceRef.current) {
         clearTimeout(debounceRef.current);
       }
     };
-  }, [selectedStudies, cacheStatus, analyzeGames, debounceRef]);
+
+    // Subscribe to sync orchestrator events
+    syncOrchestrator.on("cache-ready", handleCacheReady);
+    syncOrchestrator.on("cache-cleared", handleCacheCleared);
+
+    // Cleanup subscriptions
+    return () => {
+      syncOrchestrator.off("cache-ready", handleCacheReady);
+      syncOrchestrator.off("cache-cleared", handleCacheCleared);
+    };
+  }, [selectedStudies, analyzeGames, debounceRef]);
 
   const handleApplyFilters = async (filters) => {
     analyzeGames(filters);
