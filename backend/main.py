@@ -19,6 +19,8 @@ from chess_com import ChessComClient
 from repertoire import RepertoireBuilder
 from analyzer import DeviationAnalyzer
 from game_cache import get_game_cache
+from pipeline import RepertoireAnalysisPipeline, GameFilters
+from sources import LichessRepertoireSource, CacheGameSource
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -144,58 +146,38 @@ async def analyze_games(
     """Analyze games against repertoire and find deviations."""
     token = authorization.replace("Bearer ", "")
     
-    # Fetch studies and build repertoire
-    repertoire_builder = RepertoireBuilder()
-    collected_study_names = []
-    
+    # Validate token and get account info (early fail if token is invalid)
     async with LichessClient(token=token) as lichess:
-        account = await lichess.get_account()
+        try:
+            account = await lichess.get_account()
+        except Exception as e:
+            raise HTTPException(status_code=401, detail="Invalid Lichess token")
+        
+        # Verify we can access all studies
         studies = await lichess.get_user_studies(account["username"])
+        study_id_to_name = {s["id"]: s["name"] for s in studies}
         
         for study_id in study_ids:
-            try:
-                pgn = await lichess.get_study_pgn(study_id)
-            except Exception as e:
-                study_name = next(
-                    (s["name"] for s in studies if s["id"] == study_id),
-                    study_id
-                )
+            if study_id not in study_id_to_name:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Cannot access study '{study_name}' ({study_id}). Make sure the study is public, unlisted, or you are the owner."
+                    detail=f"Cannot access study '{study_id}'. Make sure the study is public, unlisted, or you are the owner."
                 )
-            study_name = next(
-                (s["name"] for s in studies if s["id"] == study_id),
-                "Unknown Opening"
-            )
-            collected_study_names.append(study_name)
-            repertoire_builder.add_study(
-                pgn,
-                study_name,
-                study_name,
-                study_id,
-            )
     
-    repertoire = repertoire_builder.build()
+    # Collect study names in the order of study_ids
+    collected_study_names = [study_id_to_name[sid] for sid in study_ids]
     
-    # Use actual opening names from the repertoire for filtering (not study names)
-    # Extract all unique opening names that appear in the repertoire
-    def extract_opening_names(node):
-        """Recursively extract all opening names from the repertoire tree."""
-        names = set()
-        if node.opening_name:
-            names.add(node.opening_name)
-        for child in node.children.values():
-            names.update(extract_opening_names(child))
-        return names
+    # Build sources
+    repertoire_source = LichessRepertoireSource(lichess_token=token)
+    game_source = CacheGameSource()
     
-    repertoire_opening_names = extract_opening_names(repertoire.white_tree)
-    repertoire_opening_names.update(extract_opening_names(repertoire.black_tree))
+    # Create and run the pipeline
+    pipeline = RepertoireAnalysisPipeline(
+        repertoire_source=repertoire_source,
+        game_source=game_source,
+    )
     
-    # Get games from cache (filtered by basic criteria)
-    cache = get_game_cache()
-    all_games = cache.get_cached_games(
-        username=chess_com_username,
+    filters = GameFilters(
         time_classes=time_classes,
         rated=rated,
         color=color,
@@ -207,29 +189,17 @@ async def analyze_games(
         to_ts=to_ts,
     )
     
-    total_games = len(all_games)
-    
-    # Don't pre-filter by opening name - the DeviationAnalyzer will check
-    # if the game's moves match any position in our repertoire tree.
-    # This is more accurate than string-matching opening names.
-    games = all_games
-    
-    # Analyze each game against the full repertoire tree
-    analyzer = DeviationAnalyzer(repertoire)
-    results = []
-    
-    for game in games:
-        result = analyzer.analyze_game(game, chess_com_username)
-        if result:
-            # Add the Chess.com opening name to the result
-            result["chess_com_opening"] = game.get("opening_name", "")
-            results.append(result)
+    report = await pipeline.analyze(
+        study_ids=study_ids,
+        study_names=collected_study_names,
+        username=chess_com_username,
+        filters=filters,
+    )
     
     return {
-        "results": results,
-        "total_games": total_games,
-        "filtered_by_opening": len(games),
-        "analyzed_with_deviations": len(results),
+        "results": report.deviations,
+        "total_games": report.total_games_analyzed,
+        "analyzed_with_deviations": report.games_with_deviations,
     }
 
 
