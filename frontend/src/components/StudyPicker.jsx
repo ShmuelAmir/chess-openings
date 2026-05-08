@@ -4,17 +4,27 @@ function StudyPicker({
   token,
   selectedStudies,
   onSelectionChange,
+  studies = [],
   onStudiesLoaded,
 }) {
-  const [studies, setStudies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Only fetch if studies not provided and token exists
   useEffect(() => {
-    fetchStudies();
-  }, [token]);
+    // If studies are provided via props, use them (from AnalysisContext)
+    if (studies.length > 0) {
+      return;
+    }
+
+    // Otherwise fetch them (backward compatibility for old usage)
+    if (token && !studies.length) {
+      fetchStudies();
+    }
+  }, [token, studies.length]);
 
   const fetchStudies = async () => {
+    setLoading(true);
     try {
       const response = await fetch("/api/lichess/studies", {
         headers: { Authorization: `Bearer ${token}` },
@@ -26,8 +36,7 @@ function StudyPicker({
 
       const data = await response.json();
       const loadedStudies = data.studies || [];
-      setStudies(loadedStudies);
-      // Pass studies to parent for filtering
+      // Pass studies to parent for filtering (backward compat)
       if (onStudiesLoaded) {
         onStudiesLoaded(loadedStudies);
       }
