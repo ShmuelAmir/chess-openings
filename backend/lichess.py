@@ -3,6 +3,7 @@ Lichess API Client
 """
 import httpx
 from typing import Optional
+from opening_normalizer import OpeningNormalizer
 
 
 class LichessClient:
@@ -86,3 +87,32 @@ class LichessClient:
             )
         response.raise_for_status()
         return response.text
+
+    async def get_study_pgn_with_normalized_name(
+        self,
+        study_id: str,
+        study_name: str,
+    ) -> tuple[str, str]:
+        """
+        Fetch study PGN and return with normalized opening name.
+        
+        Deepens the client by handling opening name normalization internally
+        instead of delegating to callers.
+        
+        Args:
+            study_id: Lichess study ID
+            study_name: Study name (e.g., "Sicilian Defense" or "Vienna: Accepted")
+        
+        Returns:
+            Tuple of (pgn_content, normalized_opening_name)
+            
+        Example:
+            pgn, opening_name = await client.get_study_pgn_with_normalized_name(
+                study_id="ABC12345",
+                study_name="Sicilian Defense: Najdorf"
+            )
+            # Returns: (pgn_string, "Najdorf")
+        """
+        pgn = await self.get_study_pgn(study_id)
+        normalized_opening = OpeningNormalizer.normalize(study_name)
+        return pgn, normalized_opening
