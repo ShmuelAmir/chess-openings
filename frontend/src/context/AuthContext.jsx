@@ -5,6 +5,7 @@ import {
   useEffect,
   useCallback,
 } from "react";
+import { syncOrchestrator } from "./SyncOrchestrator";
 
 const AuthContext = createContext(null);
 
@@ -66,6 +67,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("chess_com_username");
     setChessComUsername("");
     setCacheStatus(null);
+    syncOrchestrator.notifyCacheCleared();
   };
 
   // Fetch cache status
@@ -110,8 +112,10 @@ export function AuthProvider({ children }) {
       }
 
       await fetchCacheStatus();
+      syncOrchestrator.notifyCacheReady();
     } catch (err) {
       setSyncError(err.message);
+      syncOrchestrator.notifySyncError(err);
     } finally {
       setSyncing(false);
     }
