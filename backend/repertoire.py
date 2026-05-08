@@ -7,6 +7,7 @@ import chess
 import chess.pgn
 from dataclasses import dataclass, field
 from typing import Optional
+from opening_normalizer import OpeningNormalizer
 
 
 @dataclass
@@ -89,10 +90,8 @@ class RepertoireBuilder:
             chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
             chapter_id = self._extract_chapter_id(game.headers.get("Site"))
             
-            # Remove redundant study name prefix if present
-            # E.g., "Vienna: Accepted" -> just "Accepted"
-            if ":" in chapter_name:
-                chapter_name = chapter_name.split(":", 1)[1].strip()
+            # Normalize the chapter name (removes redundant prefixes, etc.)
+            chapter_name = OpeningNormalizer.normalize(chapter_name)
             
             full_chapter_name = f"{study_name} - {chapter_name}"
             self._process_game(
