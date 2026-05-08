@@ -6,6 +6,7 @@ from typing import Optional
 import io
 import re
 import chess.pgn
+from opening_normalizer import OpeningNormalizer
 
 
 class ChessComClient:
@@ -65,7 +66,7 @@ class ChessComClient:
         for game in raw_games:
             # Extract opening name from eco URL
             eco_url = game.get("eco", "")
-            opening_name = self._extract_opening_from_eco(eco_url)
+            opening_name = OpeningNormalizer.from_eco_url(eco_url)
             
             # Parse PGN to extract moves
             pgn_str = game.get("pgn", "")
@@ -91,30 +92,6 @@ class ChessComClient:
         
         return games
 
-    def _extract_opening_from_eco(self, eco_url: str) -> str:
-        """
-        Extract opening name from Chess.com ECO URL.
-        
-        Example: "https://www.chess.com/openings/Italian-Game-Two-Knights-Defense"
-        Returns: "Italian Game Two Knights Defense"
-        """
-        if not eco_url:
-            return ""
-        
-        # Extract the last part of the URL path
-        match = re.search(r'/openings/([^/]+)$', eco_url)
-        if not match:
-            return ""
-        
-        # Convert hyphens to spaces and clean up
-        opening_slug = match.group(1)
-        # Remove move numbers like "-4.exd5" at the end
-        opening_slug = re.sub(r'-\d+\..*$', '', opening_slug)
-        # Convert to readable name
-        opening_name = opening_slug.replace('-', ' ')
-        
-        return opening_name
-    
     def _parse_pgn(self, pgn_str: str) -> dict:
         """Parse PGN string to extract moves and headers."""
         if not pgn_str:

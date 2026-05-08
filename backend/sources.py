@@ -9,6 +9,7 @@ from pipeline import RepertoireSource, GameSource, GameFilters
 from repertoire import Repertoire, RepertoireBuilder
 from game_cache import GameCache
 from lichess import LichessClient
+from opening_normalizer import OpeningNormalizer
 
 
 logger = logging.getLogger(__name__)
@@ -43,9 +44,9 @@ class LichessRepertoireSource(RepertoireSource):
                     logger.debug(f"Fetching study {study_id} ({study_name})")
                     pgn = await client.get_study_pgn(study_id)
                     
-                    # Extract opening name from study name
+                    # Extract and normalize opening name from study name
                     # Format: "Sicilian Defense" or "Vienna: Main Line"
-                    opening_name = study_name.split(":")[0].strip()
+                    opening_name = OpeningNormalizer.normalize(study_name)
                     
                     builder.add_study(
                         pgn=pgn,
