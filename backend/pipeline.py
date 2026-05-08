@@ -134,8 +134,20 @@ class RepertoireAnalysisPipeline:
         for game in games:
             try:
                 result = analyzer.analyze_game(game, username)
-                if result:
+                if not result:
+                    continue
+
+                # Analyzer may return either a DeviationResult object
+                # (with a to_dict() method) or a plain dict. Handle both.
+                if hasattr(result, "to_dict") and callable(getattr(result, "to_dict")):
                     deviations.append(result.to_dict())
+                elif isinstance(result, dict):
+                    deviations.append(result)
+                else:
+                    # Unknown result type; log and skip
+                    logger.warning(
+                        f"Analyzer returned unexpected result type for game {game.get('url', 'unknown')}: {type(result)}"
+                    )
             except Exception as e:
                 # Log and continue on individual game analysis failures
                 logger.warning(
