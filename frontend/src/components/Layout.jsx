@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "@tanstack/react-router";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { AnalysisProvider } from "../context/AnalysisContext";
 import LichessAuth from "./LichessAuth";
 
 function LayoutContent() {
@@ -233,7 +234,9 @@ function LayoutContent() {
 export default function Layout() {
   return (
     <AuthProvider>
-      <LayoutContent />
+      <AnalysisProvider>
+        <LayoutContent />
+      </AnalysisProvider>
     </AuthProvider>
   );
 }
