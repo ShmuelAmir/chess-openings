@@ -102,8 +102,7 @@ export function AnalysisProvider({ children }) {
         const weekAgoDate = new Date(weekAgoTs * 1000);
 
         // Use provided filters or fall back to active filters or defaults
-        const defaultFilters =
-          filters ||
+        const defaultFilters = filters ||
           activeFilters || {
             fromYear: weekAgoDate.getFullYear(),
             fromMonth: weekAgoDate.getMonth() + 1,
