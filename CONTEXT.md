@@ -7,28 +7,35 @@
 ## Core Concepts
 
 ### Repertoire
+
 A collection of chess opening lines that a player has studied and prepared. Stored as Lichess Studies (one study per opening). Each study contains one or more chapters with PGN-formatted game trees showing the main lines and key variations.
 
 **Repertoire tree:** A dual-perspective move tree built from the studies:
+
 - **White tree:** Positions where it's White's turn to move (user's first move in games where they play White)
 - **Black tree:** Positions where it's Black's turn to move (user's first move in games where they play Black)
 
 The tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each position, the repertoire node tracks which moves are available (user's options).
 
 ### Deviation
+
 The first move in a Chess.com game that was **not** available in the repertoire at that position. Signals either:
+
 1. **Player error:** User played a move outside their prepared lines
 2. **Opponent left book:** Opponent deviated first, requiring a non-prepared response
 3. **Book completed:** Game reached the end of studied lines (rare)
 
 ### Game Filters
+
 Selection criteria for analyzing only relevant games:
+
 - **Time control:** bullet, blitz, rapid, daily
 - **Rated:** Only rated games, or both rated and casual
 - **Color:** White only, Black only, or both
 - **Date range:** Year/month bounds (from_year/from_month to to_year/to_month) or Unix timestamps
 
 ### Opening Name
+
 Human-readable label for a repertoire line. Examples: "Sicilian Defense", "Vienna Game", "London System". Extracted from Lichess study names and normalized (hyphens → spaces, redundant prefixes removed).
 
 ## Architecture: Layered Orchestration
@@ -66,6 +73,7 @@ The system is organized in horizontal layers from request → response:
 ## Key Design Patterns
 
 ### Dependency Injection
+
 The pipeline accepts abstract source interfaces, not concrete implementations. Callers (main.py) instantiate the concrete sources and inject them:
 
 ```python
@@ -81,15 +89,18 @@ report = await pipeline.analyze(...)
 This makes the pipeline testable: tests can inject mock sources.
 
 ### Repertoire Caching
+
 The pipeline caches built repertoires by study ID set with a 1-hour TTL. Same studies requested within 1 hour reuse the cached tree; after TTL expires, a fresh repertoire is fetched. Balances performance (no rebuild) with data freshness.
 
 ### Error Handling
+
 - **Analysis failure (per-game):** Log and continue. One failed game doesn't block the entire analysis.
 - **Source failure (study not accessible):** Fail fast at the HTTP layer. Invalid token or inaccessible study is a user error, not a transient issue.
 
 ## Data Flows
 
 ### Analysis Request Flow
+
 ```
 HTTP /api/analyze (study_ids, filters, token)
   ↓

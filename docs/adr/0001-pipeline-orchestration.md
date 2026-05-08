@@ -2,11 +2,12 @@
 
 **Date:** 2026-05-08  
 **Status:** Accepted  
-**Context:** Backend analysis workflow orchestration  
+**Context:** Backend analysis workflow orchestration
 
 ## Problem
 
 The `/api/analyze` endpoint in `main.py` was monolithic (116 lines) and tightly coupled:
+
 - Fetched studies from Lichess
 - Built repertoire tree
 - Fetched games from cache
@@ -14,6 +15,7 @@ The `/api/analyze` endpoint in `main.py` was monolithic (116 lines) and tightly 
 - Returned results
 
 **Issues:**
+
 1. **Tight coupling:** Lichess client, game cache, and analysis logic were interleaved in the HTTP handler
 2. **Poor testability:** Couldn't test analysis orchestration without FastAPI and real APIs
 3. **No caching:** Repertoires rebuilt from scratch on every request, even for identical study IDs
@@ -50,20 +52,20 @@ async def analyze_games(...):
 # New (layered)
 async def analyze_games(...):
     token = authorization.replace("Bearer ", "")
-    
+
     # Validate token
     # Collect study names
-    
+
     # Create sources
     repertoire_source = LichessRepertoireSource(lichess_token=token)
     game_source = CacheGameSource()
-    
+
     # Create pipeline
     pipeline = RepertoireAnalysisPipeline(repertoire_source, game_source)
-    
+
     # Execute
     report = await pipeline.analyze(study_ids, study_names, username, filters)
-    
+
     # Return
     return {...}
 ```
@@ -71,6 +73,7 @@ async def analyze_games(...):
 ## Tradeoffs
 
 **Pros:**
+
 - **Locality:** All analysis orchestration lives in `pipeline.py`
 - **Testability:** Tests can inject mock sources; no HTTP or API calls needed
 - **Caching:** Repertoires cached by study ID set with TTL — repeated analyses are fast
@@ -78,6 +81,7 @@ async def analyze_games(...):
 - **Clarity:** HTTP layer is thin; orchestration layer is focused
 
 **Cons:**
+
 - **More boilerplate:** Sources must implement abstract interfaces (small cost)
 - **Indirection:** Readers must follow interfaces to understand concrete behavior
 - **Cache invalidation:** TTL-based caching is simple but coarse (can't invalidate on study edits)
