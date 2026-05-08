@@ -97,10 +97,21 @@ class RepertoireBuilder:
             if not chapter_id:
                 chapter_id = self._extract_chapter_id(game.headers.get("Event"))
             
-            # Normalize the chapter name (removes redundant prefixes, etc.)
-            chapter_name = OpeningNormalizer.normalize(chapter_name)
-            
-            full_chapter_name = f"{study_name} - {chapter_name}"
+            # Normalize study & chapter pair, avoiding redundancy.
+            # This prevents cases where a chapter that only repeats the study
+            # becomes an empty string (e.g., "Vienna: " -> "").
+            norm_study, norm_chapter = OpeningNormalizer.from_study_chapter_pair(
+                study_name, chapter_name
+            )
+
+            # Use normalized study name for consistency
+            opening_name = norm_study
+
+            # If chapter is empty after normalization, fall back to None so
+            # callers/UI can decide how to render (avoids producing "Study - ").
+            chapter_name = norm_chapter if norm_chapter else None
+
+            full_chapter_name = f"{study_name} - {chapter_name}" if chapter_name else study_name
             self._process_game(
                 game,
                 opening_name,
