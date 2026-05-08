@@ -44,8 +44,10 @@ class Repertoire:
 class RepertoireBuilder:
     """Builds a repertoire from Lichess study PGNs."""
 
+    # Match Lichess study URLs and capture optional chapter id.
+    # Be permissive about id length/characters to tolerate format changes
     _LICHESS_STUDY_SITE_RE = re.compile(
-        r"https?://(?:www\.)?lichess\.org/study/([A-Za-z0-9]{8})(?:/([A-Za-z0-9]{8}))?"
+        r"https?://(?:www\.)?lichess\.org/study/([^/\s]+)(?:/([^/?#\s]+))?"
     )
     
     def __init__(self):
@@ -88,7 +90,12 @@ class RepertoireBuilder:
             # Extract chapter name from PGN headers
             # Lichess uses the game name or title as chapter name
             chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
+            # Try to extract chapter id from the standard Site header.
+            # If not present, fall back to the Event header which occasionally
+            # contains study URLs in older PGN exports.
             chapter_id = self._extract_chapter_id(game.headers.get("Site"))
+            if not chapter_id:
+                chapter_id = self._extract_chapter_id(game.headers.get("Event"))
             
             # Normalize the chapter name (removes redundant prefixes, etc.)
             chapter_name = OpeningNormalizer.normalize(chapter_name)
@@ -111,7 +118,12 @@ class RepertoireBuilder:
         if not match:
             return None
 
-        return match.group(2)
+        # group(2) is the optional chapter id (may be None)
+        chapter = match.group(2)
+        if chapter:
+            # Normalize common delimiters and strip whitespace
+            return chapter.strip().strip("/")
+        return None
     
     def _build_fen_index(self):
         """Build FEN position index by traversing the white repertoire tree."""
