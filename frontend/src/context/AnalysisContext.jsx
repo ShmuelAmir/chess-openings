@@ -33,31 +33,48 @@ export function AnalysisProvider({ children }) {
   // Debounce timer ref for auto-analysis
   const debounceRef = useRef(null);
 
+  // In-flight studies request, so concurrent callers (StrictMode double
+  // effects, remounts) share one request instead of hammering Lichess.
+  const studiesRequestRef = useRef(null);
+
   /**
    * Fetch studies from Lichess.
    * Called when user logs in or manually refreshes.
    */
   const fetchStudies = useCallback(async () => {
     if (!lichessToken) return;
+    if (studiesRequestRef.current) return studiesRequestRef.current;
 
     setStudiesLoading(true);
-    try {
-      const response = await fetch("/api/lichess/studies", {
-        headers: { Authorization: `Bearer ${lichessToken}` },
-      });
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch studies");
+    const request = (async () => {
+      try {
+        const response = await fetch("/api/lichess/studies", {
+          headers: { Authorization: `Bearer ${lichessToken}` },
+        });
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            throw new Error(
+              "Lichess rate limit reached. Please wait a minute and try again.",
+            );
+          }
+          throw new Error("Failed to fetch studies");
+        }
+
+        const data = await response.json();
+        setStudies(data.studies || []);
+      } catch (err) {
+        console.error("Failed to fetch studies:", err);
+        setError(err.message);
+      } finally {
+        studiesRequestRef.current = null;
+        setStudiesLoading(false);
       }
+    })();
 
-      const data = await response.json();
-      setStudies(data.studies || []);
-    } catch (err) {
-      console.error("Failed to fetch studies:", err);
-      setError(err.message);
-    } finally {
-      setStudiesLoading(false);
-    }
+    studiesRequestRef.current = request;
+    return request;
   }, [lichessToken]);
 
   /**
@@ -165,7 +182,8 @@ export function AnalysisProvider({ children }) {
         });
 
         if (!response.ok) {
-          throw new Error("Analysis failed");
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.detail || "Analysis failed");
         }
 
         const data = await response.json();

@@ -22,6 +22,8 @@ export function AuthProvider({ children }) {
   const [cacheStatus, setCacheStatus] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
+  const [chessComError, setChessComError] = useState(null);
+  const [validatingChessCom, setValidatingChessCom] = useState(false);
 
   // Fetch Lichess user info when token is available
   useEffect(() => {
@@ -58,15 +60,35 @@ export function AuthProvider({ children }) {
     setLichessUser(null);
   };
 
-  const handleChessComSave = (username) => {
-    localStorage.setItem("chess_com_username", username);
-    setChessComUsername(username);
+  // Verify the account exists before storing it, so a typo (or an email
+  // address) doesn't silently turn into an unsyncable account.
+  const handleChessComSave = async (username) => {
+    setChessComError(null);
+    setValidatingChessCom(true);
+    try {
+      const response = await fetch(`/api/chess-com/validate/${encodeURIComponent(username)}`);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setChessComError(data.detail || `Could not verify '${username}' on Chess.com`);
+        return false;
+      }
+      localStorage.setItem("chess_com_username", username);
+      setChessComUsername(username);
+      return true;
+    } catch (err) {
+      setChessComError(err.message);
+      return false;
+    } finally {
+      setValidatingChessCom(false);
+    }
   };
 
   const handleChessComClear = () => {
     localStorage.removeItem("chess_com_username");
     setChessComUsername("");
     setCacheStatus(null);
+    setChessComError(null);
+    setSyncError(null);
     syncOrchestrator.notifyCacheCleared();
   };
 
@@ -136,6 +158,8 @@ export function AuthProvider({ children }) {
     cacheStatus,
     syncing,
     syncError,
+    chessComError,
+    validatingChessCom,
     syncGames,
     fetchCacheStatus,
   };

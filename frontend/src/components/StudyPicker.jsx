@@ -10,18 +10,16 @@ function StudyPicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Only fetch if studies not provided and token exists
+  // Only fetch in the legacy usage where the parent has no studies of its own
+  // (signalled by passing onStudiesLoaded). When studies come from
+  // AnalysisContext, fetching here would duplicate that request and burn
+  // through the Lichess rate limit.
   useEffect(() => {
-    // If studies are provided via props, use them (from AnalysisContext)
-    if (studies.length > 0) {
+    if (!onStudiesLoaded || !token || studies.length > 0) {
       return;
     }
-
-    // Otherwise fetch them (backward compatibility for old usage)
-    if (token && !studies.length) {
-      fetchStudies();
-    }
-  }, [token, studies.length]);
+    fetchStudies();
+  }, [token, studies.length, onStudiesLoaded]);
 
   const fetchStudies = async () => {
     setLoading(true);

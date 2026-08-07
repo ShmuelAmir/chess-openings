@@ -17,6 +17,9 @@ function LayoutContent() {
     handleChessComClear,
     cacheStatus,
     syncing,
+    syncError,
+    chessComError,
+    validatingChessCom,
     syncGames,
   } = useAuth();
 
@@ -119,8 +122,13 @@ function LayoutContent() {
                           name="username"
                           placeholder="Enter Chess.com username"
                         />
-                        <button type="submit">Save</button>
+                        <button type="submit" disabled={validatingChessCom}>
+                          {validatingChessCom ? "Checking..." : "Save"}
+                        </button>
                       </div>
+                      {chessComError && (
+                        <div className="error">{chessComError}</div>
+                      )}
                     </form>
                   )}
                 </div>
@@ -221,6 +229,10 @@ function LayoutContent() {
                   </button>
                 </div>
               </div>
+
+              {syncError && (
+                <div className="profile-sync-error">{syncError}</div>
+              )}
             </div>
           )}
         </div>

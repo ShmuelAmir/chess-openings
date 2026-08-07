@@ -754,6 +754,21 @@ select:focus {
   border-bottom: none;
 }
 
+.profile-sync-error {
+  padding: 0.6rem 1rem;
+  background: #5c1a1a;
+  color: #e74c3c;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.chess-com-input + .error {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.85rem;
+}
+
 .profile-account .account-icon {
   width: 32px;
   height: 32px;
