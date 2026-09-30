@@ -1,16 +1,42 @@
 """
 Lichess API Client
 """
+import asyncio
 import httpx
 from typing import Optional
 from opening_normalizer import OpeningNormalizer
 
 
+class LichessRateLimitError(Exception):
+    """Raised when Lichess rate-limits us (HTTP 429)."""
+
+    def __init__(self, retry_after: int = 60):
+        self.retry_after = retry_after
+        super().__init__(
+            f"Lichess rate limit reached. Retry in {retry_after} seconds."
+        )
+
+
+def _retry_after_seconds(response: httpx.Response, default: int = 60) -> int:
+    """Parse the Retry-After header, falling back to a sane default."""
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return default
+    try:
+        return max(1, int(float(raw)))
+    except ValueError:
+        return default
+
+
 class LichessClient:
     """Client for Lichess API with OAuth support."""
-    
+
     BASE_URL = "https://lichess.org"
-    
+
+    # Lichess asks clients to back off for a while on 429. We only wait
+    # inline for short backoffs; anything longer is surfaced to the caller.
+    MAX_INLINE_RETRY_WAIT = 5
+
     def __init__(self, token: Optional[str] = None):
         self.token = token
         self._client: Optional[httpx.AsyncClient] = None
@@ -51,30 +77,47 @@ class LichessClient:
         response.raise_for_status()
         return response.json()
     
+    async def _get(self, url: str, **kwargs) -> httpx.Response:
+        """GET with a single short retry when Lichess rate-limits us."""
+        response = await self._client.get(url, **kwargs)
+        if response.status_code == 429:
+            wait = _retry_after_seconds(response)
+            if wait > self.MAX_INLINE_RETRY_WAIT:
+                raise LichessRateLimitError(wait)
+            await asyncio.sleep(wait)
+            response = await self._client.get(url, **kwargs)
+            if response.status_code == 429:
+                raise LichessRateLimitError(_retry_after_seconds(response))
+        return response
+
     async def get_account(self) -> dict:
         """Get current user's account info."""
-        response = await self._client.get("/api/account")
+        response = await self._get("/api/account")
         response.raise_for_status()
         return response.json()
-    
+
     async def get_user_studies(self, username: str) -> list[dict]:
         """Get list of studies for a user (returns ndjson)."""
+        import json
+
         studies = []
         async with self._client.stream(
             "GET",
             f"/api/study/by/{username}",
             headers={"Accept": "application/x-ndjson"},
         ) as response:
+            if response.status_code == 429:
+                await response.aread()
+                raise LichessRateLimitError(_retry_after_seconds(response))
             response.raise_for_status()
             async for line in response.aiter_lines():
                 if line.strip():
-                    import json
                     studies.append(json.loads(line))
         return studies
-    
+
     async def get_study_pgn(self, study_id: str) -> str:
         """Get PGN content of a study."""
-        response = await self._client.get(
+        response = await self._get(
             f"/api/study/{study_id}.pgn",
             headers={"Accept": "application/x-chess-pgn"},
         )

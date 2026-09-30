@@ -2,19 +2,22 @@
 Chess Opening Deviation Analyzer - FastAPI Backend
 """
 import os
+import time
+import asyncio
 import secrets
 import hashlib
 import base64
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, HTTPException, Query, Header
+import httpx
+from fastapi import FastAPI, HTTPException, Query, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import datetime
 
-from lichess import LichessClient
+from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComClient
 from repertoire import RepertoireBuilder
 from analyzer import DeviationAnalyzer
@@ -39,6 +42,63 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5173/callback")
 
 # In-memory PKCE store (for demo; in production use Redis or similar)
 pkce_store: dict[str, str] = {}
+
+# Short-lived cache of a token's studies, so repeated page loads / duplicate
+# frontend requests don't each hit the Lichess API (which rate-limits hard).
+STUDIES_CACHE_TTL = 60  # seconds
+_studies_cache: dict[str, tuple[float, list[dict]]] = {}
+_studies_locks: dict[str, asyncio.Lock] = {}
+
+
+def _token_key(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def fetch_studies_cached(token: str) -> list[dict]:
+    """
+    Return the token owner's studies, using a short-lived cache.
+
+    Concurrent callers for the same token share a single upstream request.
+    """
+    key = _token_key(token)
+    lock = _studies_locks.setdefault(key, asyncio.Lock())
+
+    async with lock:
+        cached = _studies_cache.get(key)
+        if cached and time.monotonic() - cached[0] < STUDIES_CACHE_TTL:
+            return cached[1]
+
+        async with LichessClient(token=token) as client:
+            account = await client.get_account()
+            studies = await client.get_user_studies(account["username"])
+
+        _studies_cache[key] = (time.monotonic(), studies)
+        return studies
+
+
+@app.exception_handler(LichessRateLimitError)
+async def lichess_rate_limit_handler(request: Request, exc: LichessRateLimitError):
+    """Surface Lichess rate limiting as a 429 instead of a 500."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(exc)},
+        headers={"Retry-After": str(exc.retry_after)},
+    )
+
+
+@app.exception_handler(httpx.HTTPStatusError)
+async def upstream_error_handler(request: Request, exc: httpx.HTTPStatusError):
+    """Mirror upstream 4xx errors instead of reporting them as our own 500."""
+    status = exc.response.status_code
+    if 400 <= status < 500:
+        return JSONResponse(
+            status_code=status,
+            content={"detail": f"Upstream request failed: {exc}"},
+        )
+    return JSONResponse(
+        status_code=502,
+        content={"detail": f"Upstream request failed: {exc}"},
+    )
 
 
 def generate_pkce():
@@ -103,11 +163,7 @@ async def get_lichess_user(authorization: str = Header(...)):
 async def get_lichess_studies(authorization: str = Header(...)):
     """Get list of user's Lichess studies."""
     token = authorization.replace("Bearer ", "")
-    async with LichessClient(token=token) as client:
-        account = await client.get_account()
-        username = account["username"]
-        studies = await client.get_user_studies(username)
-        return {"studies": studies}
+    return {"studies": await fetch_studies_cached(token)}
 
 
 @app.get("/api/lichess/study/{study_id}")
@@ -117,6 +173,23 @@ async def get_study_pgn(study_id: str, authorization: str = Header(...)):
     async with LichessClient(token=token) as client:
         pgn = await client.get_study_pgn(study_id)
         return {"pgn": pgn}
+
+
+@app.get("/api/chess-com/validate/{username}")
+async def validate_chess_com_username(username: str):
+    """Check that a Chess.com account exists before we store it."""
+    async with ChessComClient() as client:
+        try:
+            await client.get_archives(username)
+        except httpx.HTTPStatusError as e:
+            # Chess.com answers unknown players with 404 or 410 Gone.
+            if e.response.status_code in (404, 410):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No Chess.com account named '{username}'. Use your Chess.com username, not your email.",
+                )
+            raise
+    return {"username": username, "valid": True}
 
 
 @app.get("/api/chess-com/archives/{username}")
@@ -146,23 +219,24 @@ async def analyze_games(
     """Analyze games against repertoire and find deviations."""
     token = authorization.replace("Bearer ", "")
     
-    # Validate token and get account info (early fail if token is invalid)
-    async with LichessClient(token=token) as lichess:
-        try:
-            account = await lichess.get_account()
-        except Exception as e:
+    # Validate token and verify we can access all studies (early fail)
+    try:
+        studies = await fetch_studies_cached(token)
+    except LichessRateLimitError:
+        raise
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (401, 403):
             raise HTTPException(status_code=401, detail="Invalid Lichess token")
-        
-        # Verify we can access all studies
-        studies = await lichess.get_user_studies(account["username"])
-        study_id_to_name = {s["id"]: s["name"] for s in studies}
-        
-        for study_id in study_ids:
-            if study_id not in study_id_to_name:
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Cannot access study '{study_id}'. Make sure the study is public, unlisted, or you are the owner."
-                )
+        raise
+
+    study_id_to_name = {s["id"]: s["name"] for s in studies}
+
+    for study_id in study_ids:
+        if study_id not in study_id_to_name:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Cannot access study '{study_id}'. Make sure the study is public, unlisted, or you are the owner."
+            )
     
     # Collect study names in the order of study_ids
     collected_study_names = [study_id_to_name[sid] for sid in study_ids]
@@ -410,7 +484,10 @@ async def sync_chess_com_games(username: str):
         try:
             archives = await client.get_archives(username)
         except Exception as e:
-            raise HTTPException(status_code=404, detail=f"User '{username}' not found on Chess.com")
+            raise HTTPException(
+                status_code=404,
+                detail=f"No Chess.com account named '{username}'. Use your Chess.com username, not your email.",
+            )
         
         if not archives:
             return {
