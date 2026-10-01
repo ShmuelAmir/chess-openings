@@ -42,20 +42,12 @@ class RepertoireSource(ABC):
     """Abstract interface for fetching and building repertoires."""
     
     @abstractmethod
-    async def fetch_repertoire(
-        self,
-        study_ids: list[str],
-        study_names: list[str],
-    ) -> Repertoire:
+    async def fetch_repertoire(self) -> Repertoire:
         """
-        Fetch studies and build repertoire tree.
-        
-        Args:
-            study_ids: Lichess study IDs
-            study_names: Corresponding study names (for labeling in repertoire)
+        Fetch the user's studies and build their Repertoire.
         
         Returns:
-            Repertoire object with white/black trees and position index
+            Repertoire object with white/black trees and study membership
         """
         ...
 
@@ -86,7 +78,8 @@ class RepertoireAnalysisPipeline:
     """
     Orchestrates the full analysis pipeline: fetch repertoire, fetch games, analyze.
     
-    Caches repertoires by study ID set (with TTL) to avoid rebuilding on repeated requests.
+    Caches the user's Repertoire (with TTL) to avoid rebuilding on repeated requests.
+    A study created on Lichess joins the Repertoire at the next rebuild.
     """
     
     def __init__(
@@ -99,13 +92,11 @@ class RepertoireAnalysisPipeline:
         self.game_source = game_source
         self.repertoire_ttl_seconds = repertoire_ttl_seconds
         
-        # Cache: key = frozenset(study_ids), value = (repertoire, timestamp)
-        self._repertoire_cache: dict[frozenset, tuple[Repertoire, float]] = {}
+        # The user's Repertoire and when it was built
+        self._repertoire_cache: Optional[tuple[Repertoire, float]] = None
     
     async def analyze(
         self,
-        study_ids: list[str],
-        study_names: list[str],
         username: str,
         filters: GameFilters,
     ) -> AnalysisReport:
@@ -113,8 +104,6 @@ class RepertoireAnalysisPipeline:
         Execute the full analysis pipeline.
         
         Args:
-            study_ids: Lichess study IDs
-            study_names: Corresponding study names
             username: Chess.com username
             filters: Game filtering parameters
         
@@ -122,7 +111,7 @@ class RepertoireAnalysisPipeline:
             AnalysisReport with deviations and statistics
         """
         # Step 1: Fetch or use cached repertoire
-        repertoire = await self._get_repertoire(study_ids, study_names)
+        repertoire = await self._get_repertoire()
         
         # Step 2: Fetch games
         games = await self.game_source.fetch_games(username, filters)
@@ -164,41 +153,23 @@ class RepertoireAnalysisPipeline:
         
         return report
     
-    async def _get_repertoire(
-        self,
-        study_ids: list[str],
-        study_names: list[str],
-    ) -> Repertoire:
+    async def _get_repertoire(self) -> Repertoire:
         """
-        Get repertoire from cache or fetch and cache it.
-        
-        Args:
-            study_ids: Lichess study IDs
-            study_names: Corresponding study names
+        Get the user's Repertoire from cache or fetch and cache it.
         
         Returns:
             Repertoire object
         """
-        cache_key = frozenset(study_ids)
         now = time.time()
         
-        # Check cache
-        if cache_key in self._repertoire_cache:
-            cached_repertoire, cached_time = self._repertoire_cache[cache_key]
+        if self._repertoire_cache is not None:
+            cached_repertoire, cached_time = self._repertoire_cache
             if now - cached_time < self.repertoire_ttl_seconds:
-                logger.debug(f"Using cached repertoire for studies {study_ids}")
+                logger.debug("Using cached repertoire")
                 return cached_repertoire
-            else:
-                # TTL expired, remove from cache
-                del self._repertoire_cache[cache_key]
         
-        # Fetch fresh repertoire
-        logger.debug(f"Fetching fresh repertoire for studies {study_ids}")
-        repertoire = await self.repertoire_source.fetch_repertoire(
-            study_ids, study_names
-        )
-        
-        # Cache it
-        self._repertoire_cache[cache_key] = (repertoire, now)
+        logger.debug("Fetching fresh repertoire")
+        repertoire = await self.repertoire_source.fetch_repertoire()
+        self._repertoire_cache = (repertoire, now)
         
         return repertoire

@@ -10,16 +10,18 @@
 
 A collection of chess opening lines that a player has studied and prepared. Stored as Lichess Studies (one study per opening). Each study contains one or more chapters with PGN-formatted game trees showing the main lines and key variations.
 
-**Repertoire tree:** A dual-perspective move tree built from the studies:
+**Repertoire trees:** one move tree per color, each built only from that color's studies:
 
-- **White tree:** Positions where it's White's turn to move (user's first move in games where they play White)
-- **Black tree:** Positions where it's Black's turn to move (user's first move in games where they play Black)
+- **White tree:** the lines of the White studies, walked for games where the user plays White
+- **Black tree:** the lines of the Black studies, walked for games where the user plays Black
 
-The tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each position, the repertoire node tracks which moves are available (user's options).
+Each tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each position, the repertoire node tracks which moves are available.
+
+**Study membership:** for each position key (and color), the Repertoire knows every study whose lines contain the position, and for each of those studies the chapter id and, when the position is on that chapter's mainline, its ply — enough for an "open in study" deep link.
 
 **Which studies:** every study the user owns on Lichess, except those they have explicitly marked as "not repertoire".
 
-**Study color:** every study belongs to exactly one color — White or Black — and contributes only to that color's tree. A study never mixes colors.
+**Study color:** every study belongs to exactly one color — White or Black — and contributes only to that color's tree. A study never mixes colors. The color is the orientation of the study's first chapter (Lichess PGN export with `?orientation=true`).
 
 ### Deviation
 
@@ -95,13 +97,13 @@ The system is organized in horizontal layers from request → response:
 
 2. **Orchestration Layer** (`pipeline.py`)
    - **`RepertoireAnalysisPipeline`:** Stateful orchestrator that coordinates the full analysis workflow
-   - Owns caching logic for repertoires (TTL-based, keyed by study ID set)
+   - Owns caching logic for the user's Repertoire (TTL-based)
    - Defines abstract interfaces (`RepertoireSource`, `GameSource`) that concrete implementations must satisfy
    - Does NOT know about HTTP, Lichess, or Chess.com — all domain concepts
 
 3. **Source Layer** (`sources.py`)
    - Concrete implementations of abstract source interfaces
-   - **`LichessRepertoireSource`:** Fetches studies from Lichess and builds `Repertoire` objects
+   - **`LichessRepertoireSource`:** Fetches every study the user owns from Lichess and builds their `Repertoire`
    - **`CacheGameSource`:** Fetches games from the local SQLite cache, applies filters
    - These are adapters at the seams between the pipeline and external systems
 
@@ -122,47 +124,47 @@ The system is organized in horizontal layers from request → response:
 The pipeline accepts abstract source interfaces, not concrete implementations. Callers (main.py) instantiate the concrete sources and inject them:
 
 ```python
-repertoire_source = LichessRepertoireSource(lichess_token=token)
+repertoire_source = LichessRepertoireSource(lichess_token=token, list_studies=list_owned_studies)
 game_source = CacheGameSource()
 pipeline = RepertoireAnalysisPipeline(
     repertoire_source=repertoire_source,
     game_source=game_source,
 )
-report = await pipeline.analyze(...)
+report = await pipeline.analyze(username, filters)
 ```
 
 This makes the pipeline testable: tests can inject mock sources.
 
 ### Repertoire Caching
 
-The pipeline caches built repertoires by study ID set with a 1-hour TTL. Same studies requested within 1 hour reuse the cached tree; after TTL expires, a fresh repertoire is fetched. Balances performance (no rebuild) with data freshness.
+The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild.
 
 ### Error Handling
 
 - **Analysis failure (per-game):** Log and continue. One failed game doesn't block the entire analysis.
-- **Source failure (study not accessible):** Fail fast at the HTTP layer. Invalid token or inaccessible study is a user error, not a transient issue.
+- **Source failure (invalid token, study not accessible):** Fail fast at the HTTP layer. It is a user error, not a transient issue.
 
 ## Data Flows
 
 ### Analysis Request Flow
 
 ```
-HTTP /api/analyze (study_ids, filters, token)
+HTTP /api/analyze (filters, token)
   ↓
-HTTP layer validates token, collects study names
+HTTP layer validates token
   ↓
-Instantiate LichessRepertoireSource(token), CacheGameSource()
+Reuse the user's RepertoireAnalysisPipeline (one per Lichess user, created on
+first request with LichessRepertoireSource(token, list_studies), CacheGameSource())
   ↓
-Create RepertoireAnalysisPipeline
-  ↓
-Call pipeline.analyze(study_ids, study_names, username, filters)
+Call pipeline.analyze(username, filters)
   ↓
 Pipeline._get_repertoire() checks cache; if miss, calls source.fetch_repertoire()
   ↓
 LichessRepertoireSource.fetch_repertoire()
-  ├─ Fetch each study's PGN from Lichess
-  ├─ Feed to RepertoireBuilder
-  └─ Return built Repertoire (white_tree, black_tree, position_index)
+  ├─ List the user's owned studies
+  ├─ Fetch each owned study's PGN from Lichess (?orientation=true)
+  ├─ Feed to RepertoireBuilder (each study into its first chapter's color tree)
+  └─ Return built Repertoire (white_tree, black_tree, study membership)
   ↓
 Pipeline calls game_source.fetch_games(username, filters)
   ↓

@@ -76,6 +76,24 @@ async def fetch_studies_cached(token: str) -> list[dict]:
         return studies
 
 
+# One pipeline per Lichess user, so their Repertoire stays cached between requests.
+_pipelines: dict[str, RepertoireAnalysisPipeline] = {}
+
+
+def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
+    """The analysis pipeline holding this user's cached Repertoire."""
+    key = _token_key(token)
+    if key not in _pipelines:
+        _pipelines[key] = RepertoireAnalysisPipeline(
+            repertoire_source=LichessRepertoireSource(
+                lichess_token=token,
+                list_studies=lambda: fetch_studies_cached(token),
+            ),
+            game_source=CacheGameSource(get_game_cache()),
+        )
+    return _pipelines[key]
+
+
 @app.exception_handler(LichessRateLimitError)
 async def lichess_rate_limit_handler(request: Request, exc: LichessRateLimitError):
     """Surface Lichess rate limiting as a 429 instead of a 500."""
@@ -202,7 +220,6 @@ async def get_chess_com_archives(username: str):
 
 @app.post("/api/analyze")
 async def analyze_games(
-    study_ids: list[str] = Query(...),
     chess_com_username: str = Query(...),
     from_year: int = Query(...),
     from_month: int = Query(...),
@@ -213,15 +230,14 @@ async def analyze_games(
     time_classes: list[str] = Query(None),
     rated: bool = Query(None),
     color: str = Query(None),  # "white", "black", or None for both
-    study_names: list[str] = Query(None),
     authorization: str = Header(...),
 ):
-    """Analyze games against repertoire and find deviations."""
+    """Analyze games against the user's Repertoire (every owned study) and find deviations."""
     token = authorization.replace("Bearer ", "")
     
-    # Validate token and verify we can access all studies (early fail)
+    # Validate token (early fail)
     try:
-        studies = await fetch_studies_cached(token)
+        await fetch_studies_cached(token)
     except LichessRateLimitError:
         raise
     except httpx.HTTPStatusError as e:
@@ -229,28 +245,6 @@ async def analyze_games(
             raise HTTPException(status_code=401, detail="Invalid Lichess token")
         raise
 
-    study_id_to_name = {s["id"]: s["name"] for s in studies}
-
-    for study_id in study_ids:
-        if study_id not in study_id_to_name:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Cannot access study '{study_id}'. Make sure the study is public, unlisted, or you are the owner."
-            )
-    
-    # Collect study names in the order of study_ids
-    collected_study_names = [study_id_to_name[sid] for sid in study_ids]
-    
-    # Build sources
-    repertoire_source = LichessRepertoireSource(lichess_token=token)
-    game_source = CacheGameSource()
-    
-    # Create and run the pipeline
-    pipeline = RepertoireAnalysisPipeline(
-        repertoire_source=repertoire_source,
-        game_source=game_source,
-    )
-    
     filters = GameFilters(
         time_classes=time_classes,
         rated=rated,
@@ -263,9 +257,7 @@ async def analyze_games(
         to_ts=to_ts,
     )
     
-    report = await pipeline.analyze(
-        study_ids=study_ids,
-        study_names=collected_study_names,
+    report = await pipeline_for(token).analyze(
         username=chess_com_username,
         filters=filters,
     )

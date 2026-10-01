@@ -1,7 +1,7 @@
 # ADR-0001: Pipeline Orchestration with Dependency Injection
 
 **Date:** 2026-05-08  
-**Status:** Accepted  
+**Status:** Accepted (repertoire caching amended 2026-10-01, see below)  
 **Context:** Backend analysis workflow orchestration
 
 ## Problem
@@ -98,3 +98,7 @@ async def analyze_games(...):
 
 - **Candidate 5 (deepen API clients):** Move PGN parsing and opening name normalization into `LichessRepertoireSource`, so it builds the tree directly (not via raw PGN strings)
 - **Cache key extension:** Include a content hash of study PGN to detect edits, not just study ID
+
+## Amendment (2026-10-01): one Repertoire per user
+
+The Repertoire is now every study the user owns on Lichess (issue #21), so the cache is no longer keyed by a study ID set. The pipeline caches "the user's Repertoire" with the same 1-hour TTL, and a study created on Lichess joins at the next rebuild. `RepertoireSource.fetch_repertoire()` takes no study arguments, `LichessRepertoireSource` lists the user's owned studies on each rebuild, `main.py` keeps one pipeline per Lichess user so the cache is reused across requests, and `pipeline.analyze(username, filters)` no longer takes study ids or names. The rest of this decision stands.

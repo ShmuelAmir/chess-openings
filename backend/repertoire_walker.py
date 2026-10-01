@@ -7,7 +7,7 @@ This module encapsulates the logic for walking through a repertoire tree
 import chess
 from enum import Enum
 from typing import Optional, NamedTuple
-from repertoire import Repertoire, RepertoireNode
+from repertoire import Repertoire, RepertoireNode, position_key
 
 
 class WalkerPosition(NamedTuple):
@@ -61,11 +61,6 @@ class WalkRecord(NamedTuple):
 
 def not_analysed() -> WalkRecord:
     return WalkRecord(analysed=False, deviation=None, reached_in_book=[])
-
-
-def position_key(board: chess.Board) -> str:
-    """The FEN without the halfmove and fullmove counters."""
-    return " ".join(board.fen().split(" ")[:4])
 
 
 class RepertoireWalker:
