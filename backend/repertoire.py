@@ -50,6 +50,8 @@ class Repertoire:
     """Complete repertoire with separate trees for White and Black."""
     white_tree: RepertoireNode = field(default_factory=RepertoireNode)
     black_tree: RepertoireNode = field(default_factory=RepertoireNode)
+    # study id -> the one color the study belongs to
+    study_colors: dict[str, chess.Color] = field(default_factory=dict)
     # (study color, position key) -> {study id: where the position sits in that study}
     _study_membership: dict[tuple[chess.Color, str], dict[str, ChapterLocation]] = field(default_factory=dict)
 
@@ -129,6 +131,8 @@ class RepertoireBuilder:
         if not chapters:
             return
         color = self._orientation(chapters[0])
+        if study_id:
+            self.repertoire.study_colors[study_id] = color
 
         for game in chapters:
             # Extract chapter name from PGN headers

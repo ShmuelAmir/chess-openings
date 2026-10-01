@@ -4,22 +4,19 @@ import { syncOrchestrator } from "../context/SyncOrchestrator";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
+import { loadFilters, saveFilters } from "../components/recall/storedFilters";
 import "../components/recall/recall.css";
-
-const DEFAULT_FILTERS = {
-  timeClasses: ["blitz", "rapid"],
-  dateRange: "3months",
-  ratedOnly: true,
-};
 
 export default function RecallPage() {
   const { lichessToken, chessComUsername, cacheStatus } = useAuth();
 
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(loadFilters);
   const [view, setView] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => saveFilters(filters), [filters]);
 
   // Only the latest request may update the view
   const requestRef = useRef(0);
@@ -38,6 +35,7 @@ export default function RecallPage() {
         rated_only: filters.ratedOnly,
       });
       filters.timeClasses.forEach((tc) => params.append("time_classes", tc));
+      filters.studies.forEach((id) => params.append("studies", id));
 
       const response = await fetch(`/api/recall-view?${params}`, {
         headers: { Authorization: `Bearer ${lichessToken}` },
@@ -53,6 +51,15 @@ export default function RecallPage() {
 
       const data = await response.json();
       if (request !== requestRef.current) return;
+      // Forget selected studies that are no longer in the Repertoire
+      const known = new Set(data.studies.map((study) => study.id));
+      if (filters.studies.some((id) => !known.has(id))) {
+        setFilters({
+          ...filters,
+          studies: filters.studies.filter((id) => known.has(id)),
+        });
+        return;
+      }
       setView(data);
       // Keep the selected gap if it is still listed, else select the first
       setSelectedKey((key) =>
@@ -81,7 +88,11 @@ export default function RecallPage() {
 
   return (
     <div className="rv">
-      <FilterRail filters={filters} onChange={setFilters} />
+      <FilterRail
+        filters={filters}
+        studies={view?.studies ?? []}
+        onChange={setFilters}
+      />
 
       <section className="rv-list">
         {error && <div className="error">{error}</div>}

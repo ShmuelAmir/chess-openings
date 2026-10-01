@@ -23,6 +23,18 @@
 .rv-switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: #fff; border-radius: 50%; transition: left 0.1s; }
 .rv-switch input:checked + .rv-switch-track { background: #81b64c; }
 .rv-switch input:checked + .rv-switch-track::after { left: 16px; }
+.rv-rail-head { display: flex; align-items: center; justify-content: space-between; }
+.rv-rail-head .rv-label { margin: 0; display: flex; align-items: center; }
+.rv-link { background: none; border: 0; padding: 0; color: #81b64c; font-size: 0.75rem; cursor: pointer; }
+.rv-link:hover { text-decoration: underline; }
+.rv-study-group { display: flex; flex-direction: column; gap: 0.4rem; }
+.rv-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.rv-pill { display: inline-flex; align-items: center; gap: 0.4rem; background: #2a2a45; color: #999; border: 1px solid #34345a; border-radius: 999px; padding: 0.3rem 0.4rem 0.3rem 0.7rem; font-size: 0.75rem; cursor: pointer; }
+.rv-pill:hover { background: #34345a; }
+.rv-pill.implicit { color: #ddd; }
+.rv-pill.on, .rv-pill.on:hover { background: #81b64c; border-color: #81b64c; color: #fff; font-weight: 600; }
+.rv-badge { min-width: 1.3rem; padding: 0 0.3rem; border-radius: 999px; background: #1f1f35; color: #ddd; font-size: 0.7rem; font-weight: 600; text-align: center; }
+.rv-pill.on .rv-badge { background: rgba(0, 0, 0, 0.25); color: #fff; }
 
 /* ranked list */
 .rv-listhead { display: flex; flex-direction: column; margin-bottom: 0.5rem; }

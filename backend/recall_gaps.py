@@ -23,6 +23,7 @@ class WalkedGame:
     rated: bool
     result: str  # the user's result: "win", "loss", "draw", or "" when unknown
     moves: list[str]
+    color: chess.Color  # the user's color
     record: WalkRecord
 
 
@@ -32,6 +33,7 @@ class RecallFilters:
     time_classes: Optional[list[str]] = None  # None means every time control
     rated_only: bool = False
     since: Optional[int] = None  # Unix timestamp; None means all time
+    studies: Optional[frozenset[str]] = None  # Study filter: study ids; None or empty means all
 
     def allows(self, game: WalkedGame) -> bool:
         if self.time_classes and game.time_class not in self.time_classes:
@@ -91,27 +93,43 @@ class Totals:
 class RecallView:
     gaps: list[RecallGap] = field(default_factory=list)
     totals: Totals = field(default_factory=Totals)
+    # Recall Gaps per study id under every Game Filter but the Study filter
+    gaps_by_study: dict[str, int] = field(default_factory=dict)
+
+
+StudiesOf = Callable[[str, chess.Color], Mapping[str, ChapterLocation]]
 
 
 def aggregate(
     games: Iterable[WalkedGame],
     filters: RecallFilters,
-    studies_of: Callable[[str], Mapping[str, ChapterLocation]],
+    studies_of: StudiesOf,
 ) -> RecallView:
     """
     Group the player-error Deviations of the games inside the filters into
     Recall Gaps, ranked by occurrences, ties broken by the most recent one.
 
+    The Study filter keeps the games whose Deviation position (where they
+    left book) is in a selected study. Every occurrence of a gap shares its
+    position, so the filter decides only whether a gap is shown.
+
     Args:
         games: Every walked game
         filters: Which games count
-        studies_of: Where a position key sits in each study containing it, by study id
+        studies_of: Where a position key sits in each study of a color
+            containing it, by study id
     """
-    shown = sorted(
+    def left_book_in_selected_study(g: WalkedGame) -> bool:
+        if not filters.studies:
+            return True
+        return not filters.studies.isdisjoint(studies_of(g.record.deviation.position_key, g.color))
+
+    in_window = sorted(
         (g for g in games if g.record.analysed and filters.allows(g)),
         key=lambda g: g.date or 0,
         reverse=True,
     )
+    shown = [g for g in in_window if left_book_in_selected_study(g)]
 
     by_type = Counter(g.record.deviation.type for g in shown if g.record.deviation)
     totals = Totals(
@@ -120,21 +138,31 @@ def aggregate(
         book_completed=by_type[DeviationType.BOOK_COMPLETED],
     )
 
+    gaps_by_study = Counter(
+        study_id
+        for key, games_at in _occurrences(in_window).items()
+        for study_id in studies_of(key, games_at[0].color)
+    )
+
+    gaps = [_gap(key, games_at, studies_of) for key, games_at in _occurrences(shown).items()]
+    gaps.sort(key=lambda gap: (-gap.occurrences, -gap.last_seen, gap.position_key))
+    return RecallView(gaps=gaps, totals=totals, gaps_by_study=dict(gaps_by_study))
+
+
+def _occurrences(games: list[WalkedGame]) -> dict[str, list[WalkedGame]]:
+    """The games of each player-error position key, in the given order."""
     occurrences: dict[str, list[WalkedGame]] = {}
-    for g in shown:
+    for g in games:
         deviation = g.record.deviation
         if deviation and deviation.type == DeviationType.PLAYER_ERROR:
             occurrences.setdefault(deviation.position_key, []).append(g)
-
-    gaps = [_gap(key, games_at, studies_of) for key, games_at in occurrences.items()]
-    gaps.sort(key=lambda gap: (-gap.occurrences, -gap.last_seen, gap.position_key))
-    return RecallView(gaps=gaps, totals=totals)
+    return occurrences
 
 
 def _gap(
     key: str,
     games_at: list[WalkedGame],
-    studies_of: Callable[[str], Mapping[str, ChapterLocation]],
+    studies_of: StudiesOf,
 ) -> RecallGap:
     """Build one Recall Gap from its occurrences (most recent first)."""
     latest = games_at[0]
@@ -150,7 +178,7 @@ def _gap(
         book_moves=book_moves,
         studies=[
             GapStudy(study_id, location.chapter_id, location.mainline_ply)
-            for study_id, location in sorted(studies_of(key).items())
+            for study_id, location in sorted(studies_of(key, latest.color).items())
         ],
         occurrences=len(games_at),
         last_seen=latest.date or 0,

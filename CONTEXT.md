@@ -70,7 +70,9 @@ Selection criteria for analyzing only relevant games:
 - **Rated:** Only rated games, or both rated and casual
 - **Color:** White only, Black only, or both (Opening Distribution only — on the recall view, color is implied by the Study filter)
 - **Date range:** Year/month bounds (from_year/from_month to to_year/to_month) or Unix timestamps
-- **Study:** one or more studies; narrows which Recall Gaps are shown (and which games the totals count) without changing what counts as the Repertoire. None selected means all studies.
+- **Study:** one or more studies; narrows which Recall Gaps are shown (and which games the totals count) without changing what counts as the Repertoire or as a Recall Gap. None selected means all studies. A gap is shown when any selected study contains its position; a game counts when the position where it left book (its Deviation position) is in a selected study — merely passing through a study's lines on the way into another's doesn't count.
+
+All Game Filters, including the Study filter, are remembered in the browser between visits.
 
 ### Sync
 
@@ -172,9 +174,11 @@ Pipeline calls game_source.fetch_games(username, GameFilters()) — every cached
 Pipeline walks each game with RepertoireWalker into a walk record
   ↓
 aggregate(walked games, filters, studies of a position) groups the player
-errors inside the filters into ranked Recall Gaps and counts the totals
+errors inside the filters into ranked Recall Gaps, counts the totals, and
+counts each study's Recall Gaps under every filter but the Study filter
   ↓
-Return {gaps: [...], totals: {analysed, opponent_left_book, book_completed}}
+Return {studies: [{id, opening_name, color, gaps}], gaps: [...],
+        totals: {analysed, opponent_left_book, book_completed}}
 ```
 
 ## Seams & Adapters

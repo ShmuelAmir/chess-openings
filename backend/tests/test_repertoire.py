@@ -114,3 +114,13 @@ def test_no_chapter_location_outside_the_study():
 
     assert repertoire.chapter_location(AFTER_E4_C5, chess.WHITE, "italian") is None
     assert repertoire.chapter_location(AFTER_E4, chess.WHITE, "vienna") is None
+
+
+def test_the_repertoire_knows_each_studys_color():
+    repertoire = build(
+        ("italian", chapter("1. e4 e5")),
+        ("sicilian", chapter("1. e4 c5", "black") + chapter("1. d4 d5", "white")),
+        ("empty", ""),
+    )
+
+    assert repertoire.study_colors == {"italian": chess.WHITE, "sicilian": chess.BLACK}
