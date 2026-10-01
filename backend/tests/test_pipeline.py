@@ -150,3 +150,38 @@ def test_a_refresh_skips_a_repertoire_fetched_moments_ago():
 
     assert asyncio.run(run()) is False
     assert source.fetches == 1
+
+
+class FixedGames(GameSource):
+    def __init__(self, games):
+        self.games = games
+
+    async def fetch_games(self, username, filters):
+        return self.games
+
+
+class ItalianSource(RepertoireSource):
+    async def fetch_repertoire(self):
+        builder = RepertoireBuilder()
+        builder.add_study("1. e4 e5 2. Nf3 *\n", "italian", study_id="italian")
+        return builder.build()
+
+
+def test_gap_statuses_cover_every_game():
+    games = FixedGames([
+        {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
+         "date": 100, "time_class": "bullet", "rated": False},
+    ])
+    pipeline = RepertoireAnalysisPipeline(ItalianSource(), games)
+
+    async def run():
+        before = pipeline.last_gap_statuses("me")
+        statuses = await pipeline.gap_statuses("me")
+        return before, statuses, pipeline.last_gap_statuses("me"), pipeline.last_gap_statuses("other")
+
+    before, statuses, last, other = asyncio.run(run())
+
+    assert before is None  # no analysis yet, and none is run for it
+    assert list(statuses.values()) == ["open"]
+    assert last == statuses
+    assert other is None

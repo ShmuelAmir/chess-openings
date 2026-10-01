@@ -122,6 +122,24 @@ class RepertoireAnalysisPipeline:
         walked = await self._walk_games(username, repertoire)
         return aggregate(walked, filters, repertoire.study_locations)
 
+    async def gap_statuses(self, username: str) -> dict[str, str]:
+        """Each Recall Gap's status by position key, over every game."""
+        view = await self.recall_view(username, RecallFilters())
+        return {gap.position_key: gap.status for gap in view.gaps}
+
+    def last_gap_statuses(self, username: str) -> Optional[dict[str, str]]:
+        """
+        Each Recall Gap's status in the last analysis, or None if there is
+        none for this user. Never fetches or walks anything.
+        """
+        if self._walked_cache is None:
+            return None
+        cached_username, repertoire, walked = self._walked_cache
+        if cached_username != username.lower():
+            return None
+        view = aggregate(walked, RecallFilters(), repertoire.study_locations)
+        return {gap.position_key: gap.status for gap in view.gaps}
+
     async def _walk_games(self, username: str, repertoire: Repertoire) -> list[WalkedGame]:
         """Every cached game walked through the Repertoire, reusing the last analysis."""
         if self._walked_cache is not None:

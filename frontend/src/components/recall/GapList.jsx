@@ -1,4 +1,4 @@
-import { formatLine, formatDate, formatStatus } from "./format";
+import { formatLine, formatDate, formatStatus, formatSyncChanges } from "./format";
 
 /** The ranked Recall Gaps, with the list header and totals strip. */
 export default function GapList({
@@ -11,8 +11,10 @@ export default function GapList({
   onSelect,
   loading,
   syncing,
+  syncResult,
 }) {
   const openCount = gaps.filter((gap) => gap.status === "open").length;
+  const changes = syncing ? null : formatSyncChanges(syncResult);
   return (
     <>
       <div className="rv-listhead">
@@ -33,6 +35,7 @@ export default function GapList({
           {totals.opponent_left_book} · book completed {totals.book_completed}
           {syncing ? " · Syncing…" : loading && " · updating…"}
         </span>
+        {changes && <span className="rv-changes">{changes}</span>}
       </div>
 
       {gaps.length === 0 && (

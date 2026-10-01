@@ -147,6 +147,8 @@ def sync_for(token: str, chess_com_username: str) -> Sync:
             games_last_success=games_last_success,
             repertoire_log=RepertoireSyncLog(user=_token_key(token)),
             on_games_changed=invalidate_analyses,
+            previous_gap_statuses=lambda: pipeline.last_gap_statuses(chess_com_username),
+            gap_statuses=lambda: pipeline.gap_statuses(chess_com_username),
         )
     return _syncs[key]
 

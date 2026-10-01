@@ -162,12 +162,38 @@ class RepertoireSyncLog:
             conn.commit()
 
 
+GapStatuses = dict[str, str]  # each Recall Gap's status, by position key
+
+
+@dataclass(frozen=True)
+class GapChanges:
+    """How the Recall Gaps differ from the previous analysis."""
+    new: int = 0
+    closed: int = 0  # newly Closed
+    reopened: int = 0
+
+
+def gap_changes(before: GapStatuses, after: GapStatuses) -> GapChanges:
+    """Count the gaps that are new, newly Closed and reopened since `before`."""
+    new = closed = reopened = 0
+    for key, status in after.items():
+        previous = before.get(key)
+        if previous is None:
+            new += 1
+        elif previous == "open" and status == "closed":
+            closed += 1
+        elif previous == "closed" and status == "open":
+            reopened += 1
+    return GapChanges(new, closed, reopened)
+
+
 @dataclass(frozen=True)
 class SyncResult:
     """What a Sync changed."""
     games_changed: bool
     repertoire_changed: bool
     new_games: int
+    gaps: GapChanges
 
 
 @dataclass
@@ -197,6 +223,8 @@ class Sync:
         games_last_success: Callable[[], Optional[int]],
         repertoire_log: RepertoireSyncLog,
         on_games_changed: Callable[[], None],
+        previous_gap_statuses: Callable[[], Optional[GapStatuses]],
+        gap_statuses: Callable[[], Awaitable[GapStatuses]],
         clock: Callable[[], float] = time.time,
     ):
         """
@@ -208,6 +236,11 @@ class Sync:
                 (persisted with the game cache)
             repertoire_log: When the Repertoire last synced from Lichess
             on_games_changed: Drops the analysis of the old games
+            previous_gap_statuses: Each Recall Gap's status in the last
+                analysis, or None if there is none; never runs one, so the
+                Sync's Repertoire refresh isn't pre-empted
+            gap_statuses: Runs the analysis (every game, no Game Filters)
+                and returns each Recall Gap's status
             clock: The current Unix time
         """
         self.sync_games = sync_games
@@ -215,6 +248,8 @@ class Sync:
         self.games_last_success = games_last_success
         self.repertoire_log = repertoire_log
         self.on_games_changed = on_games_changed
+        self.previous_gap_statuses = previous_gap_statuses
+        self.gap_statuses = gap_statuses
         self.clock = clock
 
         self.chess_com = SourceStatus()
@@ -237,6 +272,7 @@ class Sync:
         """Sync both sources; a failing source doesn't stop the other."""
         new_games = 0
         games_changed = repertoire_changed = False
+        before = self.previous_gap_statuses()
 
         try:
             games = await self.sync_games(
@@ -271,10 +307,24 @@ class Sync:
             self.lichess.status = "failed"
             self.lichess.error = _error_message(e)
 
-        self.result = SyncResult(games_changed, repertoire_changed, new_games)
+        gaps = GapChanges()
+        if before is not None and (games_changed or repertoire_changed):
+            after = await self._gap_statuses_after()
+            if after is not None:
+                gaps = gap_changes(before, after)
+
+        self.result = SyncResult(games_changed, repertoire_changed, new_games, gaps)
         self.runs += 1
         self.progress = None
         return self.result
+
+    async def _gap_statuses_after(self) -> Optional[GapStatuses]:
+        """Each Recall Gap's status after the Sync, or None if the analysis failed."""
+        try:
+            return await self.gap_statuses()
+        except Exception as e:
+            logger.warning(f"Analysis for the Sync's changes failed: {e}")
+            return None
 
     def _set_progress(self, message: str):
         self.progress = message
@@ -299,6 +349,9 @@ class Sync:
                     "games_changed": self.result.games_changed,
                     "repertoire_changed": self.result.repertoire_changed,
                     "new_games": self.result.new_games,
+                    "new_gaps": self.result.gaps.new,
+                    "closed_gaps": self.result.gaps.closed,
+                    "reopened_gaps": self.result.gaps.reopened,
                 }
                 if self.result
                 else None

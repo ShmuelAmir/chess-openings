@@ -38,6 +38,7 @@
 
 /* ranked list */
 .rv-listhead { display: flex; flex-direction: column; margin-bottom: 0.5rem; }
+.rv-changes { color: #81b64c; font-size: 0.85em; }
 .rv-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 0.6rem; width: 100%; text-align: left; background: #22223a; border: 1px solid transparent; color: inherit; border-radius: 6px; padding: 0.6rem; margin-bottom: 0.4rem; cursor: pointer; font-weight: normal; }
 .rv-row:hover { background: #2a2a45; }
 .rv-row.active { border-color: #81b64c; background: #2a2a45; }
