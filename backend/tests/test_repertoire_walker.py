@@ -65,7 +65,7 @@ def test_empty_game_is_not_analysed():
     assert not walk(ITALIAN, chess.WHITE, []).analysed
 
 
-SICILIAN = '[Event "Sicilian"]\n\n1. e4 c5 2. Nf3 d6 *\n'
+SICILIAN = '[Event "Sicilian"]\n[Orientation "black"]\n\n1. e4 c5 2. Nf3 d6 *\n'
 
 
 def test_player_error_on_move_one_is_not_this_opening():

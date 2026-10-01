@@ -3,7 +3,7 @@ Concrete implementations of RepertoireSource and GameSource.
 """
 
 import logging
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from pipeline import RepertoireSource, GameSource, GameFilters
 from repertoire import Repertoire, RepertoireBuilder
@@ -15,30 +15,35 @@ logger = logging.getLogger(__name__)
 
 
 class LichessRepertoireSource(RepertoireSource):
-    """Fetches and builds repertoires from Lichess studies."""
+    """Builds the user's Repertoire from every study they own on Lichess."""
     
-    def __init__(self, lichess_token: str):
-        self.lichess_token = lichess_token
-    
-    async def fetch_repertoire(
+    def __init__(
         self,
-        study_ids: list[str],
-        study_names: list[str],
-    ) -> Repertoire:
+        lichess_token: str,
+        list_studies: Callable[[], Awaitable[list[dict]]],
+    ):
         """
-        Fetch studies from Lichess and build repertoire tree.
-        
         Args:
-            study_ids: Lichess study IDs
-            study_names: Corresponding study names
+            lichess_token: The user's Lichess token
+            list_studies: Lists the user's owned studies (id, name); called on
+                every rebuild, so new studies join the Repertoire
+        """
+        self.lichess_token = lichess_token
+        self.list_studies = list_studies
+    
+    async def fetch_repertoire(self) -> Repertoire:
+        """
+        Fetch every owned study from Lichess and build the repertoire trees.
         
         Returns:
             Repertoire object with white/black trees
         """
         builder = RepertoireBuilder()
+        studies = await self.list_studies()
         
         async with LichessClient(token=self.lichess_token) as client:
-            for study_id, study_name in zip(study_ids, study_names):
+            for study in studies:
+                study_id, study_name = study["id"], study["name"]
                 try:
                     logger.debug(f"Fetching study {study_id} ({study_name})")
                     # Deepen: LichessClient handles opening name normalization
@@ -58,7 +63,7 @@ class LichessRepertoireSource(RepertoireSource):
                     raise
         
         repertoire = builder.build()
-        logger.debug(f"Built repertoire from {len(study_ids)} studies")
+        logger.debug(f"Built repertoire from {len(studies)} studies")
         return repertoire
 
 
