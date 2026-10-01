@@ -6,11 +6,11 @@ view. No I/O. See Recall Gap in CONTEXT.md.
 """
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Optional
+from typing import Callable, Iterable, Mapping, Optional
 
 import chess
 
-from repertoire import side_to_move
+from repertoire import ChapterLocation, side_to_move
 from repertoire_walker import DeviationType, WalkRecord
 
 
@@ -21,6 +21,7 @@ class WalkedGame:
     date: int  # Unix timestamp
     time_class: str
     rated: bool
+    result: str  # the user's result: "win", "loss", "draw", or "" when unknown
     moves: list[str]
     record: WalkRecord
 
@@ -55,6 +56,15 @@ class GapGame:
     date: int
     time_class: str
     move_played: str
+    result: str
+
+
+@dataclass(frozen=True)
+class GapStudy:
+    """A study containing a Recall Gap's position, and where it sits in that study."""
+    id: str
+    chapter_id: Optional[str]
+    mainline_ply: Optional[int]  # None when the position is off the chapter's mainline
 
 
 @dataclass
@@ -64,7 +74,7 @@ class RecallGap:
     path: list[str]  # SAN moves leading to the position in the most recent occurrence
     wrong_moves: list[WrongMove]
     book_moves: list[str]
-    studies: list[str]  # ids of every study containing the position
+    studies: list[GapStudy]  # every study containing the position, sorted by id
     occurrences: int
     last_seen: int
     games: list[GapGame]  # most recent first
@@ -86,7 +96,7 @@ class RecallView:
 def aggregate(
     games: Iterable[WalkedGame],
     filters: RecallFilters,
-    studies_of: Callable[[str], Iterable[str]],
+    studies_of: Callable[[str], Mapping[str, ChapterLocation]],
 ) -> RecallView:
     """
     Group the player-error Deviations of the games inside the filters into
@@ -95,7 +105,7 @@ def aggregate(
     Args:
         games: Every walked game
         filters: Which games count
-        studies_of: Ids of the studies containing a position key
+        studies_of: Where a position key sits in each study containing it, by study id
     """
     shown = sorted(
         (g for g in games if g.record.analysed and filters.allows(g)),
@@ -124,7 +134,7 @@ def aggregate(
 def _gap(
     key: str,
     games_at: list[WalkedGame],
-    studies_of: Callable[[str], Iterable[str]],
+    studies_of: Callable[[str], Mapping[str, ChapterLocation]],
 ) -> RecallGap:
     """Build one Recall Gap from its occurrences (most recent first)."""
     latest = games_at[0]
@@ -138,11 +148,14 @@ def _gap(
         path=latest.moves[: latest.record.deviation.ply],
         wrong_moves=[WrongMove(san, n) for san, n in sorted(played.items(), key=lambda m: (-m[1], m[0]))],
         book_moves=book_moves,
-        studies=sorted(studies_of(key)),
+        studies=[
+            GapStudy(study_id, location.chapter_id, location.mainline_ply)
+            for study_id, location in sorted(studies_of(key).items())
+        ],
         occurrences=len(games_at),
         last_seen=latest.date or 0,
         games=[
-            GapGame(g.url, g.date, g.time_class, g.record.deviation.move_played)
+            GapGame(g.url, g.date, g.time_class, g.record.deviation.move_played, g.result)
             for g in games_at
         ],
     )

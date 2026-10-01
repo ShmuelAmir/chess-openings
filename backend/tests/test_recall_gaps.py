@@ -25,12 +25,13 @@ def repertoire(*studies):
 REPERTOIRE = repertoire(("italian", ITALIAN), ("sicilian", SICILIAN))
 
 
-def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rated=True):
+def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rated=True, result="win"):
     return WalkedGame(
         url=f"https://chess.com/game/{day}-{'-'.join(moves)}",
         date=day * DAY,
         time_class=time_class,
         rated=rated,
+        result=result,
         moves=moves,
         record=RepertoireWalker(rep).walk_game(color, moves),
     )
@@ -38,7 +39,7 @@ def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rate
 
 def recall(games, filters=RecallFilters(), rep=REPERTOIRE):
     def studies_of(key):
-        return rep.studies_containing(key, side_to_move(key))
+        return rep.study_locations(key, side_to_move(key))
 
     return aggregate(games, filters, studies_of)
 
@@ -119,7 +120,7 @@ def test_gap_belongs_to_every_study_containing_its_position():
     view = recall([game(["e4", "e5", "Nf3", "Nc6", "d4"], day=1, rep=rep)], rep=rep)
 
     gap = view.gaps[0]
-    assert gap.studies == ["italian", "spanish"]
+    assert [s.id for s in gap.studies] == ["italian", "spanish"]
     assert gap.book_moves == ["Bc4", "Bb5"]
 
 
@@ -161,3 +162,31 @@ def test_one_off_gaps_are_kept():
 
     assert len(view.gaps) == 1
     assert view.gaps[0].occurrences == 1
+
+
+def test_gap_games_show_what_was_played_and_the_users_result():
+    bb5 = ["e4", "e5", "Nf3", "Nc6", "Bb5"]
+    view = recall([
+        game(bb5, day=1, time_class="rapid", result="loss"),
+        game(["e4", "e5", "Nf3", "Nc6", "d4"], day=2, result="draw"),
+    ])
+
+    assert [
+        (g.date, g.time_class, g.move_played, g.result) for g in view.gaps[0].games
+    ] == [(2 * DAY, "blitz", "d4", "draw"), (1 * DAY, "rapid", "Bb5", "loss")]
+
+
+def test_gap_studies_locate_the_position_in_their_chapters():
+    rep = repertoire((
+        "italian",
+        '[Event "Italian"]\n[ChapterURL "https://lichess.org/study/italian/ch1"]\n\n'
+        "1. e4 e5 2. Nf3 (2. Bc4 Nf6 3. d3) Nc6 3. Bc4 *\n",
+    ))
+    view = recall([
+        game(["e4", "e5", "Nf3", "Nc6", "d4"], day=2, rep=rep),
+        game(["e4", "e5", "Bc4", "Nf6", "Nc3"], day=1, rep=rep),
+    ], rep=rep)
+
+    on_mainline, off_mainline = view.gaps
+    assert [(s.id, s.chapter_id, s.mainline_ply) for s in on_mainline.studies] == [("italian", "ch1", 4)]
+    assert [(s.id, s.chapter_id, s.mainline_ply) for s in off_mainline.studies] == [("italian", "ch1", None)]

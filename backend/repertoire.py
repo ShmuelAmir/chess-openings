@@ -59,15 +59,16 @@ class Repertoire:
 
     def studies_containing(self, key: str, color: chess.Color) -> set[str]:
         """Ids of the studies of this color whose lines contain the position."""
-        return set(self._locations(key, color))
+        return set(self.study_locations(key, color))
 
     def chapter_location(
         self, key: str, color: chess.Color, study_id: str
     ) -> Optional[ChapterLocation]:
         """The chapter (and mainline ply, if any) to deep-link this position in a study."""
-        return self._locations(key, color).get(study_id)
+        return self.study_locations(key, color).get(study_id)
 
-    def _locations(self, key: str, color: chess.Color) -> dict[str, ChapterLocation]:
+    def study_locations(self, key: str, color: chess.Color) -> dict[str, ChapterLocation]:
+        """Where the position sits in each study of this color that contains it, by study id."""
         return self._study_membership.get((color, key), {})
 
     def add_study_position(
