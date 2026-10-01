@@ -26,7 +26,7 @@ from game_cache import get_game_cache
 from exclusions import get_exclusion_store
 from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
-from recall_gaps import RecallFilters
+from recall_gaps import GAMES_TO_CLOSE, RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
 from sync import ChessComSync, RepertoireSyncLog, Sync
 
@@ -408,6 +408,10 @@ async def recall_view(
                 ],
                 "occurrences": gap.occurrences,
                 "last_seen": gap.last_seen,
+                "status": gap.status,
+                "progress": gap.progress,
+                "games_to_close": GAMES_TO_CLOSE,
+                "closed_at": gap.closed_at,
                 "games": [
                     {
                         "url": g.url,

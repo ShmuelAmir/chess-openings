@@ -15,6 +15,7 @@ export default function RecallPage() {
   const [filters, setFilters] = useState(loadFilters);
   const [view, setView] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
+  const [showClosed, setShowClosed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -64,12 +65,6 @@ export default function RecallPage() {
         return;
       }
       setView(data);
-      // Keep the selected gap if it is still listed, else select the first
-      setSelectedKey((key) =>
-        data.gaps.some((gap) => gap.position_key === key)
-          ? key
-          : (data.gaps[0]?.position_key ?? null),
-      );
     } catch (err) {
       if (request === requestRef.current) setError(err.message);
     } finally {
@@ -87,7 +82,12 @@ export default function RecallPage() {
     return () => syncOrchestrator.off("cache-ready", loadRecallView);
   }, [loadRecallView]);
 
-  const selected = view?.gaps.find((gap) => gap.position_key === selectedKey);
+  const shownGaps = (view?.gaps ?? []).filter(
+    (gap) => showClosed || gap.status === "open",
+  );
+  // The selected gap if it is still listed, else the first
+  const selected =
+    shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0];
 
   return (
     <div className="rv">
@@ -119,9 +119,12 @@ export default function RecallPage() {
           <div className="loading">Loading Recall Gaps...</div>
         ) : (
           <GapList
-            gaps={view.gaps}
+            gaps={shownGaps}
+            closedCount={view.gaps.filter((gap) => gap.status === "closed").length}
+            showClosed={showClosed}
+            onToggleClosed={() => setShowClosed(!showClosed)}
             totals={view.totals}
-            selectedKey={selectedKey}
+            selectedKey={selected?.position_key}
             onSelect={setSelectedKey}
             loading={loading}
             syncing={syncing}

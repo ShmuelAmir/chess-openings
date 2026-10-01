@@ -1,13 +1,33 @@
-import { formatLine, formatDate } from "./format";
+import { formatLine, formatDate, formatStatus } from "./format";
 
 /** The ranked Recall Gaps, with the list header and totals strip. */
-export default function GapList({ gaps, totals, selectedKey, onSelect, loading, syncing }) {
+export default function GapList({
+  gaps,
+  closedCount,
+  showClosed,
+  onToggleClosed,
+  totals,
+  selectedKey,
+  onSelect,
+  loading,
+  syncing,
+}) {
+  const openCount = gaps.filter((gap) => gap.status === "open").length;
   return (
     <>
       <div className="rv-listhead">
-        <strong>
-          {gaps.length} Recall {gaps.length === 1 ? "Gap" : "Gaps"}
-        </strong>
+        <span className="rv-listtitle">
+          <strong>
+            {openCount} open Recall {openCount === 1 ? "Gap" : "Gaps"}
+          </strong>
+          {closedCount > 0 && (
+            <label className="rv-switch">
+              <input type="checkbox" checked={showClosed} onChange={onToggleClosed} />
+              <span className="rv-switch-track" />
+              Show closed ({closedCount})
+            </label>
+          )}
+        </span>
         <span className="rv-muted">
           {totals.analysed} games analysed · opponent left book{" "}
           {totals.opponent_left_book} · book completed {totals.book_completed}
@@ -17,7 +37,11 @@ export default function GapList({ gaps, totals, selectedKey, onSelect, loading, 
 
       {gaps.length === 0 && (
         <div className="empty-state">
-          <p>No Recall Gaps for these filters</p>
+          <p>
+            {closedCount > 0
+              ? "Every Recall Gap for these filters is closed"
+              : "No Recall Gaps for these filters"}
+          </p>
         </div>
       )}
 
@@ -25,7 +49,13 @@ export default function GapList({ gaps, totals, selectedKey, onSelect, loading, 
         <button
           key={gap.position_key}
           type="button"
-          className={gap.position_key === selectedKey ? "rv-row active" : "rv-row"}
+          className={[
+            "rv-row",
+            gap.position_key === selectedKey && "active",
+            gap.status === "closed" && "closed",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           onClick={() => onSelect(gap.position_key)}
         >
           <span className="rv-rank">{i + 1}</span>
@@ -43,6 +73,7 @@ export default function GapList({ gaps, totals, selectedKey, onSelect, loading, 
           <span className="rv-count">
             <b>{gap.occurrences}×</b>
             <span className="rv-muted">{formatDate(gap.last_seen)}</span>
+            <span className="rv-muted">{formatStatus(gap)}</span>
           </span>
         </button>
       ))}
