@@ -1,7 +1,7 @@
 import chess
 
 from recall_gaps import RecallFilters, Totals, WalkedGame, aggregate
-from repertoire import RepertoireBuilder, side_to_move
+from repertoire import RepertoireBuilder
 from repertoire_walker import RepertoireWalker
 
 AFTER_E4_E5 = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -"
@@ -33,15 +33,13 @@ def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rate
         rated=rated,
         result=result,
         moves=moves,
+        color=color,
         record=RepertoireWalker(rep).walk_game(color, moves),
     )
 
 
 def recall(games, filters=RecallFilters(), rep=REPERTOIRE):
-    def studies_of(key):
-        return rep.study_locations(key, side_to_move(key))
-
-    return aggregate(games, filters, studies_of)
+    return aggregate(games, filters, rep.study_locations)
 
 
 def test_player_errors_at_the_same_position_are_one_gap():
@@ -190,3 +188,103 @@ def test_gap_studies_locate_the_position_in_their_chapters():
     on_mainline, off_mainline = view.gaps
     assert [(s.id, s.chapter_id, s.mainline_ply) for s in on_mainline.studies] == [("italian", "ch1", 4)]
     assert [(s.id, s.chapter_id, s.mainline_ply) for s in off_mainline.studies] == [("italian", "ch1", None)]
+
+
+TWO_KNIGHTS = '[Event "Two Knights"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. Ng5 *\n'
+STUDY_REPERTOIRE = repertoire(
+    ("italian", ITALIAN), ("spanish", SPANISH), ("two-knights", TWO_KNIGHTS), ("sicilian", SICILIAN)
+)
+
+
+def study_game(moves, day, color=chess.WHITE):
+    return game(moves, day, color=color, rep=STUDY_REPERTOIRE)
+
+
+SHARED_GAP = ["e4", "e5", "Nf3", "Nc6", "d4"]  # Italian, Spanish and Two Knights
+ITALIAN_ONLY_GAP = ["e4", "e5", "Bc4", "Nf6", "Nc3"]
+TWO_KNIGHTS_GAP = ["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "d3"]
+SICILIAN_GAP = ["e4", "c5", "Nf3", "Nc6"]
+
+
+def study_recall(games, studies=None):
+    return recall(games, RecallFilters(studies=studies), rep=STUDY_REPERTOIRE)
+
+
+def test_no_study_selected_shows_every_gap():
+    games = [study_game(SHARED_GAP, 1), study_game(SICILIAN_GAP, 2, color=chess.BLACK)]
+
+    assert len(study_recall(games).gaps) == 2
+    assert len(study_recall(games, studies=frozenset()).gaps) == 2
+
+
+def test_a_gap_shows_when_any_selected_study_contains_its_position():
+    games = [
+        study_game(SHARED_GAP, 1),
+        study_game(ITALIAN_ONLY_GAP, 2),
+        study_game(TWO_KNIGHTS_GAP, 3),
+        study_game(SICILIAN_GAP, 4, color=chess.BLACK),
+    ]
+
+    def shown(*studies):
+        return {tuple(g.path) for g in study_recall(games, frozenset(studies)).gaps}
+
+    assert shown("spanish") == {tuple(SHARED_GAP[:-1])}
+    assert shown("italian") == {tuple(SHARED_GAP[:-1]), tuple(ITALIAN_ONLY_GAP[:-1])}
+    assert shown("two-knights", "sicilian") == {
+        tuple(SHARED_GAP[:-1]), tuple(TWO_KNIGHTS_GAP[:-1]), tuple(SICILIAN_GAP[:-1])
+    }
+
+
+def test_the_study_filter_never_changes_a_gaps_occurrences():
+    games = [study_game(SHARED_GAP, 1), study_game(SHARED_GAP, 2)]
+
+    unfiltered = study_recall(games).gaps
+    filtered = study_recall(games, frozenset({"spanish"})).gaps
+
+    assert [(g.occurrences, g.last_seen, [s.id for s in g.studies]) for g in filtered] == [
+        (g.occurrences, g.last_seen, [s.id for s in g.studies]) for g in unfiltered
+    ]
+    assert [s.id for s in filtered[0].studies] == ["italian", "spanish", "two-knights"]
+
+
+def test_totals_under_a_study_filter_count_games_that_left_book_in_a_selected_study():
+    games = [
+        study_game(SHARED_GAP, 1),  # player error, shared position
+        study_game(ITALIAN_ONLY_GAP, 2),  # player error, Italian only
+        study_game(["e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "Ng5"], 3),  # Two Knights completed
+        study_game(["e4", "e5", "Nf3", "Nc6", "Bb5"], 4),  # Spanish completed
+        study_game(["e4", "e5", "Nf3", "d6"], 5),  # opponent left book, shared position
+        study_game(SICILIAN_GAP, 6, color=chess.BLACK),
+    ]
+
+    assert study_recall(games, frozenset({"spanish"})).totals == Totals(
+        analysed=3, opponent_left_book=1, book_completed=1
+    )
+    # Passing through the Italian on the way into the Two Knights doesn't count
+    assert study_recall(games, frozenset({"italian"})).totals == Totals(
+        analysed=3, opponent_left_book=1, book_completed=0
+    )
+    assert study_recall(games, frozenset({"sicilian"})).totals == Totals(
+        analysed=1, opponent_left_book=0, book_completed=0
+    )
+
+
+def test_each_study_counts_the_gaps_it_contains_whatever_studies_are_selected():
+    games = [
+        study_game(SHARED_GAP, 1),
+        study_game(SHARED_GAP, 2),
+        study_game(ITALIAN_ONLY_GAP, 3),
+        study_game(SICILIAN_GAP, 4, color=chess.BLACK),
+    ]
+
+    expected = {"italian": 2, "spanish": 1, "two-knights": 1, "sicilian": 1}
+    assert study_recall(games).gaps_by_study == expected
+    assert study_recall(games, frozenset({"sicilian"})).gaps_by_study == expected
+
+
+def test_study_gap_counts_follow_the_other_filters():
+    games = [study_game(SHARED_GAP, 1), study_game(ITALIAN_ONLY_GAP, 10)]
+
+    view = recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE)
+
+    assert view.gaps_by_study == {"italian": 1}

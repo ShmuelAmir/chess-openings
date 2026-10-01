@@ -11,7 +11,7 @@ import logging
 
 import chess
 
-from repertoire import ChapterLocation, Repertoire, side_to_move
+from repertoire import Repertoire
 from repertoire_walker import RepertoireWalker
 from recall_gaps import RecallFilters, RecallView, WalkedGame, aggregate
 
@@ -127,6 +127,7 @@ class RepertoireAnalysisPipeline:
                     rated=bool(game.get("rated")),
                     result=game.get("user_result", ""),
                     moves=moves,
+                    color=color,
                     record=walker.walk_game(color, moves),
                 ))
             except Exception as e:
@@ -135,12 +136,11 @@ class RepertoireAnalysisPipeline:
                     f"Failed to analyze game {game.get('url', 'unknown')}: {e}"
                 )
 
-        def studies_of(key: str) -> dict[str, ChapterLocation]:
-            # A Recall Gap is a position on the user's move, so its side to
-            # move is the user's color and picks the tree.
-            return repertoire.study_locations(key, side_to_move(key))
+        return aggregate(walked, filters, repertoire.study_locations)
 
-        return aggregate(walked, filters, studies_of)
+    async def study_colors(self) -> dict[str, chess.Color]:
+        """The color of each study in the user's Repertoire, by study id."""
+        return (await self._get_repertoire()).study_colors
     
     async def _get_repertoire(self) -> Repertoire:
         """

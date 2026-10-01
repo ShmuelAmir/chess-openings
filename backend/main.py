@@ -17,9 +17,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import datetime
 
+import chess
+
 from lichess import LichessClient, LichessRateLimitError, study_url
 from chess_com import ChessComClient
 from game_cache import get_game_cache
+from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
@@ -218,9 +221,13 @@ async def recall_view(
     time_classes: list[str] = Query(None),
     date_range: str = Query("all"),
     rated_only: bool = Query(False),
+    studies: list[str] = Query(None),
     authorization: str = Header(...),
 ):
-    """The ranked Recall Gaps and totals of the user's cached games, under the Game Filters."""
+    """
+    The ranked Recall Gaps and totals of the user's cached games, under the
+    Game Filters, and the user's studies with their color for the filter rail.
+    """
     token = authorization.replace("Bearer ", "")
 
     if date_range not in DATE_RANGE_DAYS:
@@ -231,7 +238,7 @@ async def recall_view(
 
     # Validate token (early fail); the studies also name the gaps' studies
     try:
-        studies = await fetch_studies_cached(token)
+        owned_studies = await fetch_studies_cached(token)
     except LichessRateLimitError:
         raise
     except httpx.HTTPStatusError as e:
@@ -244,11 +251,27 @@ async def recall_view(
         time_classes=time_classes,
         rated_only=rated_only,
         since=int(time.time()) - days * 24 * 60 * 60 if days else None,
+        studies=frozenset(studies) if studies else None,
     )
-    view = await pipeline_for(token).recall_view(chess_com_username, filters)
+    pipeline = pipeline_for(token)
+    view = await pipeline.recall_view(chess_com_username, filters)
+    study_colors = await pipeline.study_colors()
 
-    study_names = {study["id"]: study["name"] for study in studies}
+    study_names = {study["id"]: study["name"] for study in owned_studies}
     return {
+        "studies": sorted(
+            (
+                {
+                    "id": study_id,
+                    "name": study_names.get(study_id, study_id),
+                    "opening_name": OpeningNormalizer.normalize(study_names.get(study_id, study_id)),
+                    "color": "white" if color == chess.WHITE else "black",
+                    "gaps": view.gaps_by_study.get(study_id, 0),
+                }
+                for study_id, color in study_colors.items()
+            ),
+            key=lambda study: study["opening_name"].lower(),
+        ),
         "gaps": [
             {
                 "position_key": gap.position_key,
