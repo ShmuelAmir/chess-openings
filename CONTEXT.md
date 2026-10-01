@@ -17,6 +17,10 @@ A collection of chess opening lines that a player has studied and prepared. Stor
 
 The tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each position, the repertoire node tracks which moves are available (user's options).
 
+**Which studies:** every study the user owns on Lichess, except those they have explicitly marked as "not repertoire".
+
+**Study color:** every study belongs to exactly one color — White or Black — and contributes only to that color's tree. A study never mixes colors.
+
 ### Deviation
 
 The first move in a Chess.com game that was **not** available in the repertoire at that position. Signals either:
@@ -25,14 +29,55 @@ The first move in a Chess.com game that was **not** available in the repertoire 
 2. **Opponent left book:** Opponent deviated first, requiring a non-prepared response
 3. **Book completed:** Game reached the end of studied lines (rare)
 
+### Recall Gap
+
+A repertoire position where the user has played a move outside their prepared lines at least once, across the analyzed games. It is the primary unit of the recall loop: one thing to fix.
+
+- **Identity:** the position itself (board, side to move, castling, en passant — not the move counters), not the move path that reached it.
+- **Occurrence:** each player-error *Deviation* at that position is one occurrence of the Recall Gap. The gap records which wrong moves were played and how often; different wrong moves at the same position are the same gap.
+- **Book moves:** every repertoire move at the position is an acceptable answer; there is no single "correct" move.
+- **Ranking:** by number of occurrences within the Game Filters window, ties broken by most recent occurrence.
+
+- **Studies:** a Recall Gap belongs to every study whose lines contain its position.
+- **Status:** *Open* or *Closed*. A gap is Closed once the user has reached its position in two real games since its last occurrence and played a book move both times. Only real games decide status — Drill Attempts never close or reopen a gap — and all games count, whatever the Game Filters. A new occurrence reopens a Closed gap and starts the count again.
+
+Only player errors form Recall Gaps. *Opponent left book* and *book completed* Deviations are reported only as totals.
+
+_Avoid:_ "mistake", "leak", "weak spot" as synonyms — use Recall Gap for the grouped unit and Deviation for the single-game event. For status, avoid "fixed", "resolved", "mastered" — use Closed.
+
+### Drill Attempt
+
+One practice run of a Recall Gap: the user replays the line from the first move up to the Recall Gap's position and plays a move there, while the opponent's moves are played for them. The line is the one from the gap's most recent occurrence. Any repertoire move counts as correct at every turn.
+
+- **Outcome:** a pass, or a fail at the first wrong move. A failed attempt records the position where that first wrong move was played.
+- **Relationship to Recall Gaps:** drill results decide when a Recall Gap is next due for practice. They never create Recall Gaps and never change their ranking, because Recall Gaps come only from real games.
+
+_Avoid:_ "exercise", "puzzle", "quiz" — use Drill Attempt.
+
+### Miss Rate
+
+The share of analysed games in which the user made a player-error *Deviation*: the headline measure of whether recall is improving. It counts real games only; Drill Attempts never affect it. Game Filters narrow which games count, so selecting a study gives that study's Miss Rate.
+
+_Avoid:_ "accuracy", "error rate" — Chess.com uses "accuracy" for engine scores.
+
 ### Game Filters
 
 Selection criteria for analyzing only relevant games:
 
 - **Time control:** bullet, blitz, rapid, daily
 - **Rated:** Only rated games, or both rated and casual
-- **Color:** White only, Black only, or both
+- **Color:** White only, Black only, or both (Opening Distribution only — on the recall view, color is implied by the Study filter)
 - **Date range:** Year/month bounds (from_year/from_month to to_year/to_month) or Unix timestamps
+- **Study:** one or more studies; narrows which Recall Gaps are shown (and which games the totals count) without changing what counts as the Repertoire. None selected means all studies.
+
+### Sync
+
+Bringing both data sources up to date — Chess.com games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand.
+
+- **Partial Sync:** some Chess.com months or the Lichess refresh failed; what succeeded is kept, and the failed parts are retried on the next Sync.
+- A Sync never interrupts a Drill Attempt; its analysis is applied once practice ends.
+
+_Avoid:_ "refresh", "import" as synonyms — use Sync.
 
 ### Opening Name
 
