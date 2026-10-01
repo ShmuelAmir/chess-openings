@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 
 from game_cache import GameCache
-from sync import ChessComSync, GamesSyncResult, RepertoireSyncLog, Sync
+from sync import ChessComSync, GamesSyncResult, GapChanges, RepertoireSyncLog, Sync, gap_changes
 
 ARCHIVES = "https://api.chess.com/pub/player/magnus/games/{}/{:02d}"
 
@@ -154,6 +154,12 @@ class Sources:
         self.repertoire_log = InMemoryLog()
         self.games_invalidated = 0
         self.invalidated_before_lichess = None
+        # Each Recall Gap's status in the last analysis (None: there is none),
+        # and in the analysis after the Sync
+        self.previous_statuses = {}
+        self.statuses_after = {}
+        self.analyses = 0
+        self.analysis_error = None
 
     def sync(self):
         return Sync(
@@ -162,6 +168,8 @@ class Sources:
             games_last_success=lambda: self.games_last_success,
             repertoire_log=self.repertoire_log,
             on_games_changed=self.invalidate_games,
+            previous_gap_statuses=lambda: self.previous_statuses,
+            gap_statuses=self.gap_statuses,
             clock=lambda: 1000,
         )
 
@@ -181,6 +189,12 @@ class Sources:
 
     def invalidate_games(self):
         self.games_invalidated += 1
+
+    async def gap_statuses(self):
+        self.analyses += 1
+        if self.analysis_error:
+            raise self.analysis_error
+        return self.statuses_after
 
 
 def run(sync):
@@ -305,3 +319,79 @@ def test_the_lichess_last_success_survives_a_restart(tmp_path):
 
     assert restarted.status()["sources"]["lichess"]["last_success_at"] == 1000
     assert restarted.status()["last_synced_at"] == 900
+
+
+def test_gap_changes_count_new_newly_closed_and_reopened_gaps():
+    before = {"a": "open", "b": "open", "c": "closed", "d": "closed"}
+    after = {"a": "open", "b": "closed", "c": "open", "d": "closed", "e": "open", "f": "open"}
+
+    assert gap_changes(before, after) == GapChanges(new=2, closed=1, reopened=1)
+
+
+def test_a_gap_that_disappears_is_not_counted():
+    assert gap_changes({"a": "open"}, {}) == GapChanges()
+
+
+def test_a_sync_reports_what_changed_in_the_analysis():
+    sources = Sources(new_games=4)
+    sources.previous_statuses = {"a": "open", "b": "closed"}
+    sources.statuses_after = {"a": "closed", "b": "open", "c": "open"}
+    sync = sources.sync()
+
+    result = run(sync)
+
+    assert result.gaps == GapChanges(new=1, closed=1, reopened=1)
+    assert sync.status()["result"] == {
+        "games_changed": True,
+        "repertoire_changed": False,
+        "new_games": 4,
+        "new_gaps": 1,
+        "closed_gaps": 1,
+        "reopened_gaps": 1,
+    }
+
+
+def test_the_previous_analysis_is_taken_before_the_old_one_is_dropped():
+    sources = Sources(new_games=1)
+    taken_when_invalidated = []
+
+    def previous_statuses():
+        taken_when_invalidated.append(sources.games_invalidated)
+        return {}
+
+    sync = sources.sync()
+    sync.previous_gap_statuses = previous_statuses
+    run(sync)
+
+    assert taken_when_invalidated == [0]
+
+
+def test_without_a_previous_analysis_only_the_new_games_are_reported():
+    sources = Sources(new_games=800)
+    sources.previous_statuses = None
+    sources.statuses_after = {"a": "open"}
+
+    result = run(sources.sync())
+
+    assert (result.new_games, result.gaps) == (800, GapChanges())
+    assert sources.analyses == 0
+
+
+def test_a_sync_that_changed_nothing_does_not_reanalyse_for_the_diff():
+    sources = Sources()
+    sources.previous_statuses = {"a": "open"}
+
+    result = run(sources.sync())
+
+    assert result.gaps == GapChanges() and sources.analyses == 0
+
+
+def test_a_failed_analysis_leaves_the_gaps_out_of_the_diff():
+    sources = Sources(new_games=2)
+    sources.analysis_error = RuntimeError("Repertoire unavailable")
+    sync = sources.sync()
+
+    result = run(sync)
+
+    assert result.new_games == 2 and result.gaps == GapChanges()
+    assert sync.status()["sources"]["chess_com"]["status"] == "ok"

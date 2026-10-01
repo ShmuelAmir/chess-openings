@@ -19,6 +19,22 @@ export function formatAgo(ts) {
   return `on ${formatDate(ts)}`;
 }
 
+/**
+ * What a Sync changed, leaving out zero counts:
+ * "+4 games · 1 new gap · 1 closed · 1 reopened", or null if nothing did.
+ */
+export function formatSyncChanges(result) {
+  if (!result) return null;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const parts = [
+    result.new_games > 0 && `+${plural(result.new_games, "game")}`,
+    result.new_gaps > 0 && plural(result.new_gaps, "new gap"),
+    result.closed_gaps > 0 && `${result.closed_gaps} closed`,
+    result.reopened_gaps > 0 && `${result.reopened_gaps} reopened`,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 /** A Recall Gap's status: its progress toward closing, or when it closed. */
 export function formatStatus(gap) {
   return gap.status === "closed"

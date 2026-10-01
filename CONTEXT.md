@@ -80,6 +80,7 @@ Bringing both data sources up to date — Chess.com games into the local cache, 
 
 - **Partial Sync:** some Chess.com months or the Lichess refresh failed; what succeeded is kept, and the failed parts are retried on the next Sync.
 - A Sync never interrupts a Drill Attempt; its analysis is applied once practice ends.
+- **What changed:** a Sync that changed something reports the difference from the previous analysis — new games, new Recall Gaps, newly Closed and reopened ones — shown in the totals strip until the app is next opened (or the Chess.com account is cleared).
 
 _Avoid:_ "refresh", "import" as synonyms — use Sync.
 
@@ -148,7 +149,7 @@ A Sync rebuilds the Repertoire at once (joining a build already in flight, or sk
 
 ### Sync Service
 
-`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, `RepertoireSyncLog` for Lichess), and reports progress ("Fetching games… 2023-04"). `POST /api/sync` starts one; `GET /api/sync` polls it.
+`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, `RepertoireSyncLog` for Lichess), and reports progress ("Fetching games… 2023-04"). It also diffs each Recall Gap's status in the pipeline's last analysis against the analysis after the Sync (`gap_changes`) for the "what changed" line; with no last analysis (e.g. the first Sync) only the new games are reported. `POST /api/sync` starts one; `GET /api/sync` polls it.
 
 ### Error Handling
 

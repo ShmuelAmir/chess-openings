@@ -9,8 +9,15 @@ import { loadFilters, saveFilters } from "../components/recall/storedFilters";
 import "../components/recall/recall.css";
 
 export default function RecallPage() {
-  const { lichessToken, chessComUsername, syncStatus, syncing, syncError, startSync } =
-    useAuth();
+  const {
+    lichessToken,
+    chessComUsername,
+    syncStatus,
+    syncing,
+    syncError,
+    syncResult,
+    startSync,
+  } = useAuth();
 
   const [filters, setFilters] = useState(loadFilters);
   const [view, setView] = useState(null);
@@ -128,6 +135,7 @@ export default function RecallPage() {
             onSelect={setSelectedKey}
             loading={loading}
             syncing={syncing}
+            syncResult={syncResult}
           />
         )}
       </section>

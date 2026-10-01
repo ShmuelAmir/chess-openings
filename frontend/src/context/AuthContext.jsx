@@ -30,6 +30,8 @@ export function AuthProvider({ children }) {
   // Sync state, as GET /api/sync reports it
   const [syncStatus, setSyncStatus] = useState(null);
   const [syncError, setSyncError] = useState(null);
+  // The result of the last Sync that finished since the app opened
+  const [syncResult, setSyncResult] = useState(null);
   const [chessComError, setChessComError] = useState(null);
   const [validatingChessCom, setValidatingChessCom] = useState(false);
 
@@ -97,6 +99,7 @@ export function AuthProvider({ children }) {
     setSyncStatus(null);
     setChessComError(null);
     setSyncError(null);
+    setSyncResult(null);
     syncOrchestrator.notifyCacheCleared();
   };
 
@@ -127,6 +130,7 @@ export function AuthProvider({ children }) {
     } else if (!status.running && status.runs > seenRunsRef.current) {
       seenRunsRef.current = status.runs;
       const result = status.result;
+      setSyncResult(result);
       // Re-run the analysis only if the Sync changed something
       if (result && (result.games_changed || result.repertoire_changed)) {
         syncOrchestrator.notifyCacheReady();
@@ -199,6 +203,7 @@ export function AuthProvider({ children }) {
     syncStatus,
     syncing,
     syncError,
+    syncResult,
     startSync,
     cachedGames: syncStatus?.cached_games ?? null,
     chessComError,
