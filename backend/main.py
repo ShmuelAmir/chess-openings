@@ -14,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Query, Header, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from datetime import datetime
 
@@ -22,6 +23,7 @@ import chess
 from lichess import LichessClient, LichessRateLimitError, study_url
 from chess_com import ChessComClient
 from game_cache import get_game_cache
+from exclusions import get_exclusion_store
 from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
@@ -90,6 +92,7 @@ def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
             repertoire_source=LichessRepertoireSource(
                 lichess_token=token,
                 list_studies=lambda: fetch_studies_cached(token),
+                excluded_studies=get_exclusion_store().excluded_studies,
             ),
             game_source=CacheGameSource(get_game_cache()),
         )
@@ -186,6 +189,69 @@ async def get_lichess_studies(authorization: str = Header(...)):
     return {"studies": await fetch_studies_cached(token)}
 
 
+async def owned_studies_or_401(token: str) -> list[dict]:
+    """The token owner's studies; an invalid token is the user's error (401)."""
+    try:
+        return await fetch_studies_cached(token)
+    except LichessRateLimitError:
+        raise
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code in (401, 403):
+            raise HTTPException(status_code=401, detail="Invalid Lichess token")
+        raise
+
+
+def not_repertoire_view(owned_studies: list[dict]) -> dict:
+    """Every owned study, and whether it is marked "not repertoire"."""
+    excluded = get_exclusion_store().excluded_studies()
+    return {
+        "studies": sorted(
+            (
+                {
+                    "id": study["id"],
+                    "name": study["name"],
+                    "opening_name": OpeningNormalizer.normalize(study["name"]),
+                    "excluded": study["id"] in excluded,
+                }
+                for study in owned_studies
+            ),
+            key=lambda study: study["opening_name"].lower(),
+        ),
+    }
+
+
+@app.get("/api/not-repertoire")
+async def get_not_repertoire(authorization: str = Header(...)):
+    """The "not repertoire" exclusion list, over every study the user owns."""
+    token = authorization.replace("Bearer ", "")
+    return not_repertoire_view(await owned_studies_or_401(token))
+
+
+class NotRepertoireUpdate(BaseModel):
+    excluded: list[str]
+
+
+@app.put("/api/not-repertoire")
+async def update_not_repertoire(
+    update: NotRepertoireUpdate,
+    authorization: str = Header(...),
+):
+    """
+    Replace the "not repertoire" exclusion list. The Repertoire is rebuilt
+    without the excluded studies on the next request.
+    """
+    token = authorization.replace("Bearer ", "")
+    owned_studies = await owned_studies_or_401(token)
+
+    # Only the user's own studies can be excluded; this also drops stale ids
+    owned_ids = {study["id"] for study in owned_studies}
+    get_exclusion_store().set_excluded_studies(set(update.excluded) & owned_ids)
+    for pipeline in _pipelines.values():
+        pipeline.invalidate_repertoire()
+
+    return not_repertoire_view(owned_studies)
+
+
 @app.get("/api/chess-com/validate/{username}")
 async def validate_chess_com_username(username: str):
     """Check that a Chess.com account exists before we store it."""
@@ -237,14 +303,7 @@ async def recall_view(
         )
 
     # Validate token (early fail); the studies also name the gaps' studies
-    try:
-        owned_studies = await fetch_studies_cached(token)
-    except LichessRateLimitError:
-        raise
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code in (401, 403):
-            raise HTTPException(status_code=401, detail="Invalid Lichess token")
-        raise
+    owned_studies = await owned_studies_or_401(token)
 
     days = DATE_RANGE_DAYS[date_range]
     filters = RecallFilters(

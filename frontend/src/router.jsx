@@ -7,6 +7,7 @@ import {
 import Layout from "./components/Layout";
 import RecallPage from "./pages/RecallPage";
 import OpeningDistributionPage from "./pages/OpeningDistributionPage";
+import SettingsPage from "./pages/SettingsPage";
 
 // Root route with Layout wrapper
 const rootRoute = createRootRoute({
@@ -27,10 +28,18 @@ const openingDistributionRoute = createRoute({
   component: OpeningDistributionPage,
 });
 
+// Settings: the "not repertoire" exclusion list
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: SettingsPage,
+});
+
 // Create the route tree
 const routeTree = rootRoute.addChildren([
   recallRoute,
   openingDistributionRoute,
+  settingsRoute,
 ]);
 
 // Create and export the router

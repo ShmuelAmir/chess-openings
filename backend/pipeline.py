@@ -90,6 +90,8 @@ class RepertoireAnalysisPipeline:
         
         # The user's Repertoire and when it was built
         self._repertoire_cache: Optional[tuple[Repertoire, float]] = None
+        # Bumped by each rebuild, so a fetch begun before it isn't cached
+        self._repertoire_generation = 0
     
     async def recall_view(
         self,
@@ -142,6 +144,14 @@ class RepertoireAnalysisPipeline:
         """The color of each study in the user's Repertoire, by study id."""
         return (await self._get_repertoire()).study_colors
     
+    def invalidate_repertoire(self):
+        """
+        Drop the cached Repertoire, so the next request builds it afresh
+        (e.g. after the "not repertoire" exclusion list changed).
+        """
+        self._repertoire_cache = None
+        self._repertoire_generation += 1
+
     async def _get_repertoire(self) -> Repertoire:
         """
         Get the user's Repertoire from cache or fetch and cache it.
@@ -158,7 +168,9 @@ class RepertoireAnalysisPipeline:
                 return cached_repertoire
         
         logger.debug("Fetching fresh repertoire")
+        generation = self._repertoire_generation
         repertoire = await self.repertoire_source.fetch_repertoire()
-        self._repertoire_cache = (repertoire, now)
+        if generation == self._repertoire_generation:
+            self._repertoire_cache = (repertoire, now)
         
         return repertoire
