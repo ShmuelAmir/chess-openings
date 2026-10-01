@@ -69,3 +69,5 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+# Claude Code
+.claude/
