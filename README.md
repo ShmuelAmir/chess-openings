@@ -53,6 +53,18 @@ npm run dev
 
 5. **Open http://localhost:5173**
 
+### Running Tests
+
+Backend tests use pytest and need no network access:
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+pytest
+```
+
+Or from the repo root: `make test`.
+
 ### Creating Your Repertoire on Lichess
 
 1. Go to [lichess.org/study](https://lichess.org/study)
