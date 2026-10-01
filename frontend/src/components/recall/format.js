@@ -18,3 +18,10 @@ export function formatAgo(ts) {
   if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
   return `on ${formatDate(ts)}`;
 }
+
+/** A Recall Gap's status: its progress toward closing, or when it closed. */
+export function formatStatus(gap) {
+  return gap.status === "closed"
+    ? `Closed ${formatDate(gap.closed_at)}`
+    : `${gap.progress}/${gap.games_to_close} since last miss`;
+}

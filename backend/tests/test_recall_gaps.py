@@ -288,3 +288,93 @@ def test_study_gap_counts_follow_the_other_filters():
     view = recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE)
 
     assert view.gaps_by_study == {"italian": 1}
+
+
+BB5_MISS = ["e4", "e5", "Nf3", "Nc6", "Bb5"]
+IN_BOOK = ["e4", "e5", "Nf3", "Nc6", "Bc4"]  # the user plays the book move at the gap
+
+
+def test_a_gap_is_open_with_no_progress_after_its_occurrence():
+    gap = recall([game(BB5_MISS, day=1)]).gaps[0]
+
+    assert (gap.status, gap.progress, gap.closed_at) == ("open", 0, None)
+
+
+def test_a_gap_shows_its_progress_toward_closing():
+    gap = recall([game(BB5_MISS, day=1), game(IN_BOOK, day=2)]).gaps[0]
+
+    assert (gap.status, gap.progress, gap.closed_at) == ("open", 1, None)
+
+
+def test_a_gap_closes_after_two_in_book_games_since_its_last_occurrence():
+    gap = recall([
+        game(BB5_MISS, day=1),
+        game(IN_BOOK, day=2),
+        game(IN_BOOK, day=5),
+        game(IN_BOOK, day=9),
+    ]).gaps[0]
+
+    assert (gap.status, gap.progress, gap.closed_at) == ("closed", 2, 5 * DAY)
+
+
+def test_in_book_games_before_the_last_occurrence_do_not_count():
+    gap = recall([
+        game(IN_BOOK, day=1),
+        game(IN_BOOK, day=2),
+        game(BB5_MISS, day=3),
+    ]).gaps[0]
+
+    assert (gap.status, gap.progress) == ("open", 0)
+
+
+def test_games_that_leave_book_before_the_position_do_not_count():
+    gaps = {
+        g.position_key: g
+        for g in recall([
+            game(BB5_MISS, day=1),
+            game(["e4", "e5", "Nf3", "d6"], day=2),  # opponent left book first
+            game(["e4", "e5", "d4"], day=3),  # another gap, earlier in the line
+        ]).gaps
+    }
+    assert gaps[AFTER_E4_E5_NF3_NC6].progress == 0
+
+
+def test_a_new_occurrence_reopens_a_closed_gap_and_restarts_the_count():
+    gap = recall([
+        game(BB5_MISS, day=1),
+        game(IN_BOOK, day=2),
+        game(IN_BOOK, day=3),
+        game(["e4", "e5", "Nf3", "Nc6", "d4"], day=4),
+        game(IN_BOOK, day=5),
+    ]).gaps[0]
+
+    assert (gap.status, gap.progress, gap.closed_at) == ("open", 1, None)
+
+
+def test_status_ignores_the_game_filters():
+    games = [
+        game(BB5_MISS, day=1),
+        game(IN_BOOK, day=2, time_class="bullet"),
+        game(IN_BOOK, day=3, rated=False),
+    ]
+
+    unfiltered = recall(games).gaps[0]
+    filtered = recall(games, RecallFilters(time_classes=["blitz"], rated_only=True)).gaps[0]
+
+    assert (filtered.status, filtered.closed_at) == (unfiltered.status, unfiltered.closed_at) == (
+        "closed", 3 * DAY
+    )
+
+
+def test_a_new_occurrence_outside_the_filters_still_reopens_a_gap():
+    games = [
+        game(BB5_MISS, day=1),
+        game(IN_BOOK, day=2),
+        game(IN_BOOK, day=3),
+        game(BB5_MISS, day=4, time_class="bullet"),
+    ]
+
+    gap = recall(games, RecallFilters(time_classes=["blitz"])).gaps[0]
+
+    assert (gap.status, gap.progress) == ("open", 0)
+

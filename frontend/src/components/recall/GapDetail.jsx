@@ -1,5 +1,5 @@
 import { Chessboard } from "react-chessboard";
-import { formatLine, formatDate } from "./format";
+import { formatLine, formatDate, formatStatus } from "./format";
 
 const BOARD_WIDTH = 306;
 
@@ -18,6 +18,7 @@ export default function GapDetail({ gap }) {
             arePiecesDraggable={false}
           />
           <div className="rv-line big">{formatLine(gap.path)} …</div>
+          <div className={`rv-status ${gap.status}`}>{formatStatus(gap)}</div>
           <div className="rv-compare">
             <div>
               <div className="rv-label">You played</div>

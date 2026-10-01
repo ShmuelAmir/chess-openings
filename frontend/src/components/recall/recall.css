@@ -49,6 +49,11 @@
 .rv-moves { font-size: 0.85em; color: #aaa; }
 .rv-count { display: flex; flex-direction: column; align-items: flex-end; }
 .rv-count b { font-size: 1.3rem; color: #e06c6c; }
+.rv-listtitle { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.rv-row.closed { opacity: 0.6; }
+.rv-row.closed .rv-count b { color: #8a8aa0; }
+.rv-status { font-size: 0.85rem; margin-bottom: 0.6rem; color: #e0b44c; }
+.rv-status.closed { color: #81b64c; }
 
 /* detail pane */
 .rv-detail { background: #22223a; border-radius: 8px; padding: 1rem; align-self: start; position: sticky; top: 1rem; }
