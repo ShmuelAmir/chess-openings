@@ -40,6 +40,11 @@ def position_key(board: chess.Board) -> str:
     return " ".join(board.fen().split(" ")[:4])
 
 
+def side_to_move(key: str) -> chess.Color:
+    """The side to move in a position key."""
+    return chess.WHITE if key.split(" ")[1] == "w" else chess.BLACK
+
+
 @dataclass
 class Repertoire:
     """Complete repertoire with separate trees for White and Black."""

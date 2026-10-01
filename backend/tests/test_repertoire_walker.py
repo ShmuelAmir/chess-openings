@@ -122,3 +122,9 @@ def test_transpositions_are_not_recognised():
     record = walk(ITALIAN, chess.WHITE, ["Nf3", "Nc6", "e4", "e5"])
 
     assert not record.analysed
+
+
+def test_deviation_ply_counts_the_half_moves_before_it():
+    assert walk(ITALIAN, chess.WHITE, ["e4", "e5", "Nf3", "Nc6", "Bb5"]).deviation.ply == 4
+    assert walk(SICILIAN, chess.BLACK, ["e4", "c5", "Nf3", "Nc6"]).deviation.ply == 3
+    assert walk(ITALIAN, chess.WHITE, ["e4", "e5", "Nf3", "Nc6", "Bc4"]).deviation.ply == 5

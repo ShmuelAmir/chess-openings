@@ -90,7 +90,7 @@ Human-readable label for a repertoire line. Examples: "Sicilian Defense", "Vienn
 The system is organized in horizontal layers from request → response:
 
 1. **HTTP Layer** (`main.py`)
-   - Defines FastAPI endpoints (e.g. `/api/analyze`)
+   - Defines FastAPI endpoints (e.g. `/api/recall-view`)
    - Parses query parameters into domain objects
    - Delegates to orchestration layer
    - Returns JSON responses
@@ -109,7 +109,8 @@ The system is organized in horizontal layers from request → response:
 
 4. **Domain Logic Layer**
    - **`repertoire.py`:** Defines `Repertoire`, `RepertoireNode`, `RepertoireBuilder`
-   - **`analyzer.py`:** Defines `DeviationAnalyzer`, `DeviationResult`
+   - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
+   - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into ranked Recall Gaps and totals under the Game Filters
    - **`game_cache.py`:** SQLite game storage and filtering
    - These modules are system-independent; they don't import HTTP libraries
 
@@ -130,7 +131,7 @@ pipeline = RepertoireAnalysisPipeline(
     repertoire_source=repertoire_source,
     game_source=game_source,
 )
-report = await pipeline.analyze(username, filters)
+view = await pipeline.recall_view(username, filters)
 ```
 
 This makes the pipeline testable: tests can inject mock sources.
@@ -149,14 +150,14 @@ The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the
 ### Analysis Request Flow
 
 ```
-HTTP /api/analyze (filters, token)
+HTTP /api/recall-view (Game Filters, token)
   ↓
 HTTP layer validates token
   ↓
 Reuse the user's RepertoireAnalysisPipeline (one per Lichess user, created on
 first request with LichessRepertoireSource(token, list_studies), CacheGameSource())
   ↓
-Call pipeline.analyze(username, filters)
+Call pipeline.recall_view(username, filters)
   ↓
 Pipeline._get_repertoire() checks cache; if miss, calls source.fetch_repertoire()
   ↓
@@ -166,15 +167,14 @@ LichessRepertoireSource.fetch_repertoire()
   ├─ Feed to RepertoireBuilder (each study into its first chapter's color tree)
   └─ Return built Repertoire (white_tree, black_tree, study membership)
   ↓
-Pipeline calls game_source.fetch_games(username, filters)
+Pipeline calls game_source.fetch_games(username, GameFilters()) — every cached game
   ↓
-CacheGameSource.fetch_games() queries local SQLite cache with filters
+Pipeline walks each game with RepertoireWalker into a walk record
   ↓
-Pipeline.analyze() iterates games, calls DeviationAnalyzer.analyze_game() for each
+aggregate(walked games, filters, studies of a position) groups the player
+errors inside the filters into ranked Recall Gaps and counts the totals
   ↓
-Collects deviations into AnalysisReport
-  ↓
-Return {results: [...], total_games: N, analyzed_with_deviations: M}
+Return {gaps: [...], totals: {analysed, opponent_left_book, book_completed}}
 ```
 
 ## Seams & Adapters

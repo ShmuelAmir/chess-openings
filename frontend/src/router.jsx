@@ -5,7 +5,7 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import Layout from "./components/Layout";
-import AnalysisPage from "./pages/AnalysisPage";
+import RecallPage from "./pages/RecallPage";
 import OpeningDistributionPage from "./pages/OpeningDistributionPage";
 
 // Root route with Layout wrapper
@@ -13,11 +13,11 @@ const rootRoute = createRootRoute({
   component: Layout,
 });
 
-// Analysis page (original functionality)
-const analysisRoute = createRoute({
+// Recall view: the ranked Recall Gaps
+const recallRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: AnalysisPage,
+  component: RecallPage,
 });
 
 // Opening distribution page (new page)
@@ -29,7 +29,7 @@ const openingDistributionRoute = createRoute({
 
 // Create the route tree
 const routeTree = rootRoute.addChildren([
-  analysisRoute,
+  recallRoute,
   openingDistributionRoute,
 ]);
 

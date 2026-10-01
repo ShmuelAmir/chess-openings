@@ -42,6 +42,7 @@ class Deviation(NamedTuple):
     move_played: Optional[str]  # None when the book was completed
     book_moves: list[str]
     move_number: int
+    ply: int  # half-moves played before the Deviation
     fen: str
     position_info: PositionInfo
 
@@ -210,6 +211,7 @@ class RepertoireWalker:
             move_played=move_played,
             book_moves=position_info.available_moves,
             move_number=move_number,
+            ply=board.ply(),
             fen=board.fen(),
             position_info=position_info,
         )

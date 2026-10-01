@@ -5,12 +5,15 @@ Abstracts fetching repertoire and games from the orchestration logic.
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 import logging
 
-from repertoire import Repertoire
-from analyzer import DeviationAnalyzer, DeviationResult
+import chess
+
+from repertoire import Repertoire, side_to_move
+from repertoire_walker import RepertoireWalker
+from recall_gaps import RecallFilters, RecallView, WalkedGame, aggregate
 
 
 logger = logging.getLogger(__name__)
@@ -29,14 +32,6 @@ class GameFilters:
     from_ts: Optional[int] = None
     to_ts: Optional[int] = None
 
-
-@dataclass
-class AnalysisReport:
-    """Result of analyzing all games against repertoire."""
-    deviations: list[dict] = field(default_factory=list)
-    total_games_analyzed: int = 0
-    games_with_deviations: int = 0
-    
 
 class RepertoireSource(ABC):
     """Abstract interface for fetching and building repertoires."""
@@ -95,63 +90,55 @@ class RepertoireAnalysisPipeline:
         # The user's Repertoire and when it was built
         self._repertoire_cache: Optional[tuple[Repertoire, float]] = None
     
-    async def analyze(
+    async def recall_view(
         self,
         username: str,
-        filters: GameFilters,
-    ) -> AnalysisReport:
+        filters: RecallFilters,
+    ) -> RecallView:
         """
-        Execute the full analysis pipeline.
-        
+        Walk every cached game through the user's Repertoire and group the
+        player errors into ranked Recall Gaps.
+
+        All games are walked; the filters only decide which ones are shown
+        and counted.
+
         Args:
             username: Chess.com username
-            filters: Game filtering parameters
-        
+            filters: The recall view's Game Filters
+
         Returns:
-            AnalysisReport with deviations and statistics
+            RecallView with the ranked Recall Gaps and the totals
         """
-        # Step 1: Fetch or use cached repertoire
         repertoire = await self._get_repertoire()
-        
-        # Step 2: Fetch games
-        games = await self.game_source.fetch_games(username, filters)
-        
-        # Step 3: Analyze each game
-        analyzer = DeviationAnalyzer(repertoire)
-        deviations = []
-        
+        games = await self.game_source.fetch_games(username, GameFilters())
+        walker = RepertoireWalker(repertoire)
+
+        walked = []
         for game in games:
             try:
-                result = analyzer.analyze_game(game, username)
-                if not result:
-                    continue
-
-                # Analyzer may return either a DeviationResult object
-                # (with a to_dict() method) or a plain dict. Handle both.
-                if hasattr(result, "to_dict") and callable(getattr(result, "to_dict")):
-                    deviations.append(result.to_dict())
-                elif isinstance(result, dict):
-                    deviations.append(result)
-                else:
-                    # Unknown result type; log and skip
-                    logger.warning(
-                        f"Analyzer returned unexpected result type for game {game.get('url', 'unknown')}: {type(result)}"
-                    )
+                is_white = game.get("white", "").lower() == username.lower()
+                color = chess.WHITE if is_white else chess.BLACK
+                moves = game.get("moves", [])
+                walked.append(WalkedGame(
+                    url=game.get("url", ""),
+                    date=game.get("date") or 0,
+                    time_class=game.get("time_class", ""),
+                    rated=bool(game.get("rated")),
+                    moves=moves,
+                    record=walker.walk_game(color, moves),
+                ))
             except Exception as e:
                 # Log and continue on individual game analysis failures
                 logger.warning(
                     f"Failed to analyze game {game.get('url', 'unknown')}: {e}"
                 )
-                continue
-        
-        # Step 4: Compile report
-        report = AnalysisReport(
-            deviations=deviations,
-            total_games_analyzed=len(games),
-            games_with_deviations=len(deviations),
-        )
-        
-        return report
+
+        def studies_of(key: str) -> set[str]:
+            # A Recall Gap is a position on the user's move, so its side to
+            # move is the user's color and picks the tree.
+            return repertoire.studies_containing(key, side_to_move(key))
+
+        return aggregate(walked, filters, studies_of)
     
     async def _get_repertoire(self) -> Repertoire:
         """
