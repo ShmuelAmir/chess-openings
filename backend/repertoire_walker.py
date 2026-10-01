@@ -5,6 +5,7 @@ This module encapsulates the logic for walking through a repertoire tree
 (matching moves, tracking position state, detecting when moves leave the book).
 """
 import chess
+from enum import Enum
 from typing import Optional, NamedTuple
 from repertoire import Repertoire, RepertoireNode
 
@@ -27,15 +28,44 @@ class PositionInfo(NamedTuple):
     variation_count: int
 
 
-class DeviationInfo(NamedTuple):
-    """Information about a move deviation or end of book."""
-    deviation_type: str  # "deviation", "opponent_left_book", or "book_completed"
+class DeviationType(str, Enum):
+    """Why a game left the book. See Deviation in CONTEXT.md."""
+    PLAYER_ERROR = "player_error"
+    OPPONENT_LEFT_BOOK = "opponent_left_book"
+    BOOK_COMPLETED = "book_completed"
+
+
+class Deviation(NamedTuple):
+    """The first move of a game that was not in the repertoire (or the end of book)."""
+    type: DeviationType
+    position_key: str
+    move_played: Optional[str]  # None when the book was completed
+    book_moves: list[str]
     move_number: int
-    is_your_move: bool
-    actual_move: Optional[str]
-    expected_moves: list[str]
     fen: str
     position_info: PositionInfo
+
+
+class InBookMove(NamedTuple):
+    """A position reached on the user's move while still in book, and the move played."""
+    position_key: str
+    move: str
+
+
+class WalkRecord(NamedTuple):
+    """The outcome of walking one game through the repertoire."""
+    analysed: bool
+    deviation: Optional[Deviation]
+    reached_in_book: list[InBookMove]
+
+
+def not_analysed() -> WalkRecord:
+    return WalkRecord(analysed=False, deviation=None, reached_in_book=[])
+
+
+def position_key(board: chess.Board) -> str:
+    """The FEN without the halfmove and fullmove counters."""
+    return " ".join(board.fen().split(" ")[:4])
 
 
 class RepertoireWalker:
@@ -109,75 +139,82 @@ class RepertoireWalker:
             variation_count=variation_count,
         )
     
-    def find_deviation(
+    def walk_game(
         self,
         user_color: chess.Color,
         moves: list[str],
-    ) -> Optional[DeviationInfo]:
+    ) -> WalkRecord:
         """
-        Walk through game moves and find the first deviation from repertoire.
-        
-        Args:
-            user_color: User's playing color (WHITE or BLACK)
-            moves: List of moves in the game (algebraic notation)
-        
-        Returns:
-            DeviationInfo if deviation found, None if game stayed in book
+        Walk a game's moves down the repertoire tree for the user's color.
+
+        A game is analysed when its first move is in the tree and the user
+        did not leave the book on move 1 ("not this opening"). Walking is
+        path-based: a transposition into a book position by another move
+        order is not recognised.
         """
-        if not moves:
-            return None
-        
         tree = self.get_tree_for_color(user_color)
+        if not moves or moves[0] not in tree.children:
+            return not_analysed()
+
         board = chess.Board()
         current_node = tree
-        
-        # Check if game starts with a repertoire opening
-        first_move = moves[0]
-        if first_move not in current_node.children:
-            # Game doesn't start with an opening from repertoire
-            return None
-        
-        # Walk through moves one by one
-        for i, move_san in enumerate(moves):
-            is_white_move = (i % 2 == 0)
-            is_your_move = (is_white_move and user_color == chess.WHITE) or \
-                          (not is_white_move and user_color == chess.BLACK)
-            
-            move_number = (i // 2) + 1
-            
-            # Check if this move is in the book
+        reached_in_book: list[InBookMove] = []
+
+        for move_san in moves:
+            is_your_move = board.turn == user_color
+
             if move_san not in current_node.children:
-                # Move leaves the book
-                position_info = self.get_position_info(current_node)
-                
-                return DeviationInfo(
-                    deviation_type="deviation" if is_your_move else "opponent_left_book",
-                    move_number=move_number,
-                    is_your_move=is_your_move,
-                    actual_move=move_san,
-                    expected_moves=position_info.available_moves,
-                    fen=board.fen(),
-                    position_info=position_info,
+                if is_your_move and board.fullmove_number == 1:
+                    return not_analysed()
+                return WalkRecord(
+                    analysed=True,
+                    deviation=self._deviation(
+                        DeviationType.PLAYER_ERROR if is_your_move else DeviationType.OPPONENT_LEFT_BOOK,
+                        current_node,
+                        board,
+                        move_san,
+                        board.fullmove_number,
+                    ),
+                    reached_in_book=reached_in_book,
                 )
-            
-            # Move is in the book, advance to next position
+
+            if is_your_move:
+                reached_in_book.append(InBookMove(position_key(board), move_san))
+
             current_node = current_node.children[move_san]
-            
             try:
                 board.push_san(move_san)
             except ValueError:
                 # Invalid move, stop analysis
-                return None
-        
-        # Game followed the book for all moves
-        position_info = self.get_position_info(current_node)
-        
-        return DeviationInfo(
-            deviation_type="book_completed",
-            move_number=len(moves) // 2,
-            is_your_move=False,
-            actual_move=None,
-            expected_moves=position_info.available_moves,
+                return not_analysed()
+
+        return WalkRecord(
+            analysed=True,
+            deviation=self._deviation(
+                DeviationType.BOOK_COMPLETED,
+                current_node,
+                board,
+                None,
+                len(moves) // 2,
+            ),
+            reached_in_book=reached_in_book,
+        )
+
+    def _deviation(
+        self,
+        deviation_type: DeviationType,
+        node: RepertoireNode,
+        board: chess.Board,
+        move_played: Optional[str],
+        move_number: int,
+    ) -> Deviation:
+        position_info = self.get_position_info(node)
+        return Deviation(
+            type=deviation_type,
+            position_key=position_key(board),
+            move_played=move_played,
+            book_moves=position_info.available_moves,
+            move_number=move_number,
             fen=board.fen(),
             position_info=position_info,
         )

@@ -7,7 +7,7 @@ from typing import Optional
 from datetime import datetime
 
 from repertoire import Repertoire
-from repertoire_walker import RepertoireWalker
+from repertoire_walker import DeviationType, RepertoireWalker
 
 
 @dataclass
@@ -86,8 +86,8 @@ class DeviationAnalyzer:
         else:
             user_color = chess.BLACK
         
-        # Use walker to find deviations
-        deviation = self.walker.find_deviation(user_color, moves)
+        record = self.walker.walk_game(user_color, moves)
+        deviation = record.deviation
         
         if deviation is None:
             return None
@@ -103,24 +103,20 @@ class DeviationAnalyzer:
         game_opening_name = game.get("opening_name") or None
         
         # Build result based on deviation type
-        if deviation.deviation_type == "deviation":
+        if deviation.type == DeviationType.PLAYER_ERROR:
             # User played a move not in repertoire
             variation_count = deviation.position_info.variation_count
             
             # Format correct move display
             if variation_count == 1:
-                correct_move = deviation.expected_moves[0]
+                correct_move = deviation.book_moves[0]
             elif variation_count > 1:
-                moves_display = ", ".join(deviation.expected_moves[:5])
+                moves_display = ", ".join(deviation.book_moves[:5])
                 if variation_count > 5:
                     moves_display += ", ..."
                 correct_move = moves_display
             else:
                 correct_move = None
-            
-            # Skip move 1 deviations - that's "not this opening", not a deviation
-            if deviation.move_number == 1:
-                return None
             
             return DeviationResult(
                 game_url=game.get("url", ""),
@@ -132,13 +128,13 @@ class DeviationAnalyzer:
                 study_name=deviation.position_info.study_name,
                 study_id=deviation.position_info.study_id,
                 chapter_id=deviation.position_info.chapter_id,
-                your_move=deviation.actual_move,
+                your_move=deviation.move_played,
                 correct_move=correct_move,
                 fen=deviation.fen,
                 variation_count=variation_count,
             ).to_dict()
         
-        elif deviation.deviation_type == "opponent_left_book":
+        elif deviation.type == DeviationType.OPPONENT_LEFT_BOOK:
             # Opponent played a move not in repertoire
             if deviation.move_number == 1:
                 # Different opening family, skip
@@ -148,9 +144,9 @@ class DeviationAnalyzer:
             
             # Format correct move display
             if variation_count == 1:
-                correct_move = deviation.expected_moves[0]
+                correct_move = deviation.book_moves[0]
             elif variation_count > 1:
-                moves_display = ", ".join(deviation.expected_moves[:5])
+                moves_display = ", ".join(deviation.book_moves[:5])
                 if variation_count > 5:
                     moves_display += ", ..."
                 correct_move = moves_display
@@ -171,7 +167,7 @@ class DeviationAnalyzer:
                 study_name=deviation.position_info.study_name,
                 study_id=deviation.position_info.study_id,
                 chapter_id=deviation.position_info.chapter_id,
-                opponent_move=deviation.actual_move,
+                opponent_move=deviation.move_played,
                 correct_move=correct_move,
                 variation_count=variation_count,
                 fen=deviation.fen,
