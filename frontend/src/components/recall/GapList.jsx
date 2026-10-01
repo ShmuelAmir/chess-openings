@@ -1,7 +1,7 @@
 import { formatLine, formatDate } from "./format";
 
 /** The ranked Recall Gaps, with the list header and totals strip. */
-export default function GapList({ gaps, totals, selectedKey, onSelect, loading }) {
+export default function GapList({ gaps, totals, selectedKey, onSelect, loading, syncing }) {
   return (
     <>
       <div className="rv-listhead">
@@ -11,7 +11,7 @@ export default function GapList({ gaps, totals, selectedKey, onSelect, loading }
         <span className="rv-muted">
           {totals.analysed} games analysed · opponent left book{" "}
           {totals.opponent_left_book} · book completed {totals.book_completed}
-          {loading && " · updating…"}
+          {syncing ? " · Syncing…" : loading && " · updating…"}
         </span>
       </div>
 

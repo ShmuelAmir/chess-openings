@@ -28,6 +28,7 @@ from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
+from sync import ChessComSync, Sync
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -97,6 +98,50 @@ def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
             game_source=CacheGameSource(get_game_cache()),
         )
     return _pipelines[key]
+
+
+# One Sync per Lichess user and Chess.com account
+REPERTOIRE_FRESH_SECONDS = 30
+_syncs: dict[tuple[str, str], Sync] = {}
+
+
+def sync_for(token: str, chess_com_username: str) -> Sync:
+    """The Sync of this user's Chess.com games and Lichess Repertoire."""
+    key = (_token_key(token), chess_com_username.lower())
+    if key not in _syncs:
+        pipeline = pipeline_for(token)
+
+        async def refresh_repertoire() -> bool:
+            # List the studies afresh, so new ones join the Repertoire; a
+            # Repertoire built moments ago (e.g. by the page that just
+            # opened) is fresh enough, and spares the Lichess rate limit
+            _studies_cache.pop(_token_key(token), None)
+            return await pipeline.refresh_repertoire(fresh_within=REPERTOIRE_FRESH_SECONDS)
+
+        def games_last_success():
+            status = get_game_cache().get_sync_status(chess_com_username)
+            return status["last_sync_at"] if status else None
+
+        def games_changed():
+            for p in _pipelines.values():
+                p.invalidate_games()
+
+        games_sync = ChessComSync(get_game_cache(), client=ChessComClient)
+        _syncs[key] = Sync(
+            sync_games=lambda on_month: games_sync.sync(chess_com_username, on_month),
+            refresh_repertoire=refresh_repertoire,
+            games_last_success=games_last_success,
+            on_games_changed=games_changed,
+        )
+    return _syncs[key]
+
+
+def sync_view(token: str, chess_com_username: str) -> dict:
+    """The Sync's state, with how many games are cached."""
+    return {
+        **sync_for(token, chess_com_username).status(),
+        "cached_games": get_game_cache().count_games(chess_com_username),
+    }
 
 
 @app.exception_handler(LichessRateLimitError)
@@ -539,113 +584,28 @@ def categorize_opening(opening_name: str) -> str:
 
 # ================== Game Cache Endpoints ==================
 
-@app.get("/api/chess-com/cache-status/{username}")
-async def get_cache_status(username: str):
-    """Get cache status for a Chess.com user."""
-    cache = get_game_cache()
-    sync_status = cache.get_sync_status(username)
-    game_count = cache.count_games(username)
-    
-    return {
-        "username": username,
-        "cached_games": game_count,
-        "last_sync_at": sync_status["last_sync_at"] if sync_status else None,
-        "last_synced_year": sync_status["last_synced_year"] if sync_status else None,
-        "last_synced_month": sync_status["last_synced_month"] if sync_status else None,
-    }
+@app.get("/api/sync")
+async def get_sync(
+    chess_com_username: str = Query(...),
+    authorization: str = Header(...),
+):
+    """The Sync's state: progress, each source's status and the last result."""
+    token = authorization.replace("Bearer ", "")
+    return sync_view(token, chess_com_username)
 
 
-@app.post("/api/chess-com/sync/{username}")
-async def sync_chess_com_games(username: str):
+@app.post("/api/sync")
+async def start_sync(
+    chess_com_username: str = Query(...),
+    authorization: str = Header(...),
+):
     """
-    Sync games from Chess.com to local cache.
-    
-    Only fetches new games since the last sync.
-    Always re-fetches the current month (games may still be played).
+    Start a Sync of both sources (unless one is running) and return its
+    state; poll GET /api/sync for progress.
     """
-    cache = get_game_cache()
-    sync_status = cache.get_sync_status(username)
-    
-    # Get current date
-    now = datetime.now()
-    current_year, current_month = now.year, now.month
-    
-    # Determine starting point for sync
-    async with ChessComClient() as client:
-        # Get available archives from Chess.com
-        try:
-            archives = await client.get_archives(username)
-        except Exception as e:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No Chess.com account named '{username}'. Use your Chess.com username, not your email.",
-            )
-        
-        if not archives:
-            return {
-                "new_games": 0,
-                "total_games": 0,
-                "message": "No games found on Chess.com"
-            }
-        
-        # Parse archive URLs to get (year, month) tuples
-        # Archive URL format: https://api.chess.com/pub/player/{username}/games/2024/01
-        available_months = []
-        for archive_url in archives:
-            parts = archive_url.rstrip('/').split('/')
-            if len(parts) >= 2:
-                try:
-                    year = int(parts[-2])
-                    month = int(parts[-1])
-                    available_months.append((year, month))
-                except ValueError:
-                    continue
-        
-        if not available_months:
-            return {
-                "new_games": 0,
-                "total_games": 0,
-                "message": "Could not parse archive dates"
-            }
-        
-        # Get already cached months
-        cached_months = cache.get_cached_months(username)
-        
-        # Determine which months to fetch:
-        # 1. All months not yet cached
-        # 2. Always re-fetch current month (new games may exist)
-        months_to_fetch = []
-        for year, month in available_months:
-            is_current_month = (year == current_year and month == current_month)
-            is_cached = (year, month) in cached_months
-            
-            if not is_cached or is_current_month:
-                months_to_fetch.append((year, month))
-        
-        # Fetch games for each month
-        new_games_count = 0
-        for year, month in months_to_fetch:
-            try:
-                games = await client.get_all_games_for_month(username, year, month)
-                if games:
-                    cache.save_games(username, games, year, month)
-                    new_games_count += len(games)
-            except Exception as e:
-                # Log but continue with other months
-                print(f"Error fetching {year}/{month} for {username}: {e}")
-                continue
-    
-    # Update sync status
-    cache.update_sync_status(username, current_year, current_month)
-    
-    total_games = cache.count_games(username)
-    
-    return {
-        "new_games": new_games_count,
-        "total_games": total_games,
-        "months_synced": len(months_to_fetch),
-        "message": f"Synced {new_games_count} games from {len(months_to_fetch)} months"
-    }
+    token = authorization.replace("Bearer ", "")
+    sync_for(token, chess_com_username).start()
+    return sync_view(token, chess_com_username)
 
 
 @app.get("/api/chess-com/cached-games/{username}")
@@ -688,6 +648,8 @@ async def clear_cache(username: str):
     """Clear cached games for a user."""
     cache = get_game_cache()
     cache.clear_user_cache(username)
+    for pipeline in _pipelines.values():
+        pipeline.invalidate_games()
     return {"message": f"Cache cleared for {username}"}
 
 

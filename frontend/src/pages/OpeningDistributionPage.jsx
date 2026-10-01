@@ -4,7 +4,7 @@ import GameFilters from "../components/GameFilters";
 import OpeningCharts from "../components/OpeningCharts";
 
 export default function OpeningDistributionPage() {
-  const { chessComUsername, cacheStatus } = useAuth();
+  const { chessComUsername, cachedGames } = useAuth();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -91,10 +91,10 @@ export default function OpeningDistributionPage() {
 
   // Auto-load on mount when there are cached games
   useEffect(() => {
-    if (cacheStatus?.cached_games > 0 && !data && !loading) {
+    if (cachedGames > 0 && !data && !loading) {
       loadStats();
     }
-  }, [cacheStatus]);
+  }, [cachedGames]);
 
   const handleApplyFilters = (filters) => {
     loadStats(filters);
@@ -118,7 +118,7 @@ export default function OpeningDistributionPage() {
         </div>
 
         <div className="results-panel opening-results">
-          {!cacheStatus?.cached_games && (
+          {!cachedGames && (
             <div className="empty-state">
               <p>Sync your Chess.com games first to see opening statistics</p>
             </div>

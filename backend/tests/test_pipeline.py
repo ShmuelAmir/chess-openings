@@ -3,6 +3,7 @@ import asyncio
 import chess
 
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
+from recall_gaps import RecallFilters
 from repertoire import RepertoireBuilder
 
 
@@ -71,3 +72,81 @@ def test_an_invalidation_during_a_fetch_is_not_lost():
         return await pipeline.study_colors()
 
     assert asyncio.run(run()) == {"italian": chess.WHITE}
+
+
+class CountingGames(GameSource):
+    """One game; counts how often the games are fetched for analysis."""
+
+    def __init__(self):
+        self.fetches = 0
+
+    async def fetch_games(self, username, filters):
+        self.fetches += 1
+        return [{"url": "g1", "white": "me", "black": "them", "moves": ["e4", "c5"], "date": 1}]
+
+
+def test_a_refresh_reports_whether_the_repertoire_changed():
+    source = StudiesSource("italian")
+    pipeline = RepertoireAnalysisPipeline(source, NoGames())
+
+    async def run():
+        await pipeline.study_colors()
+        unchanged = await pipeline.refresh_repertoire()
+        source.study_ids = ["italian", "spanish"]
+        changed = await pipeline.refresh_repertoire()
+        return unchanged, changed, await pipeline.study_colors()
+
+    unchanged, changed, colors = asyncio.run(run())
+
+    assert (unchanged, changed) == (False, True)
+    assert set(colors) == {"italian", "spanish"}
+    assert source.fetches == 3
+
+
+def test_the_analysis_is_reused_until_something_changes():
+    games = CountingGames()
+    source = StudiesSource("italian")
+    pipeline = RepertoireAnalysisPipeline(source, games)
+
+    async def run():
+        await pipeline.recall_view("me", RecallFilters())
+        await pipeline.recall_view("me", RecallFilters(rated_only=True))
+        await pipeline.refresh_repertoire()  # unchanged
+        await pipeline.recall_view("me", RecallFilters())
+        reused = games.fetches
+        pipeline.invalidate_games()
+        await pipeline.recall_view("me", RecallFilters())
+        after_new_games = games.fetches
+        source.study_ids = ["italian", "spanish"]
+        await pipeline.refresh_repertoire()
+        await pipeline.recall_view("me", RecallFilters())
+        return reused, after_new_games, games.fetches
+
+    assert asyncio.run(run()) == (1, 2, 3)
+
+
+def test_a_refresh_joins_a_build_already_in_flight():
+    source = StudiesSource("italian")
+    pipeline = RepertoireAnalysisPipeline(source, NoGames())
+
+    async def run():
+        building = asyncio.create_task(pipeline.study_colors())
+        await asyncio.sleep(0)
+        await pipeline.refresh_repertoire()
+        await building
+
+    asyncio.run(run())
+
+    assert source.fetches == 1
+
+
+def test_a_refresh_skips_a_repertoire_fetched_moments_ago():
+    source = StudiesSource("italian")
+    pipeline = RepertoireAnalysisPipeline(source, NoGames())
+
+    async def run():
+        await pipeline.study_colors()
+        return await pipeline.refresh_repertoire(fresh_within=30)
+
+    assert asyncio.run(run()) is False
+    assert source.fetches == 1

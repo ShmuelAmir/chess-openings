@@ -3,6 +3,7 @@ Repertoire Analysis Pipeline - Orchestrates the full analysis workflow.
 Abstracts fetching repertoire and games from the orchestration logic.
 """
 
+import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -92,6 +93,11 @@ class RepertoireAnalysisPipeline:
         self._repertoire_cache: Optional[tuple[Repertoire, float]] = None
         # Bumped by each rebuild, so a fetch begun before it isn't cached
         self._repertoire_generation = 0
+        # The last analysis: (username, the Repertoire it walked, walked games),
+        # reused until the games or the Repertoire change
+        self._walked_cache: Optional[tuple[str, Repertoire, list[WalkedGame]]] = None
+        # The Repertoire fetch in flight: (generation, when it began, task)
+        self._inflight: Optional[tuple[int, float, asyncio.Future]] = None
     
     async def recall_view(
         self,
@@ -113,6 +119,16 @@ class RepertoireAnalysisPipeline:
             RecallView with the ranked Recall Gaps and the totals
         """
         repertoire = await self._get_repertoire()
+        walked = await self._walk_games(username, repertoire)
+        return aggregate(walked, filters, repertoire.study_locations)
+
+    async def _walk_games(self, username: str, repertoire: Repertoire) -> list[WalkedGame]:
+        """Every cached game walked through the Repertoire, reusing the last analysis."""
+        if self._walked_cache is not None:
+            cached_username, cached_repertoire, cached_walked = self._walked_cache
+            if cached_username == username.lower() and cached_repertoire is repertoire:
+                return cached_walked
+
         games = await self.game_source.fetch_games(username, GameFilters())
         walker = RepertoireWalker(repertoire)
 
@@ -138,12 +154,46 @@ class RepertoireAnalysisPipeline:
                     f"Failed to analyze game {game.get('url', 'unknown')}: {e}"
                 )
 
-        return aggregate(walked, filters, repertoire.study_locations)
+        self._walked_cache = (username.lower(), repertoire, walked)
+        return walked
 
     async def study_colors(self) -> dict[str, chess.Color]:
         """The color of each study in the user's Repertoire, by study id."""
         return (await self._get_repertoire()).study_colors
     
+    async def refresh_repertoire(self, fresh_within: float = 0) -> bool:
+        """
+        Rebuild the Repertoire from its source now (a Sync), keeping the
+        previous one, and its analysis, if nothing changed. A build already
+        in flight is joined rather than repeated.
+
+        Args:
+            fresh_within: Skip the rebuild if the cached Repertoire was
+                fetched less than this many seconds ago
+
+        Returns:
+            Whether the Repertoire changed
+        """
+        previous = None
+        if self._repertoire_cache is not None:
+            previous, fetched_at = self._repertoire_cache
+            if time.time() - fetched_at < fresh_within:
+                return False
+
+        generation = self._repertoire_generation
+        repertoire, started = await self._fetch_repertoire()
+        if generation != self._repertoire_generation:
+            # Invalidated while fetching: the next request rebuilds it
+            return True
+
+        changed = repertoire != previous
+        self._repertoire_cache = (repertoire if changed else previous, started)
+        return changed
+
+    def invalidate_games(self):
+        """Drop the last analysis, so the next request walks the games afresh."""
+        self._walked_cache = None
+
     def invalidate_repertoire(self):
         """
         Drop the cached Repertoire, so the next request builds it afresh
@@ -169,8 +219,33 @@ class RepertoireAnalysisPipeline:
         
         logger.debug("Fetching fresh repertoire")
         generation = self._repertoire_generation
-        repertoire = await self.repertoire_source.fetch_repertoire()
+        repertoire, started = await self._fetch_repertoire()
         if generation == self._repertoire_generation:
-            self._repertoire_cache = (repertoire, now)
+            self._repertoire_cache = (repertoire, started)
         
         return repertoire
+
+    async def _fetch_repertoire(self) -> tuple[Repertoire, float]:
+        """
+        Fetch the Repertoire from its source, joining a fetch already in
+        flight unless the Repertoire was invalidated since it began.
+
+        Returns:
+            The Repertoire, and when its fetch began
+        """
+        generation = self._repertoire_generation
+        if self._inflight is not None and self._inflight[0] == generation:
+            _, started, task = self._inflight
+        else:
+            started = time.time()
+            task = asyncio.ensure_future(self.repertoire_source.fetch_repertoire())
+            self._inflight = (generation, started, task)
+
+            def done(finished: asyncio.Future):
+                if self._inflight is not None and self._inflight[2] is finished:
+                    self._inflight = None
+
+            task.add_done_callback(done)
+
+        # Shielded: one caller giving up doesn't cancel the others' fetch
+        return await asyncio.shield(task), started
