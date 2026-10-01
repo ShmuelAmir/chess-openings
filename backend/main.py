@@ -19,10 +19,9 @@ from datetime import datetime
 
 from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComClient
-from repertoire import RepertoireBuilder
-from analyzer import DeviationAnalyzer
 from game_cache import get_game_cache
 from pipeline import RepertoireAnalysisPipeline, GameFilters
+from recall_gaps import RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
 
 app = FastAPI(title="Chess Opening Analyzer")
@@ -184,15 +183,6 @@ async def get_lichess_studies(authorization: str = Header(...)):
     return {"studies": await fetch_studies_cached(token)}
 
 
-@app.get("/api/lichess/study/{study_id}")
-async def get_study_pgn(study_id: str, authorization: str = Header(...)):
-    """Get PGN content of a specific study."""
-    token = authorization.replace("Bearer ", "")
-    async with LichessClient(token=token) as client:
-        pgn = await client.get_study_pgn(study_id)
-        return {"pgn": pgn}
-
-
 @app.get("/api/chess-com/validate/{username}")
 async def validate_chess_com_username(username: str):
     """Check that a Chess.com account exists before we store it."""
@@ -218,26 +208,30 @@ async def get_chess_com_archives(username: str):
         return {"archives": archives}
 
 
-@app.post("/api/analyze")
-async def analyze_games(
+# Date range presets of the recall view, in days back from now (None = all time)
+DATE_RANGE_DAYS = {"month": 30, "3months": 91, "year": 365, "all": None}
+
+
+@app.get("/api/recall-view")
+async def recall_view(
     chess_com_username: str = Query(...),
-    from_year: int = Query(...),
-    from_month: int = Query(...),
-    to_year: int = Query(...),
-    to_month: int = Query(...),
-    from_ts: int = Query(None),
-    to_ts: int = Query(None),
     time_classes: list[str] = Query(None),
-    rated: bool = Query(None),
-    color: str = Query(None),  # "white", "black", or None for both
+    date_range: str = Query("all"),
+    rated_only: bool = Query(False),
     authorization: str = Header(...),
 ):
-    """Analyze games against the user's Repertoire (every owned study) and find deviations."""
+    """The ranked Recall Gaps and totals of the user's cached games, under the Game Filters."""
     token = authorization.replace("Bearer ", "")
-    
-    # Validate token (early fail)
+
+    if date_range not in DATE_RANGE_DAYS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"date_range must be one of {', '.join(DATE_RANGE_DAYS)}",
+        )
+
+    # Validate token (early fail); the studies also name the gaps' studies
     try:
-        await fetch_studies_cached(token)
+        studies = await fetch_studies_cached(token)
     except LichessRateLimitError:
         raise
     except httpx.HTTPStatusError as e:
@@ -245,27 +239,46 @@ async def analyze_games(
             raise HTTPException(status_code=401, detail="Invalid Lichess token")
         raise
 
-    filters = GameFilters(
+    days = DATE_RANGE_DAYS[date_range]
+    filters = RecallFilters(
         time_classes=time_classes,
-        rated=rated,
-        color=color,
-        from_year=from_year,
-        from_month=from_month,
-        to_year=to_year,
-        to_month=to_month,
-        from_ts=from_ts,
-        to_ts=to_ts,
+        rated_only=rated_only,
+        since=int(time.time()) - days * 24 * 60 * 60 if days else None,
     )
-    
-    report = await pipeline_for(token).analyze(
-        username=chess_com_username,
-        filters=filters,
-    )
-    
+    view = await pipeline_for(token).recall_view(chess_com_username, filters)
+
+    study_names = {study["id"]: study["name"] for study in studies}
     return {
-        "results": report.deviations,
-        "total_games": report.total_games_analyzed,
-        "analyzed_with_deviations": report.games_with_deviations,
+        "gaps": [
+            {
+                "position_key": gap.position_key,
+                "color": gap.color,
+                "path": gap.path,
+                "wrong_moves": [{"san": m.san, "count": m.count} for m in gap.wrong_moves],
+                "book_moves": gap.book_moves,
+                "studies": [
+                    {"id": study_id, "name": study_names.get(study_id, study_id)}
+                    for study_id in gap.studies
+                ],
+                "occurrences": gap.occurrences,
+                "last_seen": gap.last_seen,
+                "games": [
+                    {
+                        "url": g.url,
+                        "date": g.date,
+                        "time_class": g.time_class,
+                        "move_played": g.move_played,
+                    }
+                    for g in gap.games
+                ],
+            }
+            for gap in view.gaps
+        ],
+        "totals": {
+            "analysed": view.totals.analysed,
+            "opponent_left_book": view.totals.opponent_left_book,
+            "book_completed": view.totals.book_completed,
+        },
     }
 
 

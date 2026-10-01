@@ -102,3 +102,7 @@ async def analyze_games(...):
 ## Amendment (2026-10-01): one Repertoire per user
 
 The Repertoire is now every study the user owns on Lichess (issue #21), so the cache is no longer keyed by a study ID set. The pipeline caches "the user's Repertoire" with the same 1-hour TTL, and a study created on Lichess joins at the next rebuild. `RepertoireSource.fetch_repertoire()` takes no study arguments, `LichessRepertoireSource` lists the user's owned studies on each rebuild, `main.py` keeps one pipeline per Lichess user so the cache is reused across requests, and `pipeline.analyze(username, filters)` no longer takes study ids or names. The rest of this decision stands.
+
+## Amendment (2026-10-01): recall view replaces per-game analysis
+
+The pipeline's `analyze` (one row per game via `DeviationAnalyzer`) is replaced by `pipeline.recall_view(username, filters)` (issue #22). It fetches every cached game, walks each through the Repertoire, and hands the walk records to the pure Recall Gap aggregator (`recall_gaps.py`), which applies the Game Filters itself, so that later rules can read all games while showing only the filtered ones. `/api/analyze` and `analyzer.py` are removed; `/api/recall-view` serves the view. The rest of this decision stands.

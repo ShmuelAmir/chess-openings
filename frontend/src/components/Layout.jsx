@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "@tanstack/react-router";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { AnalysisProvider } from "../context/AnalysisContext";
 import LichessAuth from "./LichessAuth";
 
 function LayoutContent() {
@@ -150,7 +149,7 @@ function LayoutContent() {
               to="/"
               className={`nav-link ${location.pathname === "/" ? "active" : ""}`}
             >
-              Repertoire Analysis
+              Recall Gaps
             </Link>
             <Link
               to="/openings"
@@ -246,9 +245,7 @@ function LayoutContent() {
 export default function Layout() {
   return (
     <AuthProvider>
-      <AnalysisProvider>
-        <LayoutContent />
-      </AnalysisProvider>
+      <LayoutContent />
     </AuthProvider>
   );
 }
