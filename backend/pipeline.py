@@ -11,7 +11,7 @@ import logging
 
 import chess
 
-from repertoire import Repertoire
+from repertoire import Repertoire, side_to_move
 from repertoire_walker import RepertoireWalker
 from recall_gaps import RecallFilters, RecallView, WalkedGame, aggregate
 
@@ -136,8 +136,7 @@ class RepertoireAnalysisPipeline:
         def studies_of(key: str) -> set[str]:
             # A Recall Gap is a position on the user's move, so its side to
             # move is the user's color and picks the tree.
-            side_to_move = chess.WHITE if key.split(" ")[1] == "w" else chess.BLACK
-            return repertoire.studies_containing(key, side_to_move)
+            return repertoire.studies_containing(key, side_to_move(key))
 
         return aggregate(walked, filters, studies_of)
     

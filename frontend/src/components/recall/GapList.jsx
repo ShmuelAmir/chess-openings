@@ -37,7 +37,7 @@ export default function GapList({ gaps, totals, selectedKey, onSelect, loading }
             <span className="rv-line">{formatLine(gap.path)}</span>
             <span className="rv-moves">
               you: {gap.wrong_moves.map((m) => `${m.san}×${m.count}`).join(", ")}{" "}
-              · book: {gap.book_moves.join(", ")}
+              · book: {gap.book_moves.join(" / ")}
             </span>
           </span>
           <span className="rv-count">

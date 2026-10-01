@@ -8,6 +8,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Optional
 
+import chess
+
+from repertoire import side_to_move
 from repertoire_walker import DeviationType, WalkRecord
 
 
@@ -131,7 +134,7 @@ def _gap(
 
     return RecallGap(
         position_key=key,
-        color="white" if key.split(" ")[1] == "w" else "black",
+        color="white" if side_to_move(key) == chess.WHITE else "black",
         path=latest.moves[: latest.record.deviation.ply],
         wrong_moves=[WrongMove(san, n) for san, n in sorted(played.items(), key=lambda m: (-m[1], m[0]))],
         book_moves=book_moves,

@@ -1,7 +1,7 @@
 import chess
 
 from recall_gaps import RecallFilters, Totals, WalkedGame, aggregate
-from repertoire import RepertoireBuilder
+from repertoire import RepertoireBuilder, side_to_move
 from repertoire_walker import RepertoireWalker
 
 AFTER_E4_E5 = "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -"
@@ -38,8 +38,7 @@ def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rate
 
 def recall(games, filters=RecallFilters(), rep=REPERTOIRE):
     def studies_of(key):
-        color = chess.WHITE if key.split(" ")[1] == "w" else chess.BLACK
-        return rep.studies_containing(key, color)
+        return rep.studies_containing(key, side_to_move(key))
 
     return aggregate(games, filters, studies_of)
 
