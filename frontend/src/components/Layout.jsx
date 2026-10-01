@@ -14,12 +14,12 @@ function LayoutContent() {
     handleLogout,
     handleChessComSave,
     handleChessComClear,
-    cacheStatus,
+    syncStatus,
     syncing,
     syncError,
     chessComError,
     validatingChessCom,
-    syncGames,
+    startSync,
   } = useAuth();
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -203,15 +203,15 @@ function LayoutContent() {
                 <div className="account-details">
                   <span className="account-name">{chessComUsername}</span>
                   <span className="account-type">Chess.com</span>
-                  {cacheStatus && (
+                  {syncStatus && (
                     <span className="cache-info">
-                      {cacheStatus.cached_games.toLocaleString()} games
-                      {cacheStatus.last_sync_at && (
+                      {syncStatus.cached_games.toLocaleString()} games
+                      {syncStatus.last_synced_at && (
                         <>
                           {" "}
-                          ·{" "}
+                          · last synced{" "}
                           {new Date(
-                            cacheStatus.last_sync_at * 1000,
+                            syncStatus.last_synced_at * 1000,
                           ).toLocaleDateString()}
                         </>
                       )}
@@ -227,7 +227,7 @@ function LayoutContent() {
                   </button>
                   <button
                     className="text-btn small sync"
-                    onClick={syncGames}
+                    onClick={startSync}
                     disabled={syncing}
                   >
                     {syncing ? "Syncing..." : "Sync"}

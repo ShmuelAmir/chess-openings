@@ -114,6 +114,7 @@ The system is organized in horizontal layers from request → response:
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
    - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into ranked Recall Gaps and totals under the Game Filters
    - **`game_cache.py`:** SQLite game storage and filtering
+   - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
    - These modules are system-independent; they don't import HTTP libraries
 
@@ -142,6 +143,12 @@ This makes the pipeline testable: tests can inject mock sources.
 ### Repertoire Caching
 
 The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild. Changing the "not repertoire" exclusion list (stored in SQLite next to the game cache) drops the cached Repertoire, so the change takes effect on the next request.
+
+A Sync rebuilds the Repertoire at once (joining a build already in flight, or skipping one fetched in the last 30 seconds) and keeps the previous trees if nothing changed. The pipeline also keeps its last analysis (every cached game walked through the Repertoire) and reuses it until the Repertoire changes or a Sync brings new games, so re-analysis runs only if something changed.
+
+### Sync Service
+
+`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, `RepertoireSyncLog` for Lichess), and reports progress ("Fetching games… 2023-04"). `POST /api/sync` starts one; `GET /api/sync` polls it.
 
 ### Error Handling
 

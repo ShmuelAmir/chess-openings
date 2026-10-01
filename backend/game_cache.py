@@ -61,6 +61,15 @@ class GameCache:
                     last_synced_month INTEGER
                 )
             """)
+            # Months whose fetch failed, fetched again on the next Sync
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS failed_months (
+                    username TEXT NOT NULL,
+                    year INTEGER NOT NULL,
+                    month INTEGER NOT NULL,
+                    PRIMARY KEY (username, year, month)
+                )
+            """)
             conn.commit()
     
     def get_cached_games(
@@ -185,19 +194,50 @@ class GameCache:
             row = cursor.fetchone()
             return dict(row) if row else None
     
-    def update_sync_status(self, username: str, year: int, month: int):
-        """Update sync status after successful sync."""
+    def record_sync(
+        self,
+        username: str,
+        year: int,
+        month: int,
+        failed_months: list[tuple[int, int]],
+    ):
+        """
+        Record a Sync that fetched every month up to (year, month).
+
+        The failed months replace the previous ones. The last sync time only
+        advances when no month failed.
+        """
         username_lower = username.lower()
         now = int(time.time())
-        
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT OR REPLACE INTO sync_status (
+                INSERT INTO sync_status (
                     username, last_sync_at, last_synced_year, last_synced_month
                 ) VALUES (?, ?, ?, ?)
-            """, (username_lower, now, year, month))
+                ON CONFLICT(username) DO UPDATE SET
+                    last_sync_at = COALESCE(excluded.last_sync_at, last_sync_at),
+                    last_synced_year = excluded.last_synced_year,
+                    last_synced_month = excluded.last_synced_month
+            """, (username_lower, None if failed_months else now, year, month))
+            conn.execute("DELETE FROM failed_months WHERE username = ?", (username_lower,))
+            conn.executemany(
+                "INSERT INTO failed_months (username, year, month) VALUES (?, ?, ?)",
+                [(username_lower, y, m) for y, m in failed_months],
+            )
             conn.commit()
-    
+
+    def get_failed_months(self, username: str) -> set[tuple[int, int]]:
+        """The (year, month) tuples whose last fetch failed."""
+        username_lower = username.lower()
+
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT year, month FROM failed_months WHERE username = ?",
+                (username_lower,)
+            )
+            return {(row[0], row[1]) for row in cursor.fetchall()}
+
     def get_cached_months(self, username: str) -> set[tuple[int, int]]:
         """Get set of (year, month) tuples that have cached games."""
         username_lower = username.lower()
@@ -247,6 +287,7 @@ class GameCache:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM games WHERE username = ?", (username_lower,))
             conn.execute("DELETE FROM sync_status WHERE username = ?", (username_lower,))
+            conn.execute("DELETE FROM failed_months WHERE username = ?", (username_lower,))
             conn.commit()
 
 

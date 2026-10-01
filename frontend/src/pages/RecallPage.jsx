@@ -4,11 +4,13 @@ import { syncOrchestrator } from "../context/SyncOrchestrator";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
+import SyncBar from "../components/recall/SyncBar";
 import { loadFilters, saveFilters } from "../components/recall/storedFilters";
 import "../components/recall/recall.css";
 
 export default function RecallPage() {
-  const { lichessToken, chessComUsername, cacheStatus } = useAuth();
+  const { lichessToken, chessComUsername, syncStatus, syncing, syncError, startSync } =
+    useAuth();
 
   const [filters, setFilters] = useState(loadFilters);
   const [view, setView] = useState(null);
@@ -96,11 +98,22 @@ export default function RecallPage() {
       />
 
       <section className="rv-list">
+        <SyncBar
+          status={syncStatus}
+          syncing={syncing}
+          error={syncError}
+          onSync={startSync}
+        />
+
         {error && <div className="error">{error}</div>}
 
-        {cacheStatus && !cacheStatus.cached_games ? (
+        {syncStatus && !syncStatus.cached_games ? (
           <div className="empty-state">
-            <p>Click "Sync" to fetch your Chess.com games</p>
+            <p>
+              {syncing
+                ? (syncStatus.progress ?? "Syncing…")
+                : 'Click "Sync" to fetch your Chess.com games'}
+            </p>
           </div>
         ) : !view ? (
           <div className="loading">Loading Recall Gaps...</div>
@@ -111,6 +124,7 @@ export default function RecallPage() {
             selectedKey={selectedKey}
             onSelect={setSelectedKey}
             loading={loading}
+            syncing={syncing}
           />
         )}
       </section>
