@@ -148,7 +148,7 @@ A Sync rebuilds the Repertoire at once (joining a build already in flight, or sk
 
 ### Sync Service
 
-`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time, and reports progress ("Fetching games… 2023-04"). `POST /api/sync` starts one; `GET /api/sync` polls it.
+`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, `RepertoireSyncLog` for Lichess), and reports progress ("Fetching games… 2023-04"). `POST /api/sync` starts one; `GET /api/sync` polls it.
 
 ### Error Handling
 

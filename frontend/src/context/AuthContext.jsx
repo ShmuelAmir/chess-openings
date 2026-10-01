@@ -121,6 +121,7 @@ export function AuthProvider({ children }) {
 
   const applySyncStatus = useCallback((status) => {
     setSyncStatus(status);
+    setSyncError(null);
     if (seenRunsRef.current === null) {
       seenRunsRef.current = status.runs;
     } else if (!status.running && status.runs > seenRunsRef.current) {

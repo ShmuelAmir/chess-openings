@@ -28,7 +28,7 @@ from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
-from sync import ChessComSync, Sync
+from sync import ChessComSync, RepertoireSyncLog, Sync
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -100,6 +100,12 @@ def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
     return _pipelines[key]
 
 
+def invalidate_analyses():
+    """Drop every pipeline's last analysis, after the cached games changed."""
+    for pipeline in _pipelines.values():
+        pipeline.invalidate_games()
+
+
 # One Sync per Lichess user and Chess.com account
 REPERTOIRE_FRESH_SECONDS = 30
 _syncs: dict[tuple[str, str], Sync] = {}
@@ -122,16 +128,25 @@ def sync_for(token: str, chess_com_username: str) -> Sync:
             status = get_game_cache().get_sync_status(chess_com_username)
             return status["last_sync_at"] if status else None
 
-        def games_changed():
-            for p in _pipelines.values():
-                p.invalidate_games()
-
         games_sync = ChessComSync(get_game_cache(), client=ChessComClient)
+
+        async def sync_games(on_month):
+            try:
+                return await games_sync.sync(chess_com_username, on_month)
+            except httpx.HTTPStatusError as e:
+                # Chess.com answers unknown players with 404 or 410 Gone.
+                if e.response.status_code in (404, 410):
+                    raise RuntimeError(
+                        f"No Chess.com account named '{chess_com_username}'"
+                    ) from e
+                raise
+
         _syncs[key] = Sync(
-            sync_games=lambda on_month: games_sync.sync(chess_com_username, on_month),
+            sync_games=sync_games,
             refresh_repertoire=refresh_repertoire,
             games_last_success=games_last_success,
-            on_games_changed=games_changed,
+            repertoire_log=RepertoireSyncLog(user=_token_key(token)),
+            on_games_changed=invalidate_analyses,
         )
     return _syncs[key]
 
@@ -648,8 +663,7 @@ async def clear_cache(username: str):
     """Clear cached games for a user."""
     cache = get_game_cache()
     cache.clear_user_cache(username)
-    for pipeline in _pipelines.values():
-        pipeline.invalidate_games()
+    invalidate_analyses()
     return {"message": f"Cache cleared for {username}"}
 
 

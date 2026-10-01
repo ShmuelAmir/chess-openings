@@ -7,9 +7,11 @@ something changed.
 """
 import asyncio
 import logging
+import sqlite3
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
 from game_cache import GameCache
@@ -123,6 +125,43 @@ class ChessComSync:
         )
 
 
+class RepertoireSyncLog:
+    """
+    When one user's Repertoire last synced from Lichess, stored in SQLite next
+    to the game cache (which records the Chess.com side).
+    """
+
+    def __init__(self, db_path: Optional[str] = None, user: str = ""):
+        if db_path is None:
+            db_path = Path(__file__).parent / "chess_games.db"
+        self.db_path = str(db_path)
+        self.user = user
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS repertoire_syncs (
+                    user TEXT PRIMARY KEY,
+                    last_success_at INTEGER
+                )
+            """)
+            conn.commit()
+
+    def last_success(self) -> Optional[int]:
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT last_success_at FROM repertoire_syncs WHERE user = ?",
+                (self.user,),
+            ).fetchone()
+        return row[0] if row else None
+
+    def record_success(self, at: int):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO repertoire_syncs (user, last_success_at) VALUES (?, ?)",
+                (self.user, at),
+            )
+            conn.commit()
+
+
 @dataclass(frozen=True)
 class SyncResult:
     """What a Sync changed."""
@@ -133,17 +172,12 @@ class SyncResult:
 
 @dataclass
 class SourceStatus:
-    """One source's state after the last Sync."""
+    """One source's state after the last Sync in this process."""
     status: str = "never"  # "never", "ok" or "failed"
-    last_success_at: Optional[int] = None  # Unix timestamp
     error: Optional[str] = None
 
     def as_dict(self) -> dict:
-        return {
-            "status": self.status,
-            "last_success_at": self.last_success_at,
-            "error": self.error,
-        }
+        return {"status": self.status, "error": self.error}
 
 
 def _error_message(error: Exception) -> str:
@@ -161,6 +195,7 @@ class Sync:
         sync_games: Callable[[Callable[[int, int], None]], Awaitable[GamesSyncResult]],
         refresh_repertoire: Callable[[], Awaitable[bool]],
         games_last_success: Callable[[], Optional[int]],
+        repertoire_log: RepertoireSyncLog,
         on_games_changed: Callable[[], None],
         clock: Callable[[], float] = time.time,
     ):
@@ -171,12 +206,14 @@ class Sync:
                 whether it changed
             games_last_success: When the games last synced without failure
                 (persisted with the game cache)
+            repertoire_log: When the Repertoire last synced from Lichess
             on_games_changed: Drops the analysis of the old games
             clock: The current Unix time
         """
         self.sync_games = sync_games
         self.refresh_repertoire = refresh_repertoire
         self.games_last_success = games_last_success
+        self.repertoire_log = repertoire_log
         self.on_games_changed = on_games_changed
         self.clock = clock
 
@@ -219,17 +256,20 @@ class Sync:
             self.chess_com.status = "failed"
             self.chess_com.error = _error_message(e)
 
+        # Before the Lichess step, so no request walks the old games meanwhile
+        if games_changed:
+            self.on_games_changed()
+
         self._set_progress("Syncing studies…")
         try:
             repertoire_changed = await self.refresh_repertoire()
-            self.lichess = SourceStatus("ok", int(self.clock()))
+            self.repertoire_log.record_success(int(self.clock()))
+            self.lichess.status = "ok"
+            self.lichess.error = None
         except Exception as e:
             logger.warning(f"Lichess refresh failed: {e}")
             self.lichess.status = "failed"
             self.lichess.error = _error_message(e)
-
-        if games_changed:
-            self.on_games_changed()
 
         self.result = SyncResult(games_changed, repertoire_changed, new_games)
         self.runs += 1
@@ -241,14 +281,15 @@ class Sync:
 
     def status(self) -> dict:
         """The Sync's state, as the API reports it."""
-        self.chess_com.last_success_at = self.games_last_success()
-        last_successes = [self.chess_com.last_success_at, self.lichess.last_success_at]
+        chess_com = {**self.chess_com.as_dict(), "last_success_at": self.games_last_success()}
+        lichess = {**self.lichess.as_dict(), "last_success_at": self.repertoire_log.last_success()}
+        last_successes = [chess_com["last_success_at"], lichess["last_success_at"]]
         return {
             "running": self.running,
             "progress": self.progress,
             "sources": {
-                "chess_com": self.chess_com.as_dict(),
-                "lichess": self.lichess.as_dict(),
+                "chess_com": chess_com,
+                "lichess": lichess,
             },
             # The older of the two; never synced if either never was
             "last_synced_at": None if None in last_successes else min(last_successes),

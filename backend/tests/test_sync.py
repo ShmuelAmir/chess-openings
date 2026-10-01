@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 
 from game_cache import GameCache
-from sync import ChessComSync, GamesSyncResult, Sync
+from sync import ChessComSync, GamesSyncResult, RepertoireSyncLog, Sync
 
 ARCHIVES = "https://api.chess.com/pub/player/magnus/games/{}/{:02d}"
 
@@ -129,6 +129,19 @@ def test_a_first_sync_with_a_failed_month_has_no_last_sync_time(tmp_path):
 # ---- Sync: both sources ----
 
 
+class InMemoryLog:
+    """A RepertoireSyncLog that forgets everything on restart."""
+
+    def __init__(self):
+        self.last_success_at = None
+
+    def last_success(self):
+        return self.last_success_at
+
+    def record_success(self, at):
+        self.last_success_at = at
+
+
 class Sources:
     """Stand-ins for the two sources and the re-analysis hook of a Sync."""
 
@@ -138,13 +151,16 @@ class Sources:
         self.games_error = None
         self.repertoire_error = None
         self.games_last_success = None
+        self.repertoire_log = InMemoryLog()
         self.games_invalidated = 0
+        self.invalidated_before_lichess = None
 
     def sync(self):
         return Sync(
             sync_games=self.sync_games,
             refresh_repertoire=self.refresh_repertoire,
             games_last_success=lambda: self.games_last_success,
+            repertoire_log=self.repertoire_log,
             on_games_changed=self.invalidate_games,
             clock=lambda: 1000,
         )
@@ -158,6 +174,7 @@ class Sources:
         return self.games
 
     async def refresh_repertoire(self):
+        self.invalidated_before_lichess = self.games_invalidated
         if self.repertoire_error:
             raise self.repertoire_error
         return self.repertoire_changed
@@ -268,3 +285,23 @@ def test_progress_names_the_month_being_fetched():
     assert seen == ["Fetching games… 2023-04"]
     assert sync.status()["progress"] is None
     assert sync.status()["running"] is False
+
+
+def test_new_games_drop_the_old_analysis_before_the_lichess_refresh():
+    sources = Sources(new_games=1)
+
+    run(sources.sync())
+
+    assert sources.invalidated_before_lichess == 1
+
+
+def test_the_lichess_last_success_survives_a_restart(tmp_path):
+    sources = Sources()
+    sources.repertoire_log = RepertoireSyncLog(tmp_path / "app.db")
+    run(sources.sync())
+
+    sources.repertoire_log = RepertoireSyncLog(tmp_path / "app.db")
+    restarted = sources.sync()
+
+    assert restarted.status()["sources"]["lichess"]["last_success_at"] == 1000
+    assert restarted.status()["last_synced_at"] == 900
