@@ -116,9 +116,10 @@ class LichessClient:
         return studies
 
     async def get_study_pgn(self, study_id: str) -> str:
-        """Get PGN content of a study."""
+        """Get PGN content of a study, with each chapter's Orientation header."""
         response = await self._get(
             f"/api/study/{study_id}.pgn",
+            params={"orientation": "true"},
             headers={"Accept": "application/x-chess-pgn"},
         )
         if response.status_code == 403:

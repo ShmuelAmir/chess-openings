@@ -6,7 +6,7 @@ import re
 import chess
 import chess.pgn
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import NamedTuple, Optional
 from opening_normalizer import OpeningNormalizer
 
 
@@ -28,17 +28,54 @@ class RepertoireNode:
     is_your_turn: bool = False
 
 
+class ChapterLocation(NamedTuple):
+    """Where a position sits in a study, for an "open in study" deep link."""
+    chapter_id: Optional[str]
+    # Half-moves from the chapter start; None when the position is off the mainline
+    mainline_ply: Optional[int]
+
+
+def position_key(board: chess.Board) -> str:
+    """The FEN without the halfmove and fullmove counters."""
+    return " ".join(board.fen().split(" ")[:4])
+
+
 @dataclass
 class Repertoire:
     """Complete repertoire with separate trees for White and Black."""
     white_tree: RepertoireNode = field(default_factory=RepertoireNode)
     black_tree: RepertoireNode = field(default_factory=RepertoireNode)
-    # FEN position index: maps FEN string -> (opening_name, study_name, variation_count)
-    position_index: dict[str, tuple[str, str, int]] = field(default_factory=dict)
-    
+    # (study color, position key) -> {study id: where the position sits in that study}
+    _study_membership: dict[tuple[chess.Color, str], dict[str, ChapterLocation]] = field(default_factory=dict)
+
     def get_tree(self, color: chess.Color) -> RepertoireNode:
         """Get the repertoire tree for a specific color."""
         return self.white_tree if color == chess.WHITE else self.black_tree
+
+    def studies_containing(self, key: str, color: chess.Color) -> set[str]:
+        """Ids of the studies of this color whose lines contain the position."""
+        return set(self._locations(key, color))
+
+    def chapter_location(
+        self, key: str, color: chess.Color, study_id: str
+    ) -> Optional[ChapterLocation]:
+        """The chapter (and mainline ply, if any) to deep-link this position in a study."""
+        return self._locations(key, color).get(study_id)
+
+    def _locations(self, key: str, color: chess.Color) -> dict[str, ChapterLocation]:
+        return self._study_membership.get((color, key), {})
+
+    def add_study_position(
+        self, color: chess.Color, key: str, study_id: str, location: ChapterLocation
+    ):
+        """Record that a study contains the position (used by RepertoireBuilder).
+
+        A chapter that has the position on its mainline beats one that doesn't.
+        """
+        locations = self._study_membership.setdefault((color, key), {})
+        known = locations.get(study_id)
+        if known is None or (known.mainline_ply is None and location.mainline_ply is not None):
+            locations[study_id] = location
 
 
 class RepertoireBuilder:
@@ -68,8 +105,6 @@ class RepertoireBuilder:
         """Process all studies and build the repertoire trees."""
         for pgn, opening_name, study_name, study_id in self._studies:
             self._process_study(pgn, opening_name, study_name, study_id)
-        # Build FEN position index for transposition handling
-        self._build_fen_index()
         return self.repertoire
     
     def _process_study(
@@ -79,24 +114,22 @@ class RepertoireBuilder:
         study_name: str,
         study_id: Optional[str],
     ):
-        """Process a single study PGN (may contain multiple chapters/games)."""
-        pgn_io = io.StringIO(pgn)
-        
-        while True:
-            game = chess.pgn.read_game(pgn_io)
-            if game is None:
-                break
-            
+        """Process a single study PGN (one game per chapter).
+
+        The study belongs to the color of its first chapter's orientation
+        and feeds only that color's tree.
+        """
+        chapters = self._read_chapters(pgn)
+        if not chapters:
+            return
+        color = self._orientation(chapters[0])
+
+        for game in chapters:
             # Extract chapter name from PGN headers
             # Lichess uses the game name or title as chapter name
             chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
-            # Try to extract chapter id from the standard Site header.
-            # If not present, fall back to the Event header which occasionally
-            # contains study URLs in older PGN exports.
-            chapter_id = self._extract_chapter_id(game.headers.get("Site"))
-            if not chapter_id:
-                chapter_id = self._extract_chapter_id(game.headers.get("Event"))
-            
+            chapter_id = self._chapter_id(game.headers)
+
             # Normalize study & chapter pair, avoiding redundancy.
             # This prevents cases where a chapter that only repeats the study
             # becomes an empty string (e.g., "Vienna: " -> "").
@@ -114,11 +147,36 @@ class RepertoireBuilder:
             full_chapter_name = f"{study_name} - {chapter_name}" if chapter_name else study_name
             self._process_game(
                 game,
+                color,
                 opening_name,
                 full_chapter_name,
                 study_id,
                 chapter_id,
             )
+
+    @staticmethod
+    def _read_chapters(pgn: str) -> list[chess.pgn.Game]:
+        pgn_io = io.StringIO(pgn)
+        chapters = []
+        while (game := chess.pgn.read_game(pgn_io)) is not None:
+            chapters.append(game)
+        return chapters
+
+    @staticmethod
+    def _orientation(game: chess.pgn.Game) -> chess.Color:
+        """A chapter's orientation, from the PGN fetched with ?orientation=true.
+
+        A missing header is read as White, Lichess's default orientation.
+        """
+        return chess.BLACK if game.headers.get("Orientation", "").lower() == "black" else chess.WHITE
+
+    def _chapter_id(self, headers: chess.pgn.Headers) -> Optional[str]:
+        """The chapter id from the first Lichess chapter URL in the headers."""
+        for header in ("ChapterURL", "Site", "Event"):
+            chapter_id = self._extract_chapter_id(headers.get(header))
+            if chapter_id:
+                return chapter_id
+        return None
 
     def _extract_chapter_id(self, site_header: Optional[str]) -> Optional[str]:
         """Extract the chapter ID from Lichess PGN Site header URL."""
@@ -136,123 +194,72 @@ class RepertoireBuilder:
             return chapter.strip().strip("/")
         return None
     
-    def _build_fen_index(self):
-        """Build FEN position index by traversing the white repertoire tree."""
-        def traverse_tree(node: RepertoireNode, board: chess.Board):
-            """Recursively traverse tree and index FEN positions."""
-            fen = board.fen()
-            if fen and node.opening_name:
-                # Count variations available at this position
-                variation_count = len(node.children)
-                # Store the opening and study info for this FEN
-                self.repertoire.position_index[fen] = (
-                    node.opening_name,
-                    node.study_name,
-                    variation_count,
-                )
-            
-            # Traverse all child positions
-            for move_san, child_node in node.children.items():
-                try:
-                    move = board.parse_san(move_san)
-                    board.push(move)
-                    traverse_tree(child_node, board)
-                    board.pop()
-                except ValueError:
-                    # Invalid move, skip
-                    pass
-        
-        # Start from white's perspective
-        board = chess.Board()
-        traverse_tree(self.repertoire.white_tree, board)
-    
     def _process_game(
         self,
         game: chess.pgn.Game,
+        color: chess.Color,
         opening_name: str,
         study_name: str,
         study_id: Optional[str],
         chapter_id: Optional[str],
     ):
-        """Process a single game/chapter from a study."""
+        """Process a single game/chapter into its study's color tree."""
         # Process the main line and all variations
         self._process_node(
             game,
-            self.repertoire.white_tree,
-            self.repertoire.black_tree,
-            chess.WHITE,  # White moves first
+            self.repertoire.get_tree(color),
+            color,
             opening_name,
             study_name,
             study_id,
             chapter_id,
         )
-    
+
     def _process_node(
         self,
         node: chess.pgn.GameNode,
-        white_tree: RepertoireNode,
-        black_tree: RepertoireNode,
-        turn: chess.Color,
+        tree: RepertoireNode,
+        color: chess.Color,
         opening_name: str,
         study_name: str,
         study_id: Optional[str],
         chapter_id: Optional[str],
     ):
         """Recursively process a game node and its variations."""
-        # Get the current position's tree node based on perspective
-        # For White repertoire: your moves when it's White's turn
-        # For Black repertoire: your moves when it's Black's turn
-        
+        board = node.board()
+        if study_id:
+            self.repertoire.add_study_position(
+                color,
+                position_key(board),
+                study_id,
+                ChapterLocation(chapter_id, node.ply() if node.is_mainline() else None),
+            )
         for variation in node.variations:
-            move_san = node.board().san(variation.move)
-            
-            # Add to both trees (the tree structure is the same,
-            # but interpretation differs based on which color you play)
-            
-            # White tree: positions from White's perspective
-            if move_san not in white_tree.children:
-                white_tree.children[move_san] = RepertoireNode(
+            move_san = board.san(variation.move)
+
+            if move_san not in tree.children:
+                tree.children[move_san] = RepertoireNode(
                     opening_name=opening_name,
                     study_name=study_name,
                     study_id=study_id,
                     chapter_id=chapter_id,
-                    is_your_turn=(turn == chess.WHITE),
+                    is_your_turn=(board.turn == color),
                 )
-            white_child = white_tree.children[move_san]
-            if white_child.opening_name is None:
-                white_child.opening_name = opening_name
-            if white_child.study_name is None:
-                white_child.study_name = study_name
-            if white_child.study_id is None:
-                white_child.study_id = study_id
-            if white_child.chapter_id is None:
-                white_child.chapter_id = chapter_id
-            
-            # Black tree: positions from Black's perspective
-            if move_san not in black_tree.children:
-                black_tree.children[move_san] = RepertoireNode(
-                    opening_name=opening_name,
-                    study_name=study_name,
-                    study_id=study_id,
-                    chapter_id=chapter_id,
-                    is_your_turn=(turn == chess.BLACK),
-                )
-            black_child = black_tree.children[move_san]
-            if black_child.opening_name is None:
-                black_child.opening_name = opening_name
-            if black_child.study_name is None:
-                black_child.study_name = study_name
-            if black_child.study_id is None:
-                black_child.study_id = study_id
-            if black_child.chapter_id is None:
-                black_child.chapter_id = chapter_id
-            
+            child = tree.children[move_san]
+            if child.opening_name is None:
+                child.opening_name = opening_name
+            if child.study_name is None:
+                child.study_name = study_name
+            if child.study_id is None:
+                child.study_id = study_id
+            if child.chapter_id is None:
+                child.chapter_id = chapter_id
+
             # Recursively process this variation
             self._process_node(
                 variation,
-                white_child,
-                black_child,
-                not turn,  # Alternate turns
+                child,
+                color,
                 opening_name,
                 study_name,
                 study_id,
