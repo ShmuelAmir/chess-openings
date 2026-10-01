@@ -114,6 +114,7 @@ The system is organized in horizontal layers from request → response:
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
    - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into ranked Recall Gaps and totals under the Game Filters
    - **`game_cache.py`:** SQLite game storage and filtering
+   - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
    - These modules are system-independent; they don't import HTTP libraries
 
 5. **External Integration Layer**
@@ -140,7 +141,7 @@ This makes the pipeline testable: tests can inject mock sources.
 
 ### Repertoire Caching
 
-The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild.
+The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild. Changing the "not repertoire" exclusion list (stored in SQLite next to the game cache) drops the cached Repertoire, so the change takes effect on the next request.
 
 ### Error Handling
 
@@ -164,7 +165,7 @@ Call pipeline.recall_view(username, filters)
 Pipeline._get_repertoire() checks cache; if miss, calls source.fetch_repertoire()
   ↓
 LichessRepertoireSource.fetch_repertoire()
-  ├─ List the user's owned studies
+  ├─ List the user's owned studies, minus those marked "not repertoire"
   ├─ Fetch each owned study's PGN from Lichess (?orientation=true)
   ├─ Feed to RepertoireBuilder (each study into its first chapter's color tree)
   └─ Return built Repertoire (white_tree, black_tree, study membership)

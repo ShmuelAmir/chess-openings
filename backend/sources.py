@@ -16,31 +16,40 @@ logger = logging.getLogger(__name__)
 
 
 class LichessRepertoireSource(RepertoireSource):
-    """Builds the user's Repertoire from every study they own on Lichess."""
+    """
+    Builds the user's Repertoire from every study they own on Lichess, except
+    those marked "not repertoire".
+    """
     
     def __init__(
         self,
         lichess_token: str,
         list_studies: Callable[[], Awaitable[list[dict]]],
+        excluded_studies: Callable[[], set[str]],
     ):
         """
         Args:
             lichess_token: The user's Lichess token
             list_studies: Lists the user's owned studies (id, name); called on
                 every rebuild, so new studies join the Repertoire
+            excluded_studies: The ids of the studies marked "not repertoire";
+                read on every rebuild
         """
         self.lichess_token = lichess_token
         self.list_studies = list_studies
+        self.excluded_studies = excluded_studies
     
     async def fetch_repertoire(self) -> Repertoire:
         """
-        Fetch every owned study from Lichess and build the repertoire trees.
+        Fetch every owned study not marked "not repertoire" from Lichess and
+        build the repertoire trees.
         
         Returns:
             Repertoire object with white/black trees
         """
         builder = RepertoireBuilder()
-        studies = await self.list_studies()
+        excluded = self.excluded_studies()
+        studies = [s for s in await self.list_studies() if s["id"] not in excluded]
         
         async with LichessClient(token=self.lichess_token) as client:
             for study in studies:
