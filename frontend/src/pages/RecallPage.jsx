@@ -51,9 +51,10 @@ export default function RecallPage() {
 
       const data = await response.json();
       if (request !== requestRef.current) return;
-      // Forget selected studies that are no longer in the Repertoire
+      // Forget selected studies that are no longer in the Repertoire (an
+      // empty list says nothing about them, so keep the selection then)
       const known = new Set(data.studies.map((study) => study.id));
-      if (filters.studies.some((id) => !known.has(id))) {
+      if (known.size > 0 && filters.studies.some((id) => !known.has(id))) {
         setFilters({
           ...filters,
           studies: filters.studies.filter((id) => known.has(id)),

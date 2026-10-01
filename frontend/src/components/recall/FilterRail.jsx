@@ -1,11 +1,4 @@
-const TIME_CLASSES = ["bullet", "blitz", "rapid", "daily"];
-
-const DATE_RANGES = [
-  { id: "month", label: "Last month" },
-  { id: "3months", label: "Last 3 months" },
-  { id: "year", label: "Last year" },
-  { id: "all", label: "All time" },
-];
+import { TIME_CLASSES, DATE_RANGES } from "./storedFilters";
 
 const COLORS = [
   { id: "white", label: "White" },

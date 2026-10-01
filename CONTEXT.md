@@ -177,7 +177,7 @@ aggregate(walked games, filters, studies of a position) groups the player
 errors inside the filters into ranked Recall Gaps, counts the totals, and
 counts each study's Recall Gaps under every filter but the Study filter
   ↓
-Return {studies: [{id, opening_name, color, gaps}], gaps: [...],
+Return {studies: [{id, name, opening_name, color, gaps}], gaps: [...],
         totals: {analysed, opponent_left_book, book_completed}}
 ```
 

@@ -1,7 +1,13 @@
 const STORAGE_KEY = "recall-view.game-filters";
 
-const TIME_CLASSES = ["bullet", "blitz", "rapid", "daily"];
-const DATE_RANGES = ["month", "3months", "year", "all"];
+export const TIME_CLASSES = ["bullet", "blitz", "rapid", "daily"];
+
+export const DATE_RANGES = [
+  { id: "month", label: "Last month" },
+  { id: "3months", label: "Last 3 months" },
+  { id: "year", label: "Last year" },
+  { id: "all", label: "All time" },
+];
 
 export const DEFAULT_FILTERS = {
   timeClasses: ["blitz", "rapid"],
@@ -29,7 +35,7 @@ export function loadFilters() {
       stored.timeClasses.every((tc) => TIME_CLASSES.includes(tc))
         ? stored.timeClasses
         : DEFAULT_FILTERS.timeClasses,
-    dateRange: DATE_RANGES.includes(stored.dateRange)
+    dateRange: DATE_RANGES.some((range) => range.id === stored.dateRange)
       ? stored.dateRange
       : DEFAULT_FILTERS.dateRange,
     ratedOnly:
