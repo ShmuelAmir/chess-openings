@@ -9,6 +9,7 @@ from pipeline import RepertoireSource, GameSource, GameFilters
 from repertoire import Repertoire, RepertoireBuilder
 from game_cache import GameCache
 from lichess import LichessClient
+from chess_com import player_result
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class CacheGameSource(GameSource):
             filters: Game filtering parameters
         
         Returns:
-            List of game dicts
+            List of game dicts, each with the user's result as "user_result"
         """
         logger.debug(f"Fetching games for {username} with filters: {filters}")
         
@@ -103,5 +104,9 @@ class CacheGameSource(GameSource):
             to_ts=filters.to_ts,
         )
         
+        for game in games:
+            user_is_white = game.get("white", "").lower() == username.lower()
+            game["user_result"] = player_result(game.get("result") or "", user_is_white)
+
         logger.debug(f"Found {len(games)} cached games for {username}")
         return games

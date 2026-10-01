@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import datetime
 
-from lichess import LichessClient, LichessRateLimitError
+from lichess import LichessClient, LichessRateLimitError, study_url
 from chess_com import ChessComClient
 from game_cache import get_game_cache
 from pipeline import RepertoireAnalysisPipeline, GameFilters
@@ -257,8 +257,12 @@ async def recall_view(
                 "wrong_moves": [{"san": m.san, "count": m.count} for m in gap.wrong_moves],
                 "book_moves": gap.book_moves,
                 "studies": [
-                    {"id": study_id, "name": study_names.get(study_id, study_id)}
-                    for study_id in gap.studies
+                    {
+                        "id": study.id,
+                        "name": study_names.get(study.id, study.id),
+                        "url": study_url(study.id, study.chapter_id, study.mainline_ply),
+                    }
+                    for study in gap.studies
                 ],
                 "occurrences": gap.occurrences,
                 "last_seen": gap.last_seen,
@@ -268,6 +272,7 @@ async def recall_view(
                         "date": g.date,
                         "time_class": g.time_class,
                         "move_played": g.move_played,
+                        "result": g.result,
                     }
                     for g in gap.games
                 ],

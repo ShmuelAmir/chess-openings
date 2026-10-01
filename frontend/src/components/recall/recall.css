@@ -44,6 +44,13 @@
 .rv-move { font-family: monospace; font-size: 1.1rem; }
 .rv-move.bad { color: #e06c6c; }
 .rv-move.good { color: #81b64c; }
+.rv-games { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.3rem; }
+.rv-games a { color: #81b64c; }
+.rv-result.win { color: #81b64c; }
+.rv-result.loss { color: #e06c6c; }
+.rv-studylinks { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #34345a; font-size: 0.8rem; }
+.rv-studylinks a { color: #8a8aa0; }
+.rv-studylinks a:hover { color: #ddd; }
 
 @media (max-width: 1100px) {
   .rv { grid-template-columns: 1fr; }
