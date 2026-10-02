@@ -140,7 +140,7 @@ export default function RecallPage() {
         )}
       </section>
 
-      <GapDetail gap={selected} />
+      <GapDetail key={selected?.position_key} gap={selected} />
     </div>
   );
 }

@@ -117,6 +117,7 @@ The system is organized in horizontal layers from request → response:
    - **`game_cache.py`:** SQLite game storage and filtering
    - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
+   - **`drill_attempts.py`:** The persisted Drill Attempts (SQLite, next to the game cache)
    - These modules are system-independent; they don't import HTTP libraries
 
 5. **External Integration Layer**

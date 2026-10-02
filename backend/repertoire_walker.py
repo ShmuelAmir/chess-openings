@@ -51,6 +51,8 @@ class InBookMove(NamedTuple):
     """A position reached on the user's move while still in book, and the move played."""
     position_key: str
     move: str
+    book_moves: list[str]  # every repertoire move at the position
+    ply: int  # half-moves played before it
 
 
 class WalkRecord(NamedTuple):
@@ -175,7 +177,12 @@ class RepertoireWalker:
                 )
 
             if is_your_move:
-                reached_in_book.append(InBookMove(position_key(board), move_san))
+                reached_in_book.append(InBookMove(
+                    position_key(board),
+                    move_san,
+                    list(current_node.children),
+                    board.ply(),
+                ))
 
             current_node = current_node.children[move_san]
             try:

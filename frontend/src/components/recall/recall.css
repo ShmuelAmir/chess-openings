@@ -72,6 +72,11 @@
 .rv-games a { color: #81b64c; }
 .rv-result.win { color: #81b64c; }
 .rv-result.loss { color: #e06c6c; }
+.rv-practice { width: 100%; margin-bottom: 0.6rem; }
+.rv-drill-msg { font-size: 0.9rem; margin-bottom: 0.6rem; }
+.rv-drill-msg.good { color: #81b64c; }
+.rv-drill-msg.bad { color: #e06c6c; }
+.rv-drill-actions { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
 .rv-studylinks { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid #34345a; font-size: 0.8rem; }
 .rv-studylinks a { color: #8a8aa0; }
 .rv-studylinks a:hover { color: #ddd; }
