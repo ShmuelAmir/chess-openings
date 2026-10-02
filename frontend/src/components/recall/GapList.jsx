@@ -19,6 +19,8 @@ export default function GapList({
   loading,
   syncing,
   syncResult,
+  practicing,
+  onPractice,
 }) {
   const openCount = gaps.filter((gap) => gap.status === "open").length;
   const changes = syncing ? null : formatSyncChanges(syncResult);
@@ -29,13 +31,20 @@ export default function GapList({
           <strong>
             {openCount} open Recall {openCount === 1 ? "Gap" : "Gaps"}
           </strong>
-          {closedCount > 0 && (
-            <label className="rv-switch">
-              <input type="checkbox" checked={showClosed} onChange={onToggleClosed} />
-              <span className="rv-switch-track" />
-              Show closed ({closedCount})
-            </label>
-          )}
+          <span className="rv-listactions">
+            {closedCount > 0 && (
+              <label className="rv-switch">
+                <input type="checkbox" checked={showClosed} onChange={onToggleClosed} />
+                <span className="rv-switch-track" />
+                Show closed ({closedCount})
+              </label>
+            )}
+            {!practicing && (
+              <button className="rv-session" onClick={onPractice} disabled={openCount === 0}>
+                Practice due gaps
+              </button>
+            )}
+          </span>
         </span>
         <span className="rv-missrate">
           <span>

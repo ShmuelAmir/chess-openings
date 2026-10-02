@@ -404,6 +404,14 @@ def test_a_new_occurrence_outside_the_filters_still_reopens_a_gap():
     assert (gap.status, gap.progress) == ("open", 0)
 
 
+def test_a_gaps_last_occurrence_counts_every_game_whatever_the_filters():
+    games = [game(BB5_MISS, day=1), game(BB5_MISS, day=4, time_class="bullet")]
+
+    gap = recall(games, RecallFilters(time_classes=["blitz"])).gaps[0]
+
+    assert (gap.last_seen, gap.last_occurrence) == (1 * DAY, 4 * DAY)
+
+
 
 def utc(year, month, day=1):
     return int(datetime(year, month, day, tzinfo=timezone.utc).timestamp())

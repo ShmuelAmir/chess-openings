@@ -53,6 +53,8 @@ One practice run of a Recall Gap: the user replays the line from the first move 
 
 - **Outcome:** a pass, or a fail at the first wrong move. A failed attempt records the position where that first wrong move was played.
 - **Relationship to Recall Gaps:** drill results decide when a Recall Gap is next due for practice. They never create Recall Gaps and never change their ranking, because Recall Gaps come only from real games.
+- **Due:** a gap with no Drill Attempts is due. Successive passes hold it back 1, then 3, then 7 days (and it stays at 7); a fail resets that, so the gap is due again at once. A real-game occurrence newer than the last Drill Attempt — in any game, whatever the Game Filters — makes it due at once and restarts the count, as a fail does.
+- **Practice session:** drills the due Open gaps among those the Game Filters show, in ranking order, one after another until nothing is due or the user stops. Closed gaps are left out, though they can still be drilled on demand.
 
 _Avoid:_ "exercise", "puzzle", "quiz" — use Drill Attempt.
 
@@ -118,6 +120,7 @@ The system is organized in horizontal layers from request → response:
    - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
    - **`drill_attempts.py`:** The persisted Drill Attempts (SQLite, next to the game cache)
+   - **`drill_scheduler.py`:** The pure drill scheduler: when each Recall Gap is next due, and a practice session's queue
    - These modules are system-independent; they don't import HTTP libraries
 
 5. **External Integration Layer**
