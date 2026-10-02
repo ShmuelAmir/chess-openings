@@ -27,11 +27,16 @@ export function userTurn(drill) {
   return drill.done ? null : (drill.turns[drill.ply] ?? null);
 }
 
+/** The moves played so far, ending with the move played at the gap once done. */
+export function drillLine(drill) {
+  const line = drill.path.slice(0, drill.ply);
+  return drill.finalMove ? [...line, drill.finalMove] : line;
+}
+
 /** The board's FEN at the drill's current ply. */
 export function drillFen(drill) {
   const chess = new Chess();
-  drill.path.slice(0, drill.ply).forEach((san) => chess.move(san));
-  if (drill.finalMove) chess.move(drill.finalMove);
+  drillLine(drill).forEach((san) => chess.move(san));
   return chess.fen();
 }
 

@@ -8,6 +8,7 @@ import {
   playUserMove,
   drillAttempt,
   drillPassed,
+  drillLine,
 } from "./drill";
 import { formatLine } from "./format";
 
@@ -73,7 +74,7 @@ export default function DrillBoard({ gap, boardWidth, onClose }) {
         onPieceDrop={onPieceDrop}
         isDraggablePiece={({ piece }) => Boolean(turn) && piece[0] === gap.color[0]}
       />
-      <div className="rv-line big">{formatLine(drill.path.slice(0, drill.ply))}</div>
+      <div className="rv-line big">{formatLine(drillLine(drill))}</div>
 
       {drill.done ? (
         <div className={`rv-drill-msg ${passed ? "good" : "bad"}`}>
