@@ -4,10 +4,13 @@ import { syncOrchestrator } from "../context/SyncOrchestrator";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
+import DrillBoard from "../components/recall/DrillBoard";
 import PracticeSession from "../components/recall/PracticeSession";
 import SyncBar from "../components/recall/SyncBar";
 import { loadFilters, saveFilters } from "../components/recall/storedFilters";
 import "../components/recall/recall.css";
+
+const BOARD_WIDTH = 306;
 
 export default function RecallPage() {
   const {
@@ -26,7 +29,10 @@ export default function RecallPage() {
   const [showClosed, setShowClosed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [practicing, setPracticing] = useState(false);
+  // The practice in progress: null, { kind: "session" }, or { kind: "drill",
+  // gap } with the gap as it was when the drill started, so a held Sync
+  // never changes the board
+  const [practice, setPractice] = useState(null);
 
   useEffect(() => saveFilters(filters), [filters]);
 
@@ -89,27 +95,60 @@ export default function RecallPage() {
     loadRecallView();
   }, [loadRecallView]);
 
-  // Re-load after a Sync brings in new games; a Sync that finishes while
-  // practising is applied once practice ends
+  // Re-load after a Sync brings in new games. A Sync that finishes while
+  // practising is held, so the board never changes under the user, and
+  // applied once practice ends.
   const practicingRef = useRef(false);
+  const heldSyncRef = useRef(false);
   useEffect(() => {
     const onCacheReady = () => {
-      if (!practicingRef.current) loadRecallView();
+      if (practicingRef.current) heldSyncRef.current = true;
+      else loadRecallView();
     };
     syncOrchestrator.on("cache-ready", onCacheReady);
     return () => syncOrchestrator.off("cache-ready", onCacheReady);
   }, [loadRecallView]);
 
-  const startPractice = () => {
+  // The "what changed" line is held with the analysis it describes
+  const [shownSyncResult, setShownSyncResult] = useState(syncResult);
+  useEffect(() => {
+    if (!practice) setShownSyncResult(syncResult);
+  }, [practice, syncResult]);
+
+  const shownGaps = (view?.gaps ?? []).filter(
+    (gap) => showClosed || gap.status === "open",
+  );
+  // The selected gap if it is still listed, else the first
+  const selected =
+    shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0];
+
+  const startPractice = (started) => {
     practicingRef.current = true;
-    setPracticing(true);
+    // A load already under way would land mid-practice: drop it and load
+    // again once practice ends
+    if (loading) {
+      requestRef.current++;
+      setLoading(false);
+      heldSyncRef.current = true;
+    }
+    // Keep the selected gap across the held analysis, if it still exists
+    if (selected) setSelectedKey(selected.position_key);
+    setPractice(started);
   };
 
   const endPractice = () => {
     practicingRef.current = false;
-    setPracticing(false);
-    // Apply any Sync that finished meanwhile
-    loadRecallView();
+    setPractice(null);
+    if (heldSyncRef.current) {
+      heldSyncRef.current = false;
+      loadRecallView();
+    }
+  };
+
+  // Selecting another gap ends a drill of the previous one
+  const selectGap = (key) => {
+    if (practice?.kind === "drill" && key !== practice.gap.position_key) endPractice();
+    setSelectedKey(key);
   };
 
   const fetchPracticeQueue = useCallback(async () => {
@@ -122,13 +161,6 @@ export default function RecallPage() {
     }
     return (await response.json()).gaps;
   }, [filterParams, lichessToken]);
-
-  const shownGaps = (view?.gaps ?? []).filter(
-    (gap) => showClosed || gap.status === "open",
-  );
-  // The selected gap if it is still listed, else the first
-  const selected =
-    shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0];
 
   return (
     <div className="rv">
@@ -166,20 +198,29 @@ export default function RecallPage() {
             onToggleClosed={() => setShowClosed(!showClosed)}
             totals={view.totals}
             selectedKey={selected?.position_key}
-            onSelect={setSelectedKey}
+            onSelect={selectGap}
             loading={loading}
             syncing={syncing}
-            syncResult={syncResult}
-            practicing={practicing}
-            onPractice={startPractice}
+            syncResult={shownSyncResult}
+            practicing={practice?.kind === "session"}
+            onPractice={() => startPractice({ kind: "session" })}
           />
         )}
       </section>
 
-      {practicing ? (
+      {practice?.kind === "session" ? (
         <PracticeSession fetchQueue={fetchPracticeQueue} onEnd={endPractice} />
+      ) : practice?.kind === "drill" ? (
+        // The drill hides the gap's details, which would give the answer away
+        <section className="rv-detail">
+          <DrillBoard gap={practice.gap} boardWidth={BOARD_WIDTH} onClose={endPractice} />
+        </section>
       ) : (
-        <GapDetail key={selected?.position_key} gap={selected} />
+        <GapDetail
+          key={selected?.position_key}
+          gap={selected}
+          onDrill={() => startPractice({ kind: "drill", gap: selected })}
+        />
       )}
     </div>
   );
