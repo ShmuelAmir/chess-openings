@@ -24,6 +24,7 @@ from lichess import LichessClient, LichessRateLimitError, study_url
 from chess_com import ChessComClient
 from game_cache import get_game_cache
 from exclusions import get_exclusion_store
+from drill_attempts import get_drill_attempt_store
 from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import GAMES_TO_CLOSE, RecallFilters
@@ -415,6 +416,10 @@ async def recall_view(
                 "progress": gap.progress,
                 "games_to_close": GAMES_TO_CLOSE,
                 "closed_at": gap.closed_at,
+                "drill_turns": [
+                    {"ply": t.ply, "position_key": t.position_key, "book_moves": t.book_moves}
+                    for t in gap.drill_turns
+                ],
                 "games": [
                     {
                         "url": g.url,
@@ -441,6 +446,30 @@ async def recall_view(
             "closed_in_range": view.closed_in_range,
         },
     }
+
+
+class DrillAttemptIn(BaseModel):
+    gap_position_key: str
+    passed: bool
+    first_miss_position_key: str | None = None
+
+
+@app.post("/api/drill-attempts", status_code=201)
+async def record_drill_attempt(attempt: DrillAttemptIn):
+    """
+    Record a finished Drill Attempt: a pass, or a fail with the position of
+    its first miss. Drill Attempts never change Recall Gaps.
+    """
+    try:
+        get_drill_attempt_store().record(
+            attempt.gap_position_key,
+            passed=attempt.passed,
+            first_miss_position_key=attempt.first_miss_position_key,
+            at=int(time.time()),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"recorded": True}
 
 
 @app.post("/api/opening-stats")

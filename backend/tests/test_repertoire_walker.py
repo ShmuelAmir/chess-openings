@@ -97,13 +97,22 @@ def test_player_error_as_black():
 def test_reached_in_book_lists_the_users_moves_in_order():
     record = walk(ITALIAN, chess.WHITE, ["e4", "e5", "Nf3", "Nc6", "Bb5"])
 
-    assert record.reached_in_book == [(START, "e4"), (AFTER_E4_E5, "Nf3")]
+    assert [(m.position_key, m.move) for m in record.reached_in_book] == [
+        (START, "e4"),
+        (AFTER_E4_E5, "Nf3"),
+    ]
+
+
+def test_reached_in_book_lists_the_book_moves_at_each_position():
+    record = walk(ITALIAN, chess.WHITE, ["e4", "e5", "Nf3", "Nc6", "Bb5"])
+
+    assert [m.book_moves for m in record.reached_in_book] == [["e4"], ["Nf3", "Bc4"]]
 
 
 def test_reached_in_book_as_black():
     record = walk(SICILIAN, chess.BLACK, ["e4", "c5", "Nf3", "d6", "d4"])
 
-    assert [move for _, move in record.reached_in_book] == ["c5", "d6"]
+    assert [m.move for m in record.reached_in_book] == ["c5", "d6"]
     assert record.reached_in_book[0].position_key == (
         "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -"
     )

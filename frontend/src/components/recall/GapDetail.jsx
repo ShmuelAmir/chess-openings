@@ -1,23 +1,43 @@
+import { useState } from "react";
 import { Chessboard } from "react-chessboard";
+import DrillBoard from "./DrillBoard";
 import { formatLine, formatDate, formatStatus } from "./format";
 
 const BOARD_WIDTH = 306;
 
-/** The sticky detail pane of the selected Recall Gap. */
+/**
+ * The sticky detail pane of the selected Recall Gap. Remount it per gap
+ * (key it by position key), so a drill never carries over to another gap.
+ */
 export default function GapDetail({ gap }) {
+  const [drilling, setDrilling] = useState(false);
+
   return (
     <section className="rv-detail">
       {gap ? (
         <>
-          <Chessboard
-            id="gap-detail"
-            // A position key is a FEN without the move counters
-            position={`${gap.position_key} 0 1`}
-            boardOrientation={gap.color}
-            boardWidth={BOARD_WIDTH}
-            arePiecesDraggable={false}
-          />
-          <div className="rv-line big">{formatLine(gap.path)} …</div>
+          {drilling ? (
+            <DrillBoard
+              gap={gap}
+              boardWidth={BOARD_WIDTH}
+              onClose={() => setDrilling(false)}
+            />
+          ) : (
+            <>
+              <Chessboard
+                id="gap-detail"
+                // A position key is a FEN without the move counters
+                position={`${gap.position_key} 0 1`}
+                boardOrientation={gap.color}
+                boardWidth={BOARD_WIDTH}
+                arePiecesDraggable={false}
+              />
+              <div className="rv-line big">{formatLine(gap.path)} …</div>
+              <button className="rv-practice" onClick={() => setDrilling(true)}>
+                Practice this position
+              </button>
+            </>
+          )}
           <div className={`rv-status ${gap.status}`}>{formatStatus(gap)}</div>
           <div className="rv-compare">
             <div>

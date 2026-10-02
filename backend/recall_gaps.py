@@ -76,6 +76,14 @@ class GapStudy:
     mainline_ply: Optional[int]  # None when the position is off the chapter's mainline
 
 
+@dataclass(frozen=True)
+class DrillTurn:
+    """One of the user's turns in a Recall Gap's drill, and the moves it accepts."""
+    ply: int  # half-moves played before it
+    position_key: str
+    book_moves: list[str]
+
+
 @dataclass
 class RecallGap:
     position_key: str
@@ -90,6 +98,8 @@ class RecallGap:
     status: str = "open"  # "open" or "closed"
     progress: int = 0  # in-book games since the last occurrence, up to GAMES_TO_CLOSE
     closed_at: Optional[int] = None  # date of the game that closed the gap
+    # The user's turns along `path` and at the gap itself, which a Drill Attempt plays
+    drill_turns: list[DrillTurn] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -316,4 +326,15 @@ def _gap(
         status="open" if closing.closed_at is None else "closed",
         progress=closing.progress,
         closed_at=closing.closed_at,
+        drill_turns=_drill_turns(latest, book_moves),
     )
+
+
+def _drill_turns(latest: WalkedGame, book_moves: list[str]) -> list[DrillTurn]:
+    """The user's turns of the gap's most recent occurrence, up to and including the gap."""
+    turns = [
+        DrillTurn(m.ply, m.position_key, m.book_moves)
+        for m in latest.record.reached_in_book
+    ]
+    deviation = latest.record.deviation
+    return turns + [DrillTurn(deviation.ply, deviation.position_key, book_moves)]

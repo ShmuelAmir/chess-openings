@@ -116,6 +116,28 @@ def test_gap_records_the_line_and_date_of_its_most_recent_occurrence():
     assert [g.move_played for g in gap.games] == ["e6", "Nc6"]
 
 
+def test_gap_drill_turns_are_the_users_turns_of_its_most_recent_line():
+    after_e4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -"
+    view = recall([
+        game(["e4", "c5", "Nf3", "e6"], day=7, color=chess.BLACK),
+    ])
+
+    assert [(t.ply, t.position_key, t.book_moves) for t in view.gaps[0].drill_turns] == [
+        (1, after_e4, ["c5"]),
+        (3, AFTER_E4_C5_NF3, ["d6"]),  # the gap itself
+    ]
+
+
+def test_gap_drill_turn_at_the_gap_accepts_every_book_move_there():
+    rep = repertoire(("italian", ITALIAN), ("spanish", SPANISH))
+    view = recall([game(["e4", "e5", "Nf3", "Nc6", "d4"], day=1, rep=rep)], rep=rep)
+
+    turns = view.gaps[0].drill_turns
+    assert [t.ply for t in turns] == [0, 2, 4]
+    assert turns[-1].position_key == AFTER_E4_E5_NF3_NC6
+    assert turns[-1].book_moves == ["Bc4", "Bb5"]
+
+
 def test_gap_belongs_to_every_study_containing_its_position():
     rep = repertoire(("italian", ITALIAN), ("spanish", SPANISH))
     view = recall([game(["e4", "e5", "Nf3", "Nc6", "d4"], day=1, rep=rep)], rep=rep)
