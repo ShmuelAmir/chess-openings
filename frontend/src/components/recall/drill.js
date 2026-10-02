@@ -96,3 +96,20 @@ export function drillAttempt(drill) {
     first_miss_position_key: drill.firstMiss,
   };
 }
+
+/**
+ * The moves the user's piece on `square` can make now, as { from, to,
+ * promotion }, one per target square (a promotion becomes a queen). Empty
+ * when it isn't the user's turn or the square holds no piece of theirs.
+ */
+export function movesFrom(drill, square) {
+  if (!userTurn(drill)) return [];
+  const chess = new Chess(drillFen(drill));
+  const byTarget = new Map();
+  for (const move of chess.moves({ square, verbose: true })) {
+    if (!byTarget.has(move.to) || move.promotion === "q") {
+      byTarget.set(move.to, { from: move.from, to: move.to, promotion: move.promotion });
+    }
+  }
+  return [...byTarget.values()];
+}
