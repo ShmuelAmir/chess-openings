@@ -17,8 +17,9 @@ const OPPONENT_DELAY_MS = 400;
 /**
  * A Drill Attempt of one Recall Gap on an in-app board, oriented to the
  * user's color. Records exactly one Drill Attempt when the drill is done.
+ * In a practice session, `onNext` moves on once the attempt is saved.
  */
-export default function DrillBoard({ gap, boardWidth, onClose }) {
+export default function DrillBoard({ gap, boardWidth, onClose, onNext }) {
   const [drill, setDrill] = useState(() => startDrill(gap));
   const [saveState, setSaveState] = useState(null); // "saving" | "saved" | "error"
   const recorded = useRef(false);
@@ -110,7 +111,12 @@ export default function DrillBoard({ gap, boardWidth, onClose }) {
       )}
 
       <div className="rv-drill-actions">
-        {drill.done && (
+        {drill.done && onNext && (
+          <button onClick={onNext} disabled={saveState !== "saved"}>
+            Next
+          </button>
+        )}
+        {drill.done && !onNext && (
           <button
             onClick={() => {
               recorded.current = false;
@@ -122,7 +128,7 @@ export default function DrillBoard({ gap, boardWidth, onClose }) {
           </button>
         )}
         <button className="secondary" onClick={onClose}>
-          {drill.done ? "Close" : "Stop"}
+          {drill.done && !onNext ? "Close" : "Stop"}
         </button>
       </div>
     </div>

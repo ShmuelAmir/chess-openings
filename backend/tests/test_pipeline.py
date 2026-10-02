@@ -2,6 +2,7 @@ import asyncio
 
 import chess
 
+from drill_attempts import DrillAttempt
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from recall_gaps import RecallFilters
 from repertoire import RepertoireBuilder
@@ -185,3 +186,20 @@ def test_gap_statuses_cover_every_game():
     assert list(statuses.values()) == ["open"]
     assert last == statuses
     assert other is None
+
+
+def test_the_practice_queue_reads_the_drill_attempts():
+    games = FixedGames([
+        {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
+         "date": 100, "time_class": "blitz", "rated": True},
+    ])
+    attempts = []
+    pipeline = RepertoireAnalysisPipeline(ItalianSource(), games, drill_attempts=lambda: attempts)
+
+    async def queue():
+        return [q.due_at for q in await pipeline.practice_queue("me", RecallFilters(), now=200)]
+
+    assert asyncio.run(queue()) == [100]  # never drilled: due
+    gap_key = asyncio.run(pipeline.recall_view("me", RecallFilters())).gaps[0].position_key
+    attempts.append(DrillAttempt(gap_key, at=150, passed=True, first_miss_position_key=None))
+    assert asyncio.run(queue()) == []  # passed: held back a day

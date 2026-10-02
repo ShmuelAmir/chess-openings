@@ -7,13 +7,15 @@ import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 import logging
 
 import chess
 
 from repertoire import Repertoire
 from repertoire_walker import RepertoireWalker
+from drill_attempts import DrillAttempt
+from drill_scheduler import QueuedGap, practice_queue
 from recall_gaps import RecallFilters, RecallView, WalkedGame, aggregate
 
 
@@ -84,9 +86,11 @@ class RepertoireAnalysisPipeline:
         repertoire_source: RepertoireSource,
         game_source: GameSource,
         repertoire_ttl_seconds: int = 3600,  # 1 hour TTL
+        drill_attempts: Callable[[], list[DrillAttempt]] = list,
     ):
         self.repertoire_source = repertoire_source
         self.game_source = game_source
+        self.drill_attempts = drill_attempts
         self.repertoire_ttl_seconds = repertoire_ttl_seconds
         
         # The user's Repertoire and when it was built
@@ -128,6 +132,20 @@ class RepertoireAnalysisPipeline:
             repertoire.study_locations,
             now=int(time.time()) if now is None else now,
         )
+
+    async def practice_queue(
+        self,
+        username: str,
+        filters: RecallFilters,
+        now: Optional[int] = None,
+    ) -> list[QueuedGap]:
+        """
+        A practice session's queue: the due Open Recall Gaps among those the
+        filters show, in ranking order.
+        """
+        now = int(time.time()) if now is None else now
+        view = await self.recall_view(username, filters, now=now)
+        return practice_queue(view.gaps, self.drill_attempts(), now)
 
     async def gap_statuses(self, username: str) -> dict[str, str]:
         """Each Recall Gap's status by position key, over every game."""

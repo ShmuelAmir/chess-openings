@@ -19,6 +19,8 @@ export default function GapList({
   loading,
   syncing,
   syncResult,
+  practicing,
+  onPractice,
 }) {
   const openCount = gaps.filter((gap) => gap.status === "open").length;
   const changes = syncing ? null : formatSyncChanges(syncResult);
@@ -53,6 +55,11 @@ export default function GapList({
           {syncing ? " · Syncing…" : loading && " · updating…"}
         </span>
         {changes && <span className="rv-changes">{changes}</span>}
+        {!practicing && (
+          <button className="rv-session" onClick={onPractice} disabled={openCount === 0}>
+            Practice due gaps
+          </button>
+        )}
       </div>
 
       {gaps.length === 0 && (

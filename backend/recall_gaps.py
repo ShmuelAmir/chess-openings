@@ -98,6 +98,8 @@ class RecallGap:
     status: str = "open"  # "open" or "closed"
     progress: int = 0  # in-book games since the last occurrence, up to GAMES_TO_CLOSE
     closed_at: Optional[int] = None  # date of the game that closed the gap
+    # Date of the most recent occurrence in every game, whatever the filters
+    last_occurrence: int = 0
     # The user's turns along `path` and at the gap itself, which a Drill Attempt plays
     drill_turns: list[DrillTurn] = field(default_factory=list)
 
@@ -106,6 +108,7 @@ class RecallGap:
 class Closing:
     progress: int = 0
     closed_at: Optional[int] = None
+    last_occurrence: int = 0
 
 
 @dataclass(frozen=True)
@@ -270,7 +273,8 @@ def _occurrences(games: list[WalkedGame]) -> dict[str, list[WalkedGame]]:
 def _closings(games: list[WalkedGame]) -> dict[str, Closing]:
     """
     Each player-error position key's progress toward closing: the games
-    after its last occurrence that played a book move there.
+    after its last occurrence that played a book move there; and the date
+    of that last occurrence.
 
     Walks the games most recent first, so the first occurrence met is the
     last one, and every in-book game met before it came after it.
@@ -287,6 +291,7 @@ def _closings(games: list[WalkedGame]) -> dict[str, Closing]:
                     progress=min(len(dates), GAMES_TO_CLOSE),
                     # The gap closed with the GAMES_TO_CLOSE-th in-book game after it
                     closed_at=dates[-GAMES_TO_CLOSE] if len(dates) >= GAMES_TO_CLOSE else None,
+                    last_occurrence=g.date or 0,
                 )
         # A game counts once however often it reached the position
         for key in dict.fromkeys(m.position_key for m in g.record.reached_in_book):
@@ -326,6 +331,7 @@ def _gap(
         status="open" if closing.closed_at is None else "closed",
         progress=closing.progress,
         closed_at=closing.closed_at,
+        last_occurrence=closing.last_occurrence,
         drill_turns=_drill_turns(latest, book_moves),
     )
 

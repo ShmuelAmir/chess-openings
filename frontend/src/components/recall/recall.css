@@ -98,3 +98,5 @@
 .rv-syncline { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .rv-link:disabled { color: #8a8aa0; cursor: default; text-decoration: none; }
 .rv-syncfail { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: rgba(224, 108, 108, 0.12); border: 1px solid rgba(224, 108, 108, 0.4); color: #e8a0a0; border-radius: 6px; padding: 0.45rem 0.7rem; font-size: 0.8rem; }
+.rv-session { margin-top: 0.4rem; align-self: flex-start; }
+.rv-session-head { margin-bottom: 0.6rem; }
