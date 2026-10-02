@@ -182,12 +182,16 @@ Pipeline calls game_source.fetch_games(username, GameFilters()) — every cached
   ↓
 Pipeline walks each game with RepertoireWalker into a walk record
   ↓
-aggregate(walked games, filters, studies of a position) groups the player
-errors inside the filters into ranked Recall Gaps, counts the totals, and
-counts each study's Recall Gaps under every filter but the Study filter
+aggregate(walked games, filters, studies of a position, now) groups the
+player errors inside the filters into ranked Recall Gaps, counts the totals
+and the Miss Rate, buckets the last 12 months' Miss Rate under every filter
+but the date range, counts the Open gaps shown and the gaps Closed in the
+date range, and counts each study's Recall Gaps under every filter but the
+Study filter
   ↓
 Return {studies: [{id, name, opening_name, color, gaps}], gaps: [...],
-        totals: {analysed, opponent_left_book, book_completed}}
+        totals: {analysed, opponent_left_book, book_completed, miss_rate,
+                 trend: [{month, games, miss_rate}], open_gaps, closed_in_range}}
 ```
 
 ## Seams & Adapters

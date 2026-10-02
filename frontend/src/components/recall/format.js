@@ -35,6 +35,11 @@ export function formatSyncChanges(result) {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+/** A Miss Rate (a share, or null without games) as a percentage: "31%" or "–". */
+export function formatMissRate(rate) {
+  return rate === null ? "–" : `${Math.round(rate * 100)}%`;
+}
+
 /** A Recall Gap's status: its progress toward closing, or when it closed. */
 export function formatStatus(gap) {
   return gap.status === "closed"
