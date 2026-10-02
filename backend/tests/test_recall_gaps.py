@@ -1,3 +1,6 @@
+from dataclasses import replace
+from datetime import datetime, timezone
+
 import chess
 
 from recall_gaps import RecallFilters, Totals, WalkedGame, aggregate
@@ -378,3 +381,137 @@ def test_a_new_occurrence_outside_the_filters_still_reopens_a_gap():
 
     assert (gap.status, gap.progress) == ("open", 0)
 
+
+
+def utc(year, month, day=1):
+    return int(datetime(year, month, day, tzinfo=timezone.utc).timestamp())
+
+
+def game_at(moves, date, **kwargs):
+    return replace(game(moves, day=0, **kwargs), date=date)
+
+
+NOW = utc(2026, 10, 15)
+OPP_LEFT_BOOK = ["e4", "e5", "Nf3", "d6"]
+
+
+def test_miss_rate_is_the_share_of_analysed_games_with_a_player_error():
+    view = recall([
+        game(BB5_MISS, day=1),
+        game(["e4", "e5", "d4"], day=2),  # a second player error
+        game(IN_BOOK, day=3),
+        game(OPP_LEFT_BOOK, day=4),
+        game(["d4", "d5"], day=5),  # not analysed
+    ])
+
+    assert view.miss_rate == 0.5
+
+
+def test_miss_rate_is_none_without_analysed_games():
+    assert recall([]).miss_rate is None
+
+
+def test_miss_rate_follows_every_game_filter():
+    games = [
+        study_game(SHARED_GAP, 1),
+        study_game(ITALIAN_ONLY_GAP, 10),
+        study_game(["e4", "e5", "Nf3", "Nc6", "Bb5"], 11),  # Spanish completed
+        study_game(SICILIAN_GAP, 12, color=chess.BLACK),
+    ]
+
+    assert recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE).miss_rate == 2 / 3
+    assert study_recall(games, frozenset({"spanish"})).miss_rate == 0.5
+    assert recall(
+        games, RecallFilters(since=5 * DAY, studies=frozenset({"italian"})), rep=STUDY_REPERTOIRE
+    ).miss_rate == 1.0
+
+
+def test_trend_has_the_last_twelve_months_oldest_first():
+    view = aggregate([], RecallFilters(), REPERTOIRE.study_locations, now=NOW)
+
+    assert [m.month for m in view.trend] == [
+        "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04",
+        "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10",
+    ]
+
+
+def test_trend_buckets_the_miss_rate_by_month():
+    games = [game_at(BB5_MISS, utc(2026, 9, 3))] + [
+        game_at(IN_BOOK, utc(2026, 9, d)) for d in (4, 5, 6, 30)
+    ] + [game_at(BB5_MISS, utc(2026, 10, d)) for d in range(1, 6)]
+
+    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE.study_locations, now=NOW).trend}
+
+    assert (trend["2026-09"].games, trend["2026-09"].miss_rate) == (5, 0.2)
+    assert (trend["2026-10"].games, trend["2026-10"].miss_rate) == (5, 1.0)
+
+
+def test_trend_months_with_fewer_than_five_games_are_empty():
+    games = [game_at(BB5_MISS, utc(2026, 8, d)) for d in range(1, 5)]
+
+    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE.study_locations, now=NOW).trend}
+
+    assert (trend["2026-08"].games, trend["2026-08"].miss_rate) == (4, None)
+    assert (trend["2026-07"].games, trend["2026-07"].miss_rate) == (0, None)
+
+
+def test_trend_ignores_the_date_range_but_follows_the_other_filters():
+    games = [game_at(BB5_MISS, utc(2026, 3, d)) for d in range(1, 6)] + [
+        game_at(IN_BOOK, utc(2026, 3, d), time_class="bullet") for d in range(1, 6)
+    ] + [game_at(BB5_MISS, utc(2025, 10, 31))]  # before the 12 months
+
+    filters = RecallFilters(time_classes=["blitz"], since=utc(2026, 10, 1))
+    view = aggregate(games, filters, REPERTOIRE.study_locations, now=NOW)
+
+    assert {m.month: (m.games, m.miss_rate) for m in view.trend if m.games} == {"2026-03": (5, 1.0)}
+    assert view.miss_rate is None
+
+
+def test_trend_follows_the_study_filter():
+    games = [game_at(SICILIAN_GAP, utc(2026, 5, d), color=chess.BLACK, rep=STUDY_REPERTOIRE) for d in range(1, 6)]
+    games += [game_at(ITALIAN_ONLY_GAP, utc(2026, 5, d), rep=STUDY_REPERTOIRE) for d in range(1, 6)]
+
+    view = aggregate(games, RecallFilters(studies=frozenset({"sicilian"})), STUDY_REPERTOIRE.study_locations, now=NOW)
+
+    assert [(m.games, m.miss_rate) for m in view.trend if m.games] == [(5, 1.0)]
+
+
+def test_trend_is_empty_without_now():
+    assert recall([game(BB5_MISS, day=1)]).trend == []
+
+
+def test_open_gaps_count_the_open_gaps_shown():
+    view = recall([
+        game(BB5_MISS, day=1),
+        game(IN_BOOK, day=2),
+        game(IN_BOOK, day=3),  # closes the Bb5 gap
+        game(["e4", "e5", "d4"], day=4),
+        game(SICILIAN_GAP, day=5, color=chess.BLACK),
+    ])
+
+    assert view.open_gaps == 2
+
+
+def test_closed_in_range_counts_gaps_by_their_closing_date():
+    games = [
+        game(BB5_MISS, day=1),  # occurs before the range, closes inside it
+        game(IN_BOOK, day=6),
+        game(IN_BOOK, day=7),
+        game(["e4", "e5", "d4"], day=1),  # closed before the range
+        game(["e4", "e5", "Nf3"], day=2),
+        game(["e4", "e5", "Nf3"], day=3),
+    ]
+
+    assert recall(games, RecallFilters(since=5 * DAY)).closed_in_range == 1
+    assert recall(games).closed_in_range == 2
+
+
+def test_closed_in_range_follows_the_other_filters():
+    games = [
+        game(BB5_MISS, day=1, time_class="bullet"),
+        game(IN_BOOK, day=6),
+        game(IN_BOOK, day=7),
+    ]
+
+    assert recall(games, RecallFilters(since=5 * DAY)).closed_in_range == 1
+    assert recall(games, RecallFilters(since=5 * DAY, time_classes=["blitz"])).closed_in_range == 0

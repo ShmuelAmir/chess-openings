@@ -38,6 +38,12 @@
 
 /* ranked list */
 .rv-listhead { display: flex; flex-direction: column; margin-bottom: 0.5rem; }
+.rv-missrate { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin: 0.35rem 0 0.15rem; }
+.rv-missrate b { color: #e0b44c; }
+.rv-spark { overflow: visible; }
+.rv-spark polyline { fill: none; stroke: #e0b44c; stroke-width: 1.5; stroke-linejoin: round; }
+.rv-spark circle { fill: #e0b44c; }
+.rv-spark-base { stroke: #34345a; stroke-width: 1; }
 .rv-changes { color: #81b64c; font-size: 0.85em; }
 .rv-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 0.6rem; width: 100%; text-align: left; background: #22223a; border: 1px solid transparent; color: inherit; border-radius: 6px; padding: 0.6rem; margin-bottom: 0.4rem; cursor: pointer; font-weight: normal; }
 .rv-row:hover { background: #2a2a45; }

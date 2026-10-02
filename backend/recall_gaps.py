@@ -5,7 +5,8 @@ Pure: takes walk records with their games' metadata and returns the recall
 view. No I/O. See Recall Gap in CONTEXT.md.
 """
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Callable, Iterable, Mapping, Optional
 
 import chess
@@ -15,6 +16,9 @@ from repertoire_walker import DeviationType, WalkRecord
 
 # In-book games since the last occurrence that close a Recall Gap
 GAMES_TO_CLOSE = 2
+# Months in the Miss Rate trend, and the fewest games a month needs to get a Miss Rate
+TREND_MONTHS = 12
+MIN_TREND_GAMES = 5
 
 
 @dataclass(frozen=True)
@@ -101,12 +105,25 @@ class Totals:
     book_completed: int = 0
 
 
+@dataclass(frozen=True)
+class TrendMonth:
+    month: str  # "YYYY-MM", in UTC
+    games: int  # analysed games
+    miss_rate: Optional[float]  # None with fewer than MIN_TREND_GAMES games
+
+
 @dataclass
 class RecallView:
     gaps: list[RecallGap] = field(default_factory=list)
     totals: Totals = field(default_factory=Totals)
     # Recall Gaps per study id under every Game Filter but the Study filter
     gaps_by_study: dict[str, int] = field(default_factory=dict)
+    miss_rate: Optional[float] = None  # None without analysed games
+    # The last TREND_MONTHS months, oldest first, under every Game Filter but the date range
+    trend: list[TrendMonth] = field(default_factory=list)
+    open_gaps: int = 0  # the Open gaps shown
+    # Gaps whose closing date is inside the date range, under every other Game Filter
+    closed_in_range: int = 0
 
 
 StudiesOf = Callable[[str, chess.Color], Mapping[str, ChapterLocation]]
@@ -116,6 +133,7 @@ def aggregate(
     games: Iterable[WalkedGame],
     filters: RecallFilters,
     studies_of: StudiesOf,
+    now: Optional[int] = None,
 ) -> RecallView:
     """
     Group the player-error Deviations of the games inside the filters into
@@ -129,11 +147,16 @@ def aggregate(
     left book) is in a selected study. Every occurrence of a gap shares its
     position, so the filter decides only whether a gap is shown.
 
+    The Miss Rate is per game: the share of the shown games with a player
+    error. Its trend buckets the games by month under every filter but the
+    date range, so it always covers the last TREND_MONTHS months.
+
     Args:
         games: Every walked game
         filters: Which games count
         studies_of: Where a position key sits in each study of a color
             containing it, by study id
+        now: Unix timestamp the trend ends at; None leaves the trend empty
     """
     def left_book_in_selected_study(g: WalkedGame) -> bool:
         if not filters.studies:
@@ -148,6 +171,8 @@ def aggregate(
     closings = _closings(analysed)
     in_window = [g for g in analysed if filters.allows(g)]
     shown = [g for g in in_window if left_book_in_selected_study(g)]
+    any_date = replace(filters, since=None)
+    shown_any_date = [g for g in analysed if any_date.allows(g) and left_book_in_selected_study(g)]
 
     by_type = Counter(g.record.deviation.type for g in shown if g.record.deviation)
     totals = Totals(
@@ -167,16 +192,68 @@ def aggregate(
         for key, games_at in _occurrences(shown).items()
     ]
     gaps.sort(key=lambda gap: (-gap.occurrences, -gap.last_seen, gap.position_key))
-    return RecallView(gaps=gaps, totals=totals, gaps_by_study=dict(gaps_by_study))
+
+    closed_in_range = sum(
+        1
+        for key in _occurrences(shown_any_date)
+        if closings[key].closed_at is not None
+        and (filters.since is None or closings[key].closed_at >= filters.since)
+    )
+    return RecallView(
+        gaps=gaps,
+        totals=totals,
+        gaps_by_study=dict(gaps_by_study),
+        miss_rate=_miss_rate(shown),
+        trend=_trend(shown_any_date, now) if now is not None else [],
+        open_gaps=sum(1 for gap in gaps if gap.status == "open"),
+        closed_in_range=closed_in_range,
+    )
+
+
+def _is_miss(g: WalkedGame) -> bool:
+    return g.record.deviation is not None and g.record.deviation.type == DeviationType.PLAYER_ERROR
+
+
+def _miss_rate(games: list[WalkedGame]) -> Optional[float]:
+    """The share of the games with a player error, or None for no games."""
+    if not games:
+        return None
+    return sum(1 for g in games if _is_miss(g)) / len(games)
+
+
+def _month(ts: int) -> str:
+    return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m")
+
+
+def _trend(games: list[WalkedGame], now: int) -> list[TrendMonth]:
+    """The Miss Rate of each of the TREND_MONTHS months up to `now`'s, oldest first."""
+    end = datetime.fromtimestamp(now, timezone.utc)
+    months = []
+    for back in range(TREND_MONTHS - 1, -1, -1):
+        year, month = divmod(end.year * 12 + end.month - 1 - back, 12)
+        months.append(f"{year:04d}-{month + 1:02d}")
+
+    by_month: dict[str, list[WalkedGame]] = {}
+    for g in games:
+        by_month.setdefault(_month(g.date or 0), []).append(g)
+
+    trend = []
+    for month in months:
+        games_in = by_month.get(month, [])
+        trend.append(TrendMonth(
+            month=month,
+            games=len(games_in),
+            miss_rate=_miss_rate(games_in) if len(games_in) >= MIN_TREND_GAMES else None,
+        ))
+    return trend
 
 
 def _occurrences(games: list[WalkedGame]) -> dict[str, list[WalkedGame]]:
     """The games of each player-error position key, in the given order."""
     occurrences: dict[str, list[WalkedGame]] = {}
     for g in games:
-        deviation = g.record.deviation
-        if deviation and deviation.type == DeviationType.PLAYER_ERROR:
-            occurrences.setdefault(deviation.position_key, []).append(g)
+        if _is_miss(g):
+            occurrences.setdefault(g.record.deviation.position_key, []).append(g)
     return occurrences
 
 

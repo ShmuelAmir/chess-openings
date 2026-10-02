@@ -103,6 +103,7 @@ class RepertoireAnalysisPipeline:
         self,
         username: str,
         filters: RecallFilters,
+        now: Optional[int] = None,
     ) -> RecallView:
         """
         Walk every cached game through the user's Repertoire and group the
@@ -114,13 +115,19 @@ class RepertoireAnalysisPipeline:
         Args:
             username: Chess.com username
             filters: The recall view's Game Filters
+            now: Unix timestamp the Miss Rate trend ends at (default: now)
 
         Returns:
-            RecallView with the ranked Recall Gaps and the totals
+            RecallView with the ranked Recall Gaps, the totals and the Miss Rate
         """
         repertoire = await self._get_repertoire()
         walked = await self._walk_games(username, repertoire)
-        return aggregate(walked, filters, repertoire.study_locations)
+        return aggregate(
+            walked,
+            filters,
+            repertoire.study_locations,
+            now=int(time.time()) if now is None else now,
+        )
 
     async def gap_statuses(self, username: str) -> dict[str, str]:
         """Each Recall Gap's status by position key, over every game."""

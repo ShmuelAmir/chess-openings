@@ -1,4 +1,11 @@
-import { formatLine, formatDate, formatStatus, formatSyncChanges } from "./format";
+import {
+  formatLine,
+  formatDate,
+  formatMissRate,
+  formatStatus,
+  formatSyncChanges,
+} from "./format";
+import Sparkline from "./Sparkline";
 
 /** The ranked Recall Gaps, with the list header and totals strip. */
 export default function GapList({
@@ -30,8 +37,18 @@ export default function GapList({
             </label>
           )}
         </span>
+        <span className="rv-missrate">
+          <span>
+            Miss Rate <b>{formatMissRate(totals.miss_rate)}</b> · {totals.analysed}{" "}
+            {totals.analysed === 1 ? "game" : "games"}
+          </span>
+          <Sparkline trend={totals.trend} />
+          <span className="rv-muted">
+            {totals.open_gaps} Open · {totals.closed_in_range} Closed in range
+          </span>
+        </span>
         <span className="rv-muted">
-          {totals.analysed} games analysed · opponent left book{" "}
+          opponent left book{" "}
           {totals.opponent_left_book} · book completed {totals.book_completed}
           {syncing ? " · Syncing…" : loading && " · updating…"}
         </span>

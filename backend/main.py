@@ -368,14 +368,15 @@ async def recall_view(
     owned_studies = await owned_studies_or_401(token)
 
     days = DATE_RANGE_DAYS[date_range]
+    now = int(time.time())
     filters = RecallFilters(
         time_classes=time_classes,
         rated_only=rated_only,
-        since=int(time.time()) - days * 24 * 60 * 60 if days else None,
+        since=now - days * 24 * 60 * 60 if days else None,
         studies=frozenset(studies) if studies else None,
     )
     pipeline = pipeline_for(token)
-    view = await pipeline.recall_view(chess_com_username, filters)
+    view = await pipeline.recall_view(chess_com_username, filters, now=now)
     study_colors = await pipeline.study_colors()
 
     study_names = {study["id"]: study["name"] for study in owned_studies}
@@ -431,6 +432,13 @@ async def recall_view(
             "analysed": view.totals.analysed,
             "opponent_left_book": view.totals.opponent_left_book,
             "book_completed": view.totals.book_completed,
+            "miss_rate": view.miss_rate,
+            "trend": [
+                {"month": m.month, "games": m.games, "miss_rate": m.miss_rate}
+                for m in view.trend
+            ],
+            "open_gaps": view.open_gaps,
+            "closed_in_range": view.closed_in_range,
         },
     }
 
