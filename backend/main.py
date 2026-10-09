@@ -17,13 +17,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from contextlib import contextmanager
-from datetime import datetime
 
 from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComClient
 from game_cache import get_game_cache
 from exclusions import get_exclusion_store
 from drill_attempts import get_drill_attempt_store
+from opening_distribution import opening_distribution
 from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
@@ -245,13 +245,6 @@ async def get_lichess_user(authorization: str = Header(...)):
         return await client.get_account()
 
 
-@app.get("/api/lichess/studies")
-async def get_lichess_studies(authorization: str = Header(...)):
-    """Get list of user's Lichess studies."""
-    token = authorization.replace("Bearer ", "")
-    return {"studies": await fetch_studies_cached(token)}
-
-
 @contextmanager
 def invalid_token_is_401():
     """Lichess refusing the token upstream (401/403) is the user's error (401)."""
@@ -335,14 +328,6 @@ async def validate_chess_com_username(username: str):
                 )
             raise
     return {"username": username, "valid": True}
-
-
-@app.get("/api/chess-com/archives/{username}")
-async def get_chess_com_archives(username: str):
-    """Get available game archives for a Chess.com user."""
-    async with ChessComClient() as client:
-        archives = await client.get_archives(username)
-        return {"archives": archives}
 
 
 def recall_filters(
@@ -444,12 +429,8 @@ async def opening_stats(
     rated: bool = Query(None),
     color: str = Query(None),  # "white", "black", or None for both
 ):
-    """Get opening distribution statistics from cached Chess.com games."""
-    from collections import defaultdict
-    
-    # Get games from cache (filtered by basic criteria)
-    cache = get_game_cache()
-    games = cache.get_cached_games(
+    """The Opening Distribution of the user's cached Chess.com games."""
+    games = get_game_cache().get_cached_games(
         username=chess_com_username,
         time_classes=time_classes,
         rated=rated,
@@ -461,142 +442,7 @@ async def opening_stats(
         from_ts=from_ts,
         to_ts=to_ts,
     )
-    
-    username_lower = chess_com_username.lower()
-    
-    # Aggregate statistics
-    opening_counts = defaultdict(int)
-    opening_wins = defaultdict(int)
-    opening_draws = defaultdict(int)
-    opening_losses = defaultdict(int)
-    category_counts = defaultdict(int)
-    time_series = defaultdict(lambda: defaultdict(int))  # {month: {opening: count}}
-    
-    for game in games:
-        opening_name = game.get("opening_name", "") or "Unknown"
-        if not opening_name:
-            opening_name = "Unknown"
-        
-        # Count openings
-        opening_counts[opening_name] += 1
-        
-        # Determine result for user
-        is_white = game.get("white", "").lower() == username_lower
-        result = game.get("result", "")
-        
-        if result == "win":
-            if is_white:
-                opening_wins[opening_name] += 1
-            else:
-                opening_losses[opening_name] += 1
-        elif result == "lose" or result == "checkmated" or result == "timeout" or result == "resigned" or result == "abandoned":
-            if is_white:
-                opening_losses[opening_name] += 1
-            else:
-                opening_wins[opening_name] += 1
-        else:
-            # Draw or other result
-            opening_draws[opening_name] += 1
-        
-        # Categorize opening (e4, d4, c4, Nf3, etc.)
-        category = categorize_opening(opening_name)
-        category_counts[category] += 1
-        
-        # Time series data (by month)
-        date_ts = game.get("date")
-        if date_ts:
-            dt = datetime.fromtimestamp(date_ts)
-            month_key = f"{dt.year}-{dt.month:02d}"
-            time_series[month_key][opening_name] += 1
-    
-    # Build response
-    # All openings by count (no limit)
-    all_openings = sorted(
-        [(name, count) for name, count in opening_counts.items()],
-        key=lambda x: x[1],
-        reverse=True
-    )
-    
-    # Opening performance data
-    opening_performance = []
-    for name, count in all_openings:
-        wins = opening_wins.get(name, 0)
-        draws = opening_draws.get(name, 0)
-        losses = opening_losses.get(name, 0)
-        total = wins + draws + losses
-        win_rate = (wins / total * 100) if total > 0 else 0
-        opening_performance.append({
-            "opening": name,
-            "games": count,
-            "wins": wins,
-            "draws": draws,
-            "losses": losses,
-            "win_rate": round(win_rate, 1),
-        })
-    
-    # Category breakdown
-    categories = [
-        {"category": cat, "count": count}
-        for cat, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True)
-    ]
-    
-    # Time series for top 5 openings
-    top_5_names = [name for name, _ in all_openings[:5]]
-    trends = []
-    for month_key in sorted(time_series.keys()):
-        entry = {"month": month_key}
-        for opening_name in top_5_names:
-            entry[opening_name] = time_series[month_key].get(opening_name, 0)
-        trends.append(entry)
-    
-    return {
-        "total_games": len(games),
-        "unique_openings": len(opening_counts),
-        "top_openings": opening_performance,
-        "categories": categories,
-        "trends": trends,
-        "top_opening_names": top_5_names,
-    }
-
-
-def categorize_opening(opening_name: str) -> str:
-    """Categorize an opening by its first move family."""
-    name_lower = opening_name.lower()
-    
-    # e4 openings
-    e4_keywords = ["sicilian", "italian", "spanish", "ruy lopez", "french", "caro-kann", 
-                   "scandinavian", "alekhine", "pirc", "modern", "king's pawn", "scotch",
-                   "petroff", "petrov", "vienna", "bishop's opening", "center game",
-                   "king's gambit", "philidor", "two knights"]
-    
-    # d4 openings
-    d4_keywords = ["queen's gambit", "king's indian", "slav", "gruenfeld", "grunfeld",
-                   "nimzo", "queen's indian", "dutch", "london", "trompowsky", "torre",
-                   "colle", "catalan", "bogo", "benoni", "semi-slav"]
-    
-    # c4 openings
-    c4_keywords = ["english"]
-    
-    # Nf3 openings
-    nf3_keywords = ["reti", "réti"]
-    
-    for kw in e4_keywords:
-        if kw in name_lower:
-            return "e4 Openings"
-    
-    for kw in d4_keywords:
-        if kw in name_lower:
-            return "d4 Openings"
-    
-    for kw in c4_keywords:
-        if kw in name_lower:
-            return "c4 Openings"
-    
-    for kw in nf3_keywords:
-        if kw in name_lower:
-            return "Nf3 Openings"
-    
-    return "Other"
+    return opening_distribution(games, chess_com_username)
 
 
 # ================== Game Cache Endpoints ==================
@@ -623,41 +469,6 @@ async def start_sync(
     token = authorization.replace("Bearer ", "")
     sync_for(token, chess_com_username).start()
     return sync_view(token, chess_com_username)
-
-
-@app.get("/api/chess-com/cached-games/{username}")
-async def get_cached_games(
-    username: str,
-    time_classes: list[str] = Query(None),
-    rated: bool = Query(None),
-    color: str = Query(None),
-    from_year: int = Query(None),
-    from_month: int = Query(None),
-    to_year: int = Query(None),
-    to_month: int = Query(None),
-):
-    """Get cached games for a user with optional filters."""
-    cache = get_game_cache()
-    
-    games = cache.get_cached_games(
-        username=username,
-        time_classes=time_classes,
-        rated=rated,
-        color=color,
-        from_year=from_year,
-        from_month=from_month,
-        to_year=to_year,
-        to_month=to_month,
-    )
-    
-    # Remove internal fields before returning
-    for game in games:
-        game.pop("fetched_at", None)
-    
-    return {
-        "games": games,
-        "total": len(games),
-    }
 
 
 @app.delete("/api/chess-com/cache/{username}")

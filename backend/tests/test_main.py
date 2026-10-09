@@ -80,3 +80,31 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch):
 
     assert refused.status_code == 401
     assert refused.json() == {"detail": "Invalid Lichess token"}
+
+
+class CachedGames:
+    """A game cache holding one win as White in the Italian."""
+
+    def get_cached_games(self, **filters):
+        self.filters = filters
+        return [{"white": "me", "black": "x", "result": "win",
+                 "opening_name": "Italian Game", "date": 100}]
+
+
+def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monkeypatch):
+    cache = CachedGames()
+    monkeypatch.setattr(main, "get_game_cache", lambda: cache)
+
+    response = TestClient(main.app).post(
+        "/api/opening-stats",
+        params={"chess_com_username": "me", "from_year": 2026, "from_month": 1,
+                "to_year": 2026, "to_month": 3, "color": "white"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["top_openings"] == [
+        {"opening": "Italian Game", "games": 1, "wins": 1, "draws": 0, "losses": 0, "win_rate": 100.0}
+    ]
+    assert cache.filters["username"] == "me"
+    assert cache.filters["color"] == "white"
+    assert (cache.filters["from_year"], cache.filters["to_month"]) == (2026, 3)

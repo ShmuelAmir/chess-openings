@@ -128,6 +128,7 @@ The system is organized in horizontal layers from request → response:
    - **`repertoire.py`:** Defines `Repertoire`, `RepertoireNode`, `RepertoireBuilder`
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
    - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into the recall view (studies, ranked Recall Gaps, totals) under the Game Filters. Its view dataclasses are the wire contract of `/api/recall-view`
+   - **`opening_distribution.py`:** The pure Opening Distribution: openings by games played, the user's wins, draws and losses in each (by the same result rule as the recall view, `chess_com.player_result`), first-move categories and the monthly trend of the five most played openings
    - **`game_cache.py`:** SQLite game storage and filtering
    - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
