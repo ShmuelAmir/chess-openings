@@ -1,105 +1,45 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSync } from "../context/SyncContext";
+import { createRecallView } from "../recall/recallView";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
 import DrillBoard from "../components/recall/DrillBoard";
 import PracticeSession from "../components/recall/PracticeSession";
 import SyncBar from "../components/recall/SyncBar";
-import { loadFilters, saveFilters } from "../components/recall/storedFilters";
 import "../components/recall/recall.css";
 
 const BOARD_WIDTH = 306;
 
+/** Keeps one recall view while the page is open, for the account's Sync client. */
 export default function RecallPage() {
-  const { lichessToken, chessComUsername } = useAuth();
-  const { syncClient, syncStatus, syncing, syncError, syncResult, startSync } = useSync();
+  const { backend, syncClient } = useSync();
+  const [recallView, setRecallView] = useState(null);
 
-  const [filters, setFilters] = useState(loadFilters);
-  const [view, setView] = useState(null);
-  const [selectedKey, setSelectedKey] = useState(null);
-  const [showClosed, setShowClosed] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  useEffect(() => {
+    if (!syncClient) return;
+    const created = createRecallView({ backend, syncClient });
+    setRecallView(created);
+    return () => {
+      created.dispose();
+      setRecallView(null);
+    };
+  }, [backend, syncClient]);
+
+  return recallView && <Recall recallView={recallView} />;
+}
+
+function Recall({ recallView }) {
+  const { lichessToken, chessComUsername } = useAuth();
+  const { syncStatus, syncing, syncError, syncResult, startSync } = useSync();
+  const { filters, view, loading, error, showClosed, shownGaps, closedCount, selected } =
+    useSyncExternalStore(recallView.subscribe, recallView.getSnapshot);
+
   // The practice in progress: null, { kind: "session" }, or { kind: "drill",
   // gap } with the gap as it was when the drill started, so a held Sync
   // never changes the board
   const [practice, setPractice] = useState(null);
-
-  useEffect(() => saveFilters(filters), [filters]);
-
-  // The Game Filters as query parameters, shared by the view and sessions
-  const filterParams = useCallback(() => {
-    const params = new URLSearchParams({
-      chess_com_username: chessComUsername,
-      date_range: filters.dateRange,
-      rated_only: filters.ratedOnly,
-    });
-    filters.timeClasses.forEach((tc) => params.append("time_classes", tc));
-    filters.studies.forEach((id) => params.append("studies", id));
-    return params;
-  }, [chessComUsername, filters]);
-
-  // Only the latest request may update the view
-  const requestRef = useRef(0);
-
-  const loadRecallView = useCallback(async () => {
-    if (!chessComUsername || !lichessToken) return;
-    const request = ++requestRef.current;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(`/api/recall-view?${filterParams()}`, {
-        headers: { Authorization: `Bearer ${lichessToken}` },
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(
-          response.status === 429
-            ? "Lichess rate limit reached. Please wait a minute and try again."
-            : data.detail || "Could not load Recall Gaps",
-        );
-      }
-
-      const data = await response.json();
-      if (request !== requestRef.current) return;
-      // Forget selected studies that are no longer in the Repertoire (an
-      // empty list says nothing about them, so keep the selection then)
-      const known = new Set(data.studies.map((study) => study.id));
-      if (known.size > 0 && filters.studies.some((id) => !known.has(id))) {
-        setFilters({
-          ...filters,
-          studies: filters.studies.filter((id) => known.has(id)),
-        });
-        return;
-      }
-      setView(data);
-    } catch (err) {
-      if (request === requestRef.current) setError(err.message);
-    } finally {
-      if (request === requestRef.current) setLoading(false);
-    }
-  }, [chessComUsername, lichessToken, filters, filterParams]);
-
-  useEffect(() => {
-    loadRecallView();
-  }, [loadRecallView]);
-
-  // Re-load after a Sync brings in new games. A Sync that finishes while
-  // practising is held, so the board never changes under the user, and
-  // applied once practice ends.
-  const practicingRef = useRef(false);
-  const heldSyncRef = useRef(false);
-  useEffect(() => {
-    if (!syncClient) return;
-    return syncClient.onChanged(() => {
-      if (practicingRef.current) heldSyncRef.current = true;
-      else loadRecallView();
-    });
-  }, [syncClient, loadRecallView]);
 
   // The "what changed" line is held with the analysis it describes
   const [shownSyncResult, setShownSyncResult] = useState(syncResult);
@@ -107,44 +47,35 @@ export default function RecallPage() {
     if (!practice) setShownSyncResult(syncResult);
   }, [practice, syncResult]);
 
-  const shownGaps = (view?.gaps ?? []).filter(
-    (gap) => showClosed || gap.status === "open",
-  );
-  // The selected gap if it is still listed, else the first
-  const selected =
-    shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0];
-
+  // A Sync that finishes while practising is held, so the board never
+  // changes under the user, and applied once practice ends
   const startPractice = (started) => {
-    practicingRef.current = true;
-    // A load already under way would land mid-practice: drop it and load
-    // again once practice ends
-    if (loading) {
-      requestRef.current++;
-      setLoading(false);
-      heldSyncRef.current = true;
-    }
+    recallView.hold();
     // Keep the selected gap across the held analysis, if it still exists
-    if (selected) setSelectedKey(selected.position_key);
+    if (selected) recallView.selectGap(selected.position_key);
     setPractice(started);
   };
 
   const endPractice = () => {
-    practicingRef.current = false;
     setPractice(null);
-    if (heldSyncRef.current) {
-      heldSyncRef.current = false;
-      loadRecallView();
-    }
+    recallView.release();
   };
 
   // Selecting another gap ends a drill of the previous one
   const selectGap = (key) => {
     if (practice?.kind === "drill" && key !== practice.gap.position_key) endPractice();
-    setSelectedKey(key);
+    recallView.selectGap(key);
   };
 
   const fetchPracticeQueue = useCallback(async () => {
-    const response = await fetch(`/api/practice-session?${filterParams()}`, {
+    const params = new URLSearchParams({
+      chess_com_username: chessComUsername,
+      date_range: filters.dateRange,
+      rated_only: filters.ratedOnly,
+    });
+    filters.timeClasses.forEach((tc) => params.append("time_classes", tc));
+    filters.studies.forEach((id) => params.append("studies", id));
+    const response = await fetch(`/api/practice-session?${params}`, {
       headers: { Authorization: `Bearer ${lichessToken}` },
     });
     if (!response.ok) {
@@ -152,14 +83,14 @@ export default function RecallPage() {
       throw new Error(data.detail || "Could not load the practice session");
     }
     return (await response.json()).gaps;
-  }, [filterParams, lichessToken]);
+  }, [chessComUsername, filters, lichessToken]);
 
   return (
     <div className="rv">
       <FilterRail
         filters={filters}
         studies={view?.studies ?? []}
-        onChange={setFilters}
+        onChange={recallView.setFilters}
       />
 
       <section className="rv-list">
@@ -185,9 +116,9 @@ export default function RecallPage() {
         ) : (
           <GapList
             gaps={shownGaps}
-            closedCount={view.gaps.filter((gap) => gap.status === "closed").length}
+            closedCount={closedCount}
             showClosed={showClosed}
-            onToggleClosed={() => setShowClosed(!showClosed)}
+            onToggleClosed={recallView.toggleClosed}
             totals={view.totals}
             selectedKey={selected?.position_key}
             onSelect={selectGap}

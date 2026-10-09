@@ -1,4 +1,4 @@
-const CALLS = ["readSyncState", "startSync"];
+const CALLS = ["readSyncState", "startSync", "loadRecallView"];
 
 const unscripted = (name) => ({
   delayMs: 0,
@@ -8,7 +8,7 @@ const unscripted = (name) => ({
 /**
  * The in-memory backend adapter, for tests. Each call is scripted through
  * `on(name)`: answer it, fail it, or delay it. `count(name)` says how often
- * it was called.
+ * it was called, and `calls(name)` with what arguments each time.
  *
  *   backend.on("readSyncState").answer(state);
  *   backend.on("startSync").fail("Sync failed");
@@ -19,15 +19,15 @@ const unscripted = (name) => ({
  */
 export function createMemoryBackend() {
   const scripts = {};
-  const counts = {};
+  const calls = {};
   const backend = {};
 
   for (const name of CALLS) {
-    counts[name] = 0;
+    calls[name] = [];
     scripts[name] = unscripted(name);
 
-    backend[name] = () => {
-      counts[name]++;
+    backend[name] = (...args) => {
+      calls[name].push(args);
       const { delayMs, settle } = scripts[name];
       if (!delayMs) return settle();
       return new Promise((resolve) => setTimeout(resolve, delayMs)).then(settle);
@@ -54,7 +54,8 @@ export function createMemoryBackend() {
     return handle;
   };
 
-  backend.count = (name) => counts[name];
+  backend.count = (name) => calls[name].length;
+  backend.calls = (name) => calls[name];
 
   return backend;
 }

@@ -1,4 +1,4 @@
-import { TIME_CLASSES, DATE_RANGES } from "./storedFilters";
+import { TIME_CLASSES, DATE_RANGES } from "../../recall/storedFilters";
 
 const COLORS = [
   { id: "white", label: "White" },
