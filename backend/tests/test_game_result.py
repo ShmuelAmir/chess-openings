@@ -1,6 +1,6 @@
 import pytest
 
-from chess_com import player_result
+from game_result import player_result
 
 
 @pytest.mark.parametrize(

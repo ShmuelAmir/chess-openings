@@ -5,9 +5,9 @@ Pure: takes cached games and returns the Opening Distribution. No I/O. See
 Opening Distribution in CONTEXT.md.
 """
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
-from chess_com import player_result
+from game_result import player_result
 
 # Openings whose monthly counts make up the trend
 TREND_OPENINGS = 5
@@ -47,7 +47,7 @@ def opening_distribution(games: list[dict], username: str) -> dict:
     Returns:
         The response of /api/opening-stats: every opening most played first
         with the user's wins, draws and losses, the first-move categories,
-        and the monthly counts of the most played openings. A game with no
+        and the monthly (UTC) counts of the most played openings. A game with no
         result is a game played, but not a win, draw or loss.
     """
     username_lower = username.lower()
@@ -69,8 +69,8 @@ def opening_distribution(games: list[dict], username: str) -> dict:
 
         date_ts = game.get("date")
         if date_ts:
-            dt = datetime.fromtimestamp(date_ts)
-            monthly_counts[f"{dt.year}-{dt.month:02d}"][opening_name] += 1
+            month = datetime.fromtimestamp(date_ts, timezone.utc).strftime("%Y-%m")
+            monthly_counts[month][opening_name] += 1
 
     top_openings = []
     for name, count in opening_counts.most_common():

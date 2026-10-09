@@ -9,7 +9,7 @@ from pipeline import RepertoireSource, GameSource, GameFilters
 from repertoire import Repertoire, RepertoireBuilder
 from game_cache import GameCache
 from lichess import LichessClient
-from chess_com import player_result
+from game_result import player_result
 
 
 logger = logging.getLogger(__name__)

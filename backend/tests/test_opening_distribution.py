@@ -1,8 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytest
 
 from opening_distribution import categorize_opening, opening_distribution
+
+
+def timestamp(year, month, day=15, hour=12, minute=0):
+    return int(datetime(year, month, day, hour, minute, tzinfo=timezone.utc).timestamp())
 
 
 def game(opening="Italian Game", white="me", result="win", year=2026, month=3):
@@ -11,7 +15,7 @@ def game(opening="Italian Game", white="me", result="win", year=2026, month=3):
         "black": "opponent" if white == "me" else "me",
         "result": result,  # White's Chess.com result code
         "opening_name": opening,
-        "date": int(datetime(year, month, 15, 12).timestamp()),
+        "date": timestamp(year, month),
     }
 
 
@@ -154,6 +158,16 @@ def test_the_trend_counts_the_top_five_openings_month_by_month():
         {"month": "2026-03", "A": 6, "B": 5, "C": 4, "D": 3, "E": 2},
         {"month": "2026-04", "A": 1, "B": 0, "C": 0, "D": 0, "E": 0},
     ]
+
+
+@pytest.mark.parametrize("date, month", [
+    (timestamp(2026, 3, 31, 23, 30), "2026-03"),
+    (timestamp(2026, 4, 1, 0, 30), "2026-04"),
+])
+def test_a_game_is_counted_in_the_utc_month_it_ended(date, month):
+    distribution = opening_distribution([{**game(), "date": date}], "me")
+
+    assert distribution["trends"] == [{"month": month, "Italian Game": 1}]
 
 
 def test_a_game_without_a_date_is_left_out_of_the_trend():
