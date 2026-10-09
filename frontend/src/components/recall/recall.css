@@ -7,7 +7,9 @@
 .rv-dot.black { background: #111; }
 
 /* filter rail */
-.rv-rail { background: #1f1f35; border-radius: 10px; padding: 1.4rem 1.2rem; align-self: start; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 2rem; }
+.rv-rail { background: #1f1f35; border-radius: 10px; padding: 1.4rem 1.2rem; align-self: start; position: sticky; top: 1rem; }
+.rv-rail-fields { border: 0; margin: 0; padding: 0; min-width: 0; display: flex; flex-direction: column; gap: 2rem; }
+.rv-rail-fields:disabled { opacity: 0.45; pointer-events: none; }
 .rv-rail-section { display: flex; flex-direction: column; gap: 0.9rem; }
 .rv-rail-title { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #8a8aa0; }
 .rv-seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #34345a; border-radius: 6px; overflow: hidden; }

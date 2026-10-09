@@ -50,6 +50,7 @@ function Recall({ recallView }) {
       <FilterRail
         filters={filters}
         studies={view?.studies ?? []}
+        disabled={Boolean(practice)}
         onChange={recallView.setFilters}
       />
 

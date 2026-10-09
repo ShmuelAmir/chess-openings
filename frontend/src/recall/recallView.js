@@ -24,7 +24,7 @@ export function createRecallView({ backend, syncClient }) {
     showClosed: false,
     // The practice in progress: null, { kind: "drill", gap } with the gap as
     // it was when the drill started, or the practice session { kind:
-    // "session", filters, queue, index, drilled, error }. Both carry
+    // "session", queue, index, drilled, error }. Both carry
     // `drillNumber`, which tells the drill on the board from the one before,
     // and `saveState`: null, then "saving", "saved" or "failed" once the
     // drill is finished
@@ -104,14 +104,14 @@ export function createRecallView({ backend, syncClient }) {
     }
   }
 
-  // The practice session's queue, under the Game Filters the session started
-  // with; its first Recall Gap is the next drill. The session has no queue
-  // meanwhile, so no gap to drill until the new one arrives
+  // The practice session's queue, under the Game Filters, which stay as they
+  // are during practice; its first Recall Gap is the next drill. The session
+  // has no queue meanwhile, so no gap to drill until the new one arrives
   async function loadQueue() {
     const request = ++latestQueueLoad;
     setPractice({ queue: null, index: 0, error: null });
     try {
-      const queue = await backend.loadPracticeQueue(state.practice.filters);
+      const queue = await backend.loadPracticeQueue(state.filters);
       if (request === latestQueueLoad) setPractice({ queue, ...newDrill() });
     } catch (err) {
       if (request === latestQueueLoad) setPractice({ error: err.message });
@@ -162,8 +162,14 @@ export function createRecallView({ backend, syncClient }) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    /** Change the Game Filters: remembered in the browser, and the view reloads. */
-    setFilters: changeFilters,
+    /**
+     * Change the Game Filters: remembered in the browser, and the view
+     * reloads. Ignored during practice, when the Game Filters stay as they are.
+     */
+    setFilters(filters) {
+      if (disposed || state.practice) return;
+      changeFilters(filters);
+    },
     /** Select the Recall Gap with this position key; ends a drill of another gap. */
     selectGap(positionKey) {
       if (disposed) return;
@@ -183,13 +189,12 @@ export function createRecallView({ backend, syncClient }) {
     },
     /**
      * Start a practice session: the due Open Recall Gaps among those the
-     * Game Filters show now, one drill after another.
+     * Game Filters show, one drill after another.
      */
     startSession() {
       if (disposed) return;
       startPractice({
         kind: "session",
-        filters: state.filters,
         // The due Recall Gaps in ranking order; null while they are loaded
         queue: null,
         index: 0,

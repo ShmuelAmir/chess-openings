@@ -35,6 +35,7 @@ function recallView({ gaps = [], studies = [study("italian")] } = {}) {
 }
 
 const DEFAULTS = { timeClasses: ["blitz", "rapid"], dateRange: "3months", ratedOnly: true, studies: [] };
+const BULLET = { timeClasses: ["bullet"], dateRange: "year", ratedOnly: false, studies: [] };
 const UNCHANGED = { games_changed: false, repertoire_changed: false, new_games: 0 };
 // Where the browser remembers the Game Filters
 const STORAGE_KEY = "recall-view.game-filters";
@@ -98,8 +99,6 @@ describe("recall view", () => {
   });
 
   describe("changing a Game Filter", () => {
-    const BULLET = { timeClasses: ["bullet"], dateRange: "year", ratedOnly: false, studies: [] };
-
     it("reloads the view under the new filters", async () => {
       backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
       await open();
@@ -125,6 +124,56 @@ describe("recall view", () => {
 
       expect(view.getSnapshot().filters).toEqual(BULLET);
       expect(backend.calls("loadRecallView").at(-1)).toEqual([BULLET]);
+    });
+  });
+
+  describe("changing a Game Filter during practice", () => {
+    beforeEach(() => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
+      backend.on("loadPracticeQueue").answer([gap("a")]);
+    });
+
+    it("is ignored during a single drill: no reload, the filters stay, and nothing is remembered", async () => {
+      const stored = stubStorage();
+      await open();
+      view.startDrill();
+
+      view.setFilters(BULLET);
+      await settle();
+
+      expect(backend.count("loadRecallView")).toBe(1);
+      expect(view.getSnapshot()).toMatchObject({ filters: DEFAULTS, loading: false });
+      expect(stored.size).toBe(0);
+    });
+
+    it("is ignored during a practice session", async () => {
+      const stored = stubStorage();
+      await open();
+      view.startSession();
+      await settle();
+
+      view.setFilters(BULLET);
+      await settle();
+
+      expect(backend.count("loadRecallView")).toBe(1);
+      expect(view.getSnapshot().filters).toEqual(DEFAULTS);
+      expect(stored.size).toBe(0);
+    });
+
+    it("reloads the view once practice has ended", async () => {
+      await open();
+      view.startDrill();
+      // Ignored, and not kept for later
+      view.setFilters(BULLET);
+      view.endPractice();
+      await settle();
+      expect(backend.count("loadRecallView")).toBe(1);
+
+      view.setFilters(BULLET);
+      await settle();
+
+      expect(view.getSnapshot().filters).toEqual(BULLET);
+      expect(backend.calls("loadRecallView")).toEqual([[DEFAULTS], [BULLET]]);
     });
   });
 
@@ -450,23 +499,6 @@ describe("recall view", () => {
   });
 
   describe("a single drill", () => {
-    it("keeps the Recall Gap as it was when the drill started", async () => {
-      const asStarted = { ...gap("a"), occurrences: 3 };
-      backend.on("loadRecallView").answer(recallView({ gaps: [asStarted, gap("b")] }));
-      await open();
-
-      view.startDrill();
-      expect(view.getSnapshot().practice).toMatchObject({ kind: "drill", gap: asStarted });
-
-      // The Game Filters stay editable, so the view can reload under the drill
-      backend.on("loadRecallView").answer(recallView({ gaps: [{ ...gap("a"), occurrences: 4 }] }));
-      view.setFilters({ ...view.getSnapshot().filters, dateRange: "year" });
-      await settle();
-
-      expect(view.getSnapshot().selected.occurrences).toBe(4);
-      expect(view.getSnapshot().practice.gap).toEqual(asStarted);
-    });
-
     it("is of the selected Recall Gap", async () => {
       backend.on("loadRecallView").answer(recallView({ gaps: [gap("a"), gap("b")] }));
       await open();
@@ -474,6 +506,19 @@ describe("recall view", () => {
 
       view.startDrill();
 
+      expect(view.getSnapshot().practice.gap.position_key).toBe("b");
+    });
+
+    it("keeps its Recall Gap when the gap is no longer the selected one", async () => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a"), gap("b", "closed")] }));
+      await open();
+      view.toggleClosed();
+      view.selectGap("b");
+      view.startDrill();
+
+      view.toggleClosed();
+
+      expect(view.getSnapshot().selected.position_key).toBe("a");
       expect(view.getSnapshot().practice.gap.position_key).toBe("b");
     });
 
@@ -643,14 +688,13 @@ describe("recall view", () => {
       });
     });
 
-    it("fetches its queue under the filters it started with, even if the filters change meanwhile", async () => {
+    it("fetches its queue under the Game Filters, each time it fetches it", async () => {
       backend.on("loadPracticeQueue").answer([gap("a")]);
       view.setFilters(YEAR);
       await settle();
       view.startSession();
       await settle();
 
-      view.setFilters({ ...YEAR, timeClasses: ["bullet"] });
       await finishAndSave();
       view.nextDrill();
       await settle();

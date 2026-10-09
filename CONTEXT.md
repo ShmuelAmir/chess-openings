@@ -76,6 +76,8 @@ Selection criteria for analyzing only relevant games:
 
 All Game Filters, including the Study filter, are remembered in the browser between visits.
 
+The Game Filters cannot be changed during practice (a single drill or a practice session).
+
 ### Sync
 
 Bringing both data sources up to date — Chess.com games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand.
