@@ -15,8 +15,15 @@ import chess
 from repertoire import Repertoire
 from repertoire_walker import RepertoireWalker
 from drill_attempts import DrillAttempt
-from drill_scheduler import QueuedGap, practice_queue
-from recall_gaps import RecallFilters, RecallView, WalkedGame, aggregate
+from drill_scheduler import practice_queue
+from recall_gaps import (
+    RecallFilters,
+    RecallGap,
+    RecallView,
+    WalkedGame,
+    aggregate,
+    last_occurrences,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -110,8 +117,9 @@ class RepertoireAnalysisPipeline:
         now: Optional[int] = None,
     ) -> RecallView:
         """
-        Walk every cached game through the user's Repertoire and group the
-        player errors into ranked Recall Gaps.
+        The complete recall view: walk every cached game through the user's
+        Repertoire, group the player errors into ranked Recall Gaps, and list
+        the Repertoire's studies.
 
         All games are walked; the filters only decide which ones are shown
         and counted.
@@ -122,14 +130,15 @@ class RepertoireAnalysisPipeline:
             now: Unix timestamp the Miss Rate trend ends at (default: now)
 
         Returns:
-            RecallView with the ranked Recall Gaps, the totals and the Miss Rate
+            RecallView with the studies, the ranked Recall Gaps and the
+            totals, as the HTTP layer serialises it
         """
         repertoire = await self._get_repertoire()
         walked = await self._walk_games(username, repertoire)
         return aggregate(
             walked,
             filters,
-            repertoire.study_locations,
+            repertoire,
             now=int(time.time()) if now is None else now,
         )
 
@@ -138,14 +147,17 @@ class RepertoireAnalysisPipeline:
         username: str,
         filters: RecallFilters,
         now: Optional[int] = None,
-    ) -> list[QueuedGap]:
+    ) -> list[RecallGap]:
         """
         A practice session's queue: the due Open Recall Gaps among those the
-        filters show, in ranking order.
+        filters show, in ranking order, each as the recall view shows it.
         """
         now = int(time.time()) if now is None else now
-        view = await self.recall_view(username, filters, now=now)
-        return practice_queue(view.gaps, self.drill_attempts(), now)
+        repertoire = await self._get_repertoire()
+        walked = await self._walk_games(username, repertoire)
+        view = aggregate(walked, filters, repertoire, now=now)
+        queue = practice_queue(view.gaps, last_occurrences(walked), self.drill_attempts(), now)
+        return [queued.gap for queued in queue]
 
     async def gap_statuses(self, username: str) -> dict[str, str]:
         """Each Recall Gap's status by position key, over every game."""
@@ -162,7 +174,7 @@ class RepertoireAnalysisPipeline:
         cached_username, repertoire, walked = self._walked_cache
         if cached_username != username.lower():
             return None
-        view = aggregate(walked, RecallFilters(), repertoire.study_locations)
+        view = aggregate(walked, RecallFilters(), repertoire)
         return {gap.position_key: gap.status for gap in view.gaps}
 
     async def _walk_games(self, username: str, repertoire: Repertoire) -> list[WalkedGame]:
@@ -200,10 +212,6 @@ class RepertoireAnalysisPipeline:
         self._walked_cache = (username.lower(), repertoire, walked)
         return walked
 
-    async def study_colors(self) -> dict[str, chess.Color]:
-        """The color of each study in the user's Repertoire, by study id."""
-        return (await self._get_repertoire()).study_colors
-    
     async def refresh_repertoire(self, fresh_within: float = 0) -> bool:
         """
         Rebuild the Repertoire from its source now (a Sync), keeping the

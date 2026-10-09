@@ -84,24 +84,29 @@ OTHER = "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -"
 THIRD = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -"
 
 
-def gap(key, status="open", last_occurrence=OCCURRED):
+def gap(key, status="open"):
     return RecallGap(
         position_key=key, color="white", path=[], wrong_moves=[], book_moves=[],
-        studies=[], occurrences=1, last_seen=last_occurrence, games=[],
-        status=status, last_occurrence=last_occurrence,
+        studies=[], occurrences=1, last_seen=OCCURRED, games=[], status=status,
     )
+
+
+def occurred(*gaps):
+    return {gap.position_key: OCCURRED for gap in gaps}
 
 
 def test_a_session_keeps_the_ranking_order_of_the_due_gaps():
     ranked = [gap(OTHER), gap(GAP), gap(THIRD)]
     drilled = DrillAttempt(GAP, at=OCCURRED + HOUR, passed=True, first_miss_position_key=None)
 
-    queue = practice_queue(ranked, [drilled], now=OCCURRED + 2 * HOUR)
+    queue = practice_queue(ranked, occurred(*ranked), [drilled], now=OCCURRED + 2 * HOUR)
 
     assert [(q.gap.position_key, q.due_at) for q in queue] == [(OTHER, OCCURRED), (THIRD, OCCURRED)]
 
 
 def test_closed_gaps_are_left_out_of_sessions():
-    queue = practice_queue([gap(GAP, status="closed"), gap(OTHER)], [], now=OCCURRED + DAY)
+    gaps = [gap(GAP, status="closed"), gap(OTHER)]
+
+    queue = practice_queue(gaps, occurred(*gaps), [], now=OCCURRED + DAY)
 
     assert [q.gap.position_key for q in queue] == [OTHER]

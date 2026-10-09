@@ -1,7 +1,5 @@
 import asyncio
 
-import chess
-
 from drill_attempts import DrillAttempt
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from recall_gaps import RecallFilters
@@ -34,13 +32,19 @@ class NoGames(GameSource):
         return []
 
 
+async def studies(pipeline):
+    """The ids of the studies in the pipeline's recall view."""
+    view = await pipeline.recall_view("me", RecallFilters())
+    return [study.id for study in view.studies]
+
+
 def test_the_repertoire_is_cached():
     source = StudiesSource("italian")
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        await pipeline.study_colors()
-        await pipeline.study_colors()
+        await studies(pipeline)
+        await studies(pipeline)
 
     asyncio.run(run())
 
@@ -52,12 +56,12 @@ def test_an_invalidation_takes_effect_on_the_next_request():
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        await pipeline.study_colors()
+        await studies(pipeline)
         source.study_ids = ["italian"]
         pipeline.invalidate_repertoire()
-        return await pipeline.study_colors()
+        return await studies(pipeline)
 
-    assert asyncio.run(run()) == {"italian": chess.WHITE}
+    assert asyncio.run(run()) == ["italian"]
 
 
 def test_an_invalidation_during_a_fetch_is_not_lost():
@@ -65,14 +69,14 @@ def test_an_invalidation_during_a_fetch_is_not_lost():
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        in_flight = asyncio.create_task(pipeline.study_colors())
+        in_flight = asyncio.create_task(studies(pipeline))
         await asyncio.sleep(0)  # the fetch has listed the old studies
         source.study_ids = ["italian"]
         pipeline.invalidate_repertoire()
         await in_flight
-        return await pipeline.study_colors()
+        return await studies(pipeline)
 
-    assert asyncio.run(run()) == {"italian": chess.WHITE}
+    assert asyncio.run(run()) == ["italian"]
 
 
 class CountingGames(GameSource):
@@ -91,16 +95,16 @@ def test_a_refresh_reports_whether_the_repertoire_changed():
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        await pipeline.study_colors()
+        await studies(pipeline)
         unchanged = await pipeline.refresh_repertoire()
         source.study_ids = ["italian", "spanish"]
         changed = await pipeline.refresh_repertoire()
-        return unchanged, changed, await pipeline.study_colors()
+        return unchanged, changed, await studies(pipeline)
 
-    unchanged, changed, colors = asyncio.run(run())
+    unchanged, changed, study_ids = asyncio.run(run())
 
     assert (unchanged, changed) == (False, True)
-    assert set(colors) == {"italian", "spanish"}
+    assert set(study_ids) == {"italian", "spanish"}
     assert source.fetches == 3
 
 
@@ -131,7 +135,7 @@ def test_a_refresh_joins_a_build_already_in_flight():
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        building = asyncio.create_task(pipeline.study_colors())
+        building = asyncio.create_task(studies(pipeline))
         await asyncio.sleep(0)
         await pipeline.refresh_repertoire()
         await building
@@ -146,7 +150,7 @@ def test_a_refresh_skips_a_repertoire_fetched_moments_ago():
     pipeline = RepertoireAnalysisPipeline(source, NoGames())
 
     async def run():
-        await pipeline.study_colors()
+        await studies(pipeline)
         return await pipeline.refresh_repertoire(fresh_within=30)
 
     assert asyncio.run(run()) is False
@@ -197,9 +201,77 @@ def test_the_practice_queue_reads_the_drill_attempts():
     pipeline = RepertoireAnalysisPipeline(ItalianSource(), games, drill_attempts=lambda: attempts)
 
     async def queue():
-        return [q.due_at for q in await pipeline.practice_queue("me", RecallFilters(), now=200)]
+        return await pipeline.practice_queue("me", RecallFilters(), now=200)
 
-    assert asyncio.run(queue()) == [100]  # never drilled: due
-    gap_key = asyncio.run(pipeline.recall_view("me", RecallFilters())).gaps[0].position_key
+    view = asyncio.run(pipeline.recall_view("me", RecallFilters(), now=200))
+    assert asyncio.run(queue()) == view.gaps  # never drilled: due, as the view shows it
+    gap_key = view.gaps[0].position_key
     attempts.append(DrillAttempt(gap_key, at=150, passed=True, first_miss_position_key=None))
     assert asyncio.run(queue()) == []  # passed: held back a day
+
+
+class NamedSource(RepertoireSource):
+    """An Italian study and a Sicilian one, under the names they have on Lichess."""
+
+    async def fetch_repertoire(self):
+        builder = RepertoireBuilder()
+        builder.add_study(
+            '[ChapterURL "https://lichess.org/study/abc/ch1"]\n\n1. e4 e5 2. Nf3 *\n',
+            "Italian Game", study_name="White: Italian-Game", study_id="abc",
+        )
+        builder.add_study(
+            '[Orientation "black"]\n\n1. e4 c5 *\n', "Sicilian", study_name="alapin", study_id="xyz",
+        )
+        return builder.build()
+
+
+BC4_MISS = {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
+            "date": 100, "time_class": "blitz", "rated": True}
+
+
+def test_the_recall_view_lists_the_studies_by_opening_name():
+    pipeline = RepertoireAnalysisPipeline(NamedSource(), FixedGames([BC4_MISS]))
+
+    view = asyncio.run(pipeline.recall_view("me", RecallFilters()))
+
+    assert [(s.id, s.name, s.opening_name, s.color, s.gaps) for s in view.studies] == [
+        ("xyz", "alapin", "alapin", "black", 0),
+        ("abc", "White: Italian-Game", "Italian Game", "white", 1),
+    ]
+
+
+def test_the_recall_views_gaps_name_and_link_their_studies():
+    pipeline = RepertoireAnalysisPipeline(NamedSource(), FixedGames([BC4_MISS]))
+
+    async def run():
+        view = await pipeline.recall_view("me", RecallFilters())
+        return view.gaps, await pipeline.practice_queue("me", RecallFilters())
+
+    gaps, queue = asyncio.run(run())
+
+    assert [(s.id, s.name, s.url) for s in gaps[0].studies] == [
+        ("abc", "White: Italian-Game", "https://lichess.org/study/abc/ch1#2"),
+    ]
+    assert queue == gaps
+
+
+def test_a_renamed_study_shows_once_the_repertoire_is_rebuilt():
+    class Renamed(RepertoireSource):
+        name = "Italian"
+
+        async def fetch_repertoire(self):
+            builder = RepertoireBuilder()
+            builder.add_study("1. e4 e5 *\n", "Italian", study_name=self.name, study_id="abc")
+            return builder.build()
+
+    source = Renamed()
+    pipeline = RepertoireAnalysisPipeline(source, NoGames())
+
+    async def run():
+        before = (await pipeline.recall_view("me", RecallFilters())).studies[0].name
+        source.name = "Giuoco Piano"
+        cached = (await pipeline.recall_view("me", RecallFilters())).studies[0].name
+        changed = await pipeline.refresh_repertoire()
+        return before, cached, changed, (await pipeline.recall_view("me", RecallFilters())).studies[0].name
+
+    assert asyncio.run(run()) == ("Italian", "Italian", True, "Giuoco Piano")

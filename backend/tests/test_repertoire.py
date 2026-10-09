@@ -1,6 +1,6 @@
 import chess
 
-from repertoire import ChapterLocation, RepertoireBuilder
+from repertoire import ChapterLocation, RepertoireBuilder, study_url
 
 START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
 AFTER_E4 = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -"
@@ -124,3 +124,30 @@ def test_the_repertoire_knows_each_studys_color():
     )
 
     assert repertoire.study_colors == {"italian": chess.WHITE, "sicilian": chess.BLACK}
+
+
+def named(study_name):
+    builder = RepertoireBuilder()
+    builder.add_study(chapter("1. e4 e5"), "Italian Game", study_name=study_name, study_id="abc")
+    return builder.build()
+
+
+def test_the_repertoire_knows_each_studys_name():
+    assert named("Italian-Game").study_names == {"abc": "Italian-Game"}
+
+
+def test_renaming_a_study_changes_the_repertoire():
+    assert named("Italian-Game") == named("Italian-Game")
+    assert named("Italian-Game") != named("Giuoco Piano")
+
+
+def test_study_link_opens_the_chapter_at_the_ply_of_a_mainline_position():
+    assert study_url("abc", "ch1", 7) == "https://lichess.org/study/abc/ch1#7"
+
+
+def test_study_link_opens_the_chapter_when_the_position_is_off_its_mainline():
+    assert study_url("abc", "ch1", None) == "https://lichess.org/study/abc/ch1"
+
+
+def test_study_link_opens_the_study_when_the_chapter_is_unknown():
+    assert study_url("abc", None, None) == "https://lichess.org/study/abc"

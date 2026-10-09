@@ -2,8 +2,9 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 import chess
+import pytest
 
-from recall_gaps import RecallFilters, Totals, WalkedGame, aggregate
+from recall_gaps import RecallFilters, WalkedGame, aggregate, last_occurrences
 from repertoire import RepertoireBuilder
 from repertoire_walker import RepertoireWalker
 
@@ -18,10 +19,11 @@ SICILIAN = '[Event "Sicilian"]\n[Orientation "black"]\n\n1. e4 c5 2. Nf3 d6 *\n'
 DAY = 24 * 60 * 60
 
 
-def repertoire(*studies):
+def repertoire(*studies, names=None):
+    names = names or {}
     builder = RepertoireBuilder()
     for study_id, pgn in studies:
-        builder.add_study(pgn, study_id, study_id=study_id)
+        builder.add_study(pgn, study_id, study_name=names.get(study_id), study_id=study_id)
     return builder.build()
 
 
@@ -42,7 +44,12 @@ def game(moves, day, color=chess.WHITE, rep=REPERTOIRE, time_class="blitz", rate
 
 
 def recall(games, filters=RecallFilters(), rep=REPERTOIRE):
-    return aggregate(games, filters, rep.study_locations)
+    return aggregate(games, filters, rep)
+
+
+def counts(view):
+    """The view's game counts: analysed, opponent left book, book completed."""
+    return (view.totals.analysed, view.totals.opponent_left_book, view.totals.book_completed)
 
 
 def test_player_errors_at_the_same_position_are_one_gap():
@@ -76,13 +83,13 @@ def test_opponent_leaving_book_and_book_completed_never_create_gaps():
     ])
 
     assert view.gaps == []
-    assert view.totals == Totals(analysed=2, opponent_left_book=1, book_completed=1)
+    assert counts(view) == (2, 1, 1)
 
 
 def test_games_outside_the_repertoire_are_not_counted():
     view = recall([game(["d4", "d5"], day=1), game(["e4", "e5", "d4"], day=2)])
 
-    assert view.totals == Totals(analysed=1, opponent_left_book=0, book_completed=0)
+    assert counts(view) == (1, 0, 0)
 
 
 def test_gaps_rank_by_occurrences_then_most_recent_occurrence():
@@ -199,20 +206,24 @@ def test_gap_games_show_what_was_played_and_the_users_result():
     ] == [(2 * DAY, "blitz", "d4", "draw"), (1 * DAY, "rapid", "Bb5", "loss")]
 
 
-def test_gap_studies_locate_the_position_in_their_chapters():
+def test_gap_studies_link_to_the_position_in_their_chapters():
     rep = repertoire((
         "italian",
         '[Event "Italian"]\n[ChapterURL "https://lichess.org/study/italian/ch1"]\n\n'
         "1. e4 e5 2. Nf3 (2. Bc4 Nf6 3. d3) Nc6 3. Bc4 *\n",
-    ))
+    ), names={"italian": "Italian Game"})
     view = recall([
         game(["e4", "e5", "Nf3", "Nc6", "d4"], day=2, rep=rep),
         game(["e4", "e5", "Bc4", "Nf6", "Nc3"], day=1, rep=rep),
     ], rep=rep)
 
     on_mainline, off_mainline = view.gaps
-    assert [(s.id, s.chapter_id, s.mainline_ply) for s in on_mainline.studies] == [("italian", "ch1", 4)]
-    assert [(s.id, s.chapter_id, s.mainline_ply) for s in off_mainline.studies] == [("italian", "ch1", None)]
+    assert [(s.id, s.name, s.url) for s in on_mainline.studies] == [
+        ("italian", "Italian Game", "https://lichess.org/study/italian/ch1#4")
+    ]
+    assert [(s.id, s.name, s.url) for s in off_mainline.studies] == [
+        ("italian", "Italian Game", "https://lichess.org/study/italian/ch1")
+    ]
 
 
 TWO_KNIGHTS = '[Event "Two Knights"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. Ng5 *\n'
@@ -233,6 +244,11 @@ SICILIAN_GAP = ["e4", "c5", "Nf3", "Nc6"]
 
 def study_recall(games, studies=None):
     return recall(games, RecallFilters(studies=studies), rep=STUDY_REPERTOIRE)
+
+
+def study_gaps(view):
+    """The number of Recall Gaps the view counts for each study, by study id."""
+    return {study.id: study.gaps for study in view.studies}
 
 
 def test_no_study_selected_shows_every_gap():
@@ -282,16 +298,10 @@ def test_totals_under_a_study_filter_count_games_that_left_book_in_a_selected_st
         study_game(SICILIAN_GAP, 6, color=chess.BLACK),
     ]
 
-    assert study_recall(games, frozenset({"spanish"})).totals == Totals(
-        analysed=3, opponent_left_book=1, book_completed=1
-    )
+    assert counts(study_recall(games, frozenset({"spanish"}))) == (3, 1, 1)
     # Passing through the Italian on the way into the Two Knights doesn't count
-    assert study_recall(games, frozenset({"italian"})).totals == Totals(
-        analysed=3, opponent_left_book=1, book_completed=0
-    )
-    assert study_recall(games, frozenset({"sicilian"})).totals == Totals(
-        analysed=1, opponent_left_book=0, book_completed=0
-    )
+    assert counts(study_recall(games, frozenset({"italian"}))) == (3, 1, 0)
+    assert counts(study_recall(games, frozenset({"sicilian"}))) == (1, 0, 0)
 
 
 def test_each_study_counts_the_gaps_it_contains_whatever_studies_are_selected():
@@ -303,8 +313,8 @@ def test_each_study_counts_the_gaps_it_contains_whatever_studies_are_selected():
     ]
 
     expected = {"italian": 2, "spanish": 1, "two-knights": 1, "sicilian": 1}
-    assert study_recall(games).gaps_by_study == expected
-    assert study_recall(games, frozenset({"sicilian"})).gaps_by_study == expected
+    assert study_gaps(study_recall(games)) == expected
+    assert study_gaps(study_recall(games, frozenset({"sicilian"}))) == expected
 
 
 def test_study_gap_counts_follow_the_other_filters():
@@ -312,7 +322,30 @@ def test_study_gap_counts_follow_the_other_filters():
 
     view = recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE)
 
-    assert view.gaps_by_study == {"italian": 1}
+    assert study_gaps(view) == {"italian": 1, "spanish": 0, "two-knights": 0, "sicilian": 0}
+
+
+def test_the_view_lists_the_repertoires_studies_with_name_and_color():
+    rep = repertoire(
+        ("abc", ITALIAN), ("xyz", SICILIAN),
+        names={"abc": "Italian-Game", "xyz": "Black: Sicilian"},
+    )
+
+    view = recall([], rep=rep)
+
+    assert [(s.id, s.name, s.opening_name, s.color, s.gaps) for s in view.studies] == [
+        ("abc", "Italian-Game", "Italian Game", "white", 0),
+        ("xyz", "Black: Sicilian", "Sicilian", "black", 0),
+    ]
+
+
+def test_studies_are_sorted_by_opening_name_whatever_the_case():
+    rep = repertoire(
+        ("s1", SPANISH), ("s2", ITALIAN), ("s3", TWO_KNIGHTS),
+        names={"s1": "spanish", "s2": "Italian", "s3": "White: caro"},
+    )
+
+    assert [s.opening_name for s in recall([], rep=rep).studies] == ["caro", "Italian", "spanish"]
 
 
 BB5_MISS = ["e4", "e5", "Nf3", "Nc6", "Bb5"]
@@ -409,7 +442,12 @@ def test_a_gaps_last_occurrence_counts_every_game_whatever_the_filters():
 
     gap = recall(games, RecallFilters(time_classes=["blitz"])).gaps[0]
 
-    assert (gap.last_seen, gap.last_occurrence) == (1 * DAY, 4 * DAY)
+    assert gap.last_seen == 1 * DAY
+    assert last_occurrences(games) == {gap.position_key: 4 * DAY}
+
+
+def test_a_gap_says_how_many_in_book_games_close_it():
+    assert recall([game(BB5_MISS, day=1)]).gaps[0].games_to_close == 2
 
 
 
@@ -434,11 +472,11 @@ def test_miss_rate_is_the_share_of_analysed_games_with_a_player_error():
         game(["d4", "d5"], day=5),  # not analysed
     ])
 
-    assert view.miss_rate == 0.5
+    assert view.totals.miss_rate == 0.5
 
 
 def test_miss_rate_is_none_without_analysed_games():
-    assert recall([]).miss_rate is None
+    assert recall([]).totals.miss_rate is None
 
 
 def test_miss_rate_follows_every_game_filter():
@@ -449,17 +487,17 @@ def test_miss_rate_follows_every_game_filter():
         study_game(SICILIAN_GAP, 12, color=chess.BLACK),
     ]
 
-    assert recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE).miss_rate == 2 / 3
-    assert study_recall(games, frozenset({"spanish"})).miss_rate == 0.5
+    assert recall(games, RecallFilters(since=5 * DAY), rep=STUDY_REPERTOIRE).totals.miss_rate == 2 / 3
+    assert study_recall(games, frozenset({"spanish"})).totals.miss_rate == 0.5
     assert recall(
         games, RecallFilters(since=5 * DAY, studies=frozenset({"italian"})), rep=STUDY_REPERTOIRE
-    ).miss_rate == 1.0
+    ).totals.miss_rate == 1.0
 
 
 def test_trend_has_the_last_twelve_months_oldest_first():
-    view = aggregate([], RecallFilters(), REPERTOIRE.study_locations, now=NOW)
+    view = aggregate([], RecallFilters(), REPERTOIRE, now=NOW)
 
-    assert [m.month for m in view.trend] == [
+    assert [m.month for m in view.totals.trend] == [
         "2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04",
         "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10",
     ]
@@ -470,7 +508,7 @@ def test_trend_buckets_the_miss_rate_by_month():
         game_at(IN_BOOK, utc(2026, 9, d)) for d in (4, 5, 6, 30)
     ] + [game_at(BB5_MISS, utc(2026, 10, d)) for d in range(1, 6)]
 
-    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE.study_locations, now=NOW).trend}
+    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE, now=NOW).totals.trend}
 
     assert (trend["2026-09"].games, trend["2026-09"].miss_rate) == (5, 0.2)
     assert (trend["2026-10"].games, trend["2026-10"].miss_rate) == (5, 1.0)
@@ -479,7 +517,7 @@ def test_trend_buckets_the_miss_rate_by_month():
 def test_trend_months_with_fewer_than_five_games_are_empty():
     games = [game_at(BB5_MISS, utc(2026, 8, d)) for d in range(1, 5)]
 
-    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE.study_locations, now=NOW).trend}
+    trend = {m.month: m for m in aggregate(games, RecallFilters(), REPERTOIRE, now=NOW).totals.trend}
 
     assert (trend["2026-08"].games, trend["2026-08"].miss_rate) == (4, None)
     assert (trend["2026-07"].games, trend["2026-07"].miss_rate) == (0, None)
@@ -491,23 +529,23 @@ def test_trend_ignores_the_date_range_but_follows_the_other_filters():
     ] + [game_at(BB5_MISS, utc(2025, 10, 31))]  # before the 12 months
 
     filters = RecallFilters(time_classes=["blitz"], since=utc(2026, 10, 1))
-    view = aggregate(games, filters, REPERTOIRE.study_locations, now=NOW)
+    view = aggregate(games, filters, REPERTOIRE, now=NOW)
 
-    assert {m.month: (m.games, m.miss_rate) for m in view.trend if m.games} == {"2026-03": (5, 1.0)}
-    assert view.miss_rate is None
+    assert {m.month: (m.games, m.miss_rate) for m in view.totals.trend if m.games} == {"2026-03": (5, 1.0)}
+    assert view.totals.miss_rate is None
 
 
 def test_trend_follows_the_study_filter():
     games = [game_at(SICILIAN_GAP, utc(2026, 5, d), color=chess.BLACK, rep=STUDY_REPERTOIRE) for d in range(1, 6)]
     games += [game_at(ITALIAN_ONLY_GAP, utc(2026, 5, d), rep=STUDY_REPERTOIRE) for d in range(1, 6)]
 
-    view = aggregate(games, RecallFilters(studies=frozenset({"sicilian"})), STUDY_REPERTOIRE.study_locations, now=NOW)
+    view = aggregate(games, RecallFilters(studies=frozenset({"sicilian"})), STUDY_REPERTOIRE, now=NOW)
 
-    assert [(m.games, m.miss_rate) for m in view.trend if m.games] == [(5, 1.0)]
+    assert [(m.games, m.miss_rate) for m in view.totals.trend if m.games] == [(5, 1.0)]
 
 
 def test_trend_is_empty_without_now():
-    assert recall([game(BB5_MISS, day=1)]).trend == []
+    assert recall([game(BB5_MISS, day=1)]).totals.trend == []
 
 
 def test_open_gaps_count_the_open_gaps_shown():
@@ -519,7 +557,7 @@ def test_open_gaps_count_the_open_gaps_shown():
         game(SICILIAN_GAP, day=5, color=chess.BLACK),
     ])
 
-    assert view.open_gaps == 2
+    assert view.totals.open_gaps == 2
 
 
 def test_closed_in_range_counts_gaps_by_their_closing_date():
@@ -532,8 +570,8 @@ def test_closed_in_range_counts_gaps_by_their_closing_date():
         game(["e4", "e5", "Nf3"], day=3),
     ]
 
-    assert recall(games, RecallFilters(since=5 * DAY)).closed_in_range == 1
-    assert recall(games).closed_in_range == 2
+    assert recall(games, RecallFilters(since=5 * DAY)).totals.closed_in_range == 1
+    assert recall(games).totals.closed_in_range == 2
 
 
 def test_closed_in_range_follows_the_other_filters():
@@ -543,5 +581,30 @@ def test_closed_in_range_follows_the_other_filters():
         game(IN_BOOK, day=7),
     ]
 
-    assert recall(games, RecallFilters(since=5 * DAY)).closed_in_range == 1
-    assert recall(games, RecallFilters(since=5 * DAY, time_classes=["blitz"])).closed_in_range == 0
+    assert recall(games, RecallFilters(since=5 * DAY)).totals.closed_in_range == 1
+    assert recall(games, RecallFilters(since=5 * DAY, time_classes=["blitz"])).totals.closed_in_range == 0
+
+
+@pytest.mark.parametrize("date_range, days", [("month", 30), ("3months", 91), ("year", 365)])
+def test_a_date_range_preset_reaches_back_from_now(date_range, days):
+    assert RecallFilters.for_date_range(date_range, now=NOW).since == NOW - days * DAY
+
+
+def test_the_all_time_preset_has_no_start():
+    assert RecallFilters.for_date_range("all", now=NOW).since is None
+
+
+def test_an_unknown_date_range_preset_is_an_error():
+    with pytest.raises(ValueError, match="date_range must be one of month, 3months, year, all"):
+        RecallFilters.for_date_range("week", now=NOW)
+
+
+def test_a_preset_carries_the_other_game_filters():
+    filters = RecallFilters.for_date_range(
+        "all", now=NOW, time_classes=["blitz"], rated_only=True, studies=["italian"]
+    )
+
+    assert filters == RecallFilters(
+        time_classes=["blitz"], rated_only=True, studies=frozenset({"italian"})
+    )
+    assert RecallFilters.for_date_range("all", now=NOW, studies=[]) == RecallFilters()
