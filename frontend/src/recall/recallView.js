@@ -105,17 +105,16 @@ export function createRecallView({ backend, syncClient }) {
   }
 
   // The practice session's queue, under the Game Filters the session started
-  // with; its first Recall Gap is the next drill
+  // with; its first Recall Gap is the next drill. The session has no queue
+  // meanwhile, so no gap to drill until the new one arrives
   async function loadQueue() {
     const request = ++latestQueueLoad;
-    setPractice({ error: null });
+    setPractice({ queue: null, index: 0, error: null });
     try {
       const queue = await backend.loadPracticeQueue(state.practice.filters);
-      if (request === latestQueueLoad) setPractice({ queue, index: 0, ...newDrill() });
+      if (request === latestQueueLoad) setPractice({ queue, ...newDrill() });
     } catch (err) {
-      // The board is gone while the error shows, so a retry that fails again
-      // or keeps this queue comes back to a drill yet to be played
-      if (request === latestQueueLoad) setPractice({ error: err.message, ...newDrill() });
+      if (request === latestQueueLoad) setPractice({ error: err.message });
     }
   }
 
@@ -191,7 +190,7 @@ export function createRecallView({ backend, syncClient }) {
       startPractice({
         kind: "session",
         filters: state.filters,
-        // The due Recall Gaps in ranking order, once loaded
+        // The due Recall Gaps in ranking order; null while they are loaded
         queue: null,
         index: 0,
         // How many gaps the session has drilled
@@ -204,11 +203,13 @@ export function createRecallView({ backend, syncClient }) {
     /**
      * Move the practice session on to its next Recall Gap, once the Drill
      * Attempt is saved. A queue that has run out is fetched again, so gaps
-     * failed on the way come back.
+     * failed on the way come back; until it arrives there is no drill to
+     * move on from.
      */
     nextDrill() {
       const { practice } = state;
-      if (disposed || practice?.kind !== "session" || practice.saveState !== "saved") return;
+      if (disposed || practice?.kind !== "session" || !practice.queue) return;
+      if (practice.saveState !== "saved") return;
       const drilled = practice.drilled + 1;
       if (practice.index + 1 < practice.queue.length) {
         setPractice({ drilled, index: practice.index + 1, ...newDrill() });
@@ -224,10 +225,11 @@ export function createRecallView({ backend, syncClient }) {
     },
     /**
      * The drill on the board is finished: record its Drill Attempt, once
-     * however often it is reported.
+     * however often it is reported. Without a Recall Gap on the board there
+     * is nothing to record.
      */
     finishDrill(finished) {
-      if (disposed || !state.practice || attempt) return;
+      if (disposed || !snapshot.practice?.gap || attempt) return;
       attempt = finished;
       saveAttempt();
     },

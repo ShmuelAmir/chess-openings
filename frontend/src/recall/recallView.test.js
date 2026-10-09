@@ -777,23 +777,94 @@ describe("recall view", () => {
       expect(backend.count("loadPracticeQueue")).toBe(2);
     });
 
-    it("records a new Drill Attempt for the gap drilled again after its queue failed to load", async () => {
+    it("counts the last gap of its queue once, however often \"Next\" is asked before the queue arrives", async () => {
       backend.on("loadPracticeQueue").answer([gap("a")]);
       view.startSession();
       await settle();
       await finishAndSave();
-      const before = view.getSnapshot().practice.drillNumber;
+
+      backend.on("loadPracticeQueue").delay(300).answer([]);
+      view.nextDrill();
+      view.nextDrill();
+      view.nextDrill();
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(view.getSnapshot().practice.drilled).toBe(1);
+      expect(backend.count("loadPracticeQueue")).toBe(2);
+    });
+
+    it("has no Recall Gap to drill while its queue is fetched again", async () => {
+      backend.on("loadPracticeQueue").answer([gap("a")]);
+      view.startSession();
+      await settle();
+      await finishAndSave();
+
+      backend.on("loadPracticeQueue").delay(300).answer([gap("a")]);
+      view.nextDrill();
+
+      expect(view.getSnapshot().practice).toMatchObject({ queue: null, error: null, drilled: 1 });
+      expect(view.getSnapshot().practice.gap).toBeUndefined();
+    });
+
+    it("has no Recall Gap to drill after its queue failed to load again, nor during the retry", async () => {
+      backend.on("loadPracticeQueue").answer([gap("a")]);
+      view.startSession();
+      await settle();
+      await finishAndSave();
 
       backend.on("loadPracticeQueue").fail("Could not load the practice session");
       view.nextDrill();
       await settle();
-      backend.on("loadPracticeQueue").delay(300).answer([]);
-      view.retryQueue();
+      expect(view.getSnapshot().practice).toMatchObject({
+        error: "Could not load the practice session",
+        queue: null,
+      });
+      expect(view.getSnapshot().practice.gap).toBeUndefined();
 
-      expect(view.getSnapshot().practice).toMatchObject({ gap: gap("a"), saveState: null });
-      expect(view.getSnapshot().practice.drillNumber).not.toBe(before);
+      backend.on("loadPracticeQueue").delay(300).answer([gap("b")]);
+      view.retryQueue();
+      expect(view.getSnapshot().practice).toMatchObject({ error: null, queue: null });
+      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(view.getSnapshot().practice).toMatchObject({ gap: gap("b"), drilled: 1, saveState: null });
       await finishAndSave();
-      expect(backend.count("recordDrillAttempt")).toBe(2);
+      expect(backend.calls("recordDrillAttempt").map(([attempt]) => attempt.gap_position_key)).toEqual([
+        "a",
+        "b",
+      ]);
+    });
+
+    it("records no second Drill Attempt for the last gap of the queue that ran out", async () => {
+      backend.on("loadPracticeQueue").answer([gap("a")]);
+      view.startSession();
+      await settle();
+      await finishAndSave();
+
+      backend.on("loadPracticeQueue").fail("Could not load the practice session");
+      view.nextDrill();
+      view.finishDrill(PASS);
+      await settle();
+      view.finishDrill(PASS);
+      backend.on("loadPracticeQueue").delay(300).fail("Could not load the practice session");
+      view.retryQueue();
+      view.finishDrill(PASS);
+      await vi.advanceTimersByTimeAsync(300);
+      view.finishDrill(PASS);
+      await settle();
+
+      expect(backend.count("recordDrillAttempt")).toBe(1);
+    });
+
+    it("records no Drill Attempt while it has no Recall Gap to drill", async () => {
+      backend.on("loadPracticeQueue").delay(300).answer([]);
+      view.startSession();
+      view.finishDrill(PASS);
+      await vi.advanceTimersByTimeAsync(300);
+      view.finishDrill(PASS);
+      await settle();
+
+      expect(backend.count("recordDrillAttempt")).toBe(0);
     });
 
     it("can be stopped when its queue failed to load", async () => {
