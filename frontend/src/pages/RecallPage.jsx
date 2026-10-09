@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
-import { syncOrchestrator } from "../context/SyncOrchestrator";
+import { useSync } from "../context/SyncContext";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
@@ -13,15 +13,8 @@ import "../components/recall/recall.css";
 const BOARD_WIDTH = 306;
 
 export default function RecallPage() {
-  const {
-    lichessToken,
-    chessComUsername,
-    syncStatus,
-    syncing,
-    syncError,
-    syncResult,
-    startSync,
-  } = useAuth();
+  const { lichessToken, chessComUsername } = useAuth();
+  const { syncClient, syncStatus, syncing, syncError, syncResult, startSync } = useSync();
 
   const [filters, setFilters] = useState(loadFilters);
   const [view, setView] = useState(null);
@@ -101,13 +94,12 @@ export default function RecallPage() {
   const practicingRef = useRef(false);
   const heldSyncRef = useRef(false);
   useEffect(() => {
-    const onCacheReady = () => {
+    if (!syncClient) return;
+    return syncClient.onChanged(() => {
       if (practicingRef.current) heldSyncRef.current = true;
       else loadRecallView();
-    };
-    syncOrchestrator.on("cache-ready", onCacheReady);
-    return () => syncOrchestrator.off("cache-ready", onCacheReady);
-  }, [loadRecallView]);
+    });
+  }, [syncClient, loadRecallView]);
 
   // The "what changed" line is held with the analysis it describes
   const [shownSyncResult, setShownSyncResult] = useState(syncResult);

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, Link, useLocation } from "@tanstack/react-router";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { SyncProvider, useSync } from "../context/SyncContext";
 import LichessAuth from "./LichessAuth";
 
 function LayoutContent() {
@@ -14,13 +15,10 @@ function LayoutContent() {
     handleLogout,
     handleChessComSave,
     handleChessComClear,
-    syncStatus,
-    syncing,
-    syncError,
     chessComError,
     validatingChessCom,
-    startSync,
   } = useAuth();
+  const { syncStatus, syncing, syncError, startSync } = useSync();
 
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
@@ -251,7 +249,9 @@ function LayoutContent() {
 export default function Layout() {
   return (
     <AuthProvider>
-      <LayoutContent />
+      <SyncProvider>
+        <LayoutContent />
+      </SyncProvider>
     </AuthProvider>
   );
 }

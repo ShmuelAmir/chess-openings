@@ -1,22 +1,6 @@
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
-import { syncOrchestrator } from "./SyncOrchestrator";
+import { createContext, useContext, useState, useEffect } from "react";
 
 const AuthContext = createContext(null);
-
-// Sync on open when the older source's last Sync is older than this
-const SYNC_STALE_SECONDS = 10 * 60;
-const SYNC_POLL_MS = 1000;
-
-function isStale(lastSyncedAt) {
-  return !lastSyncedAt || Date.now() / 1000 - lastSyncedAt > SYNC_STALE_SECONDS;
-}
 
 export function AuthProvider({ children }) {
   const [lichessToken, setLichessToken] = useState(
@@ -27,11 +11,6 @@ export function AuthProvider({ children }) {
     localStorage.getItem("chess_com_username") || "",
   );
 
-  // Sync state, as GET /api/sync reports it
-  const [syncStatus, setSyncStatus] = useState(null);
-  const [syncError, setSyncError] = useState(null);
-  // The result of the last Sync that finished since the app opened
-  const [syncResult, setSyncResult] = useState(null);
   const [chessComError, setChessComError] = useState(null);
   const [validatingChessCom, setValidatingChessCom] = useState(false);
 
@@ -96,97 +75,8 @@ export function AuthProvider({ children }) {
   const handleChessComClear = () => {
     localStorage.removeItem("chess_com_username");
     setChessComUsername("");
-    setSyncStatus(null);
     setChessComError(null);
-    setSyncError(null);
-    setSyncResult(null);
-    syncOrchestrator.notifyCacheCleared();
   };
-
-  const syncRequest = useCallback(
-    async (method = "GET") => {
-      const params = new URLSearchParams({ chess_com_username: chessComUsername });
-      const response = await fetch(`/api/sync?${params}`, {
-        method,
-        headers: { Authorization: `Bearer ${lichessToken}` },
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Sync failed");
-      }
-      return response.json();
-    },
-    [chessComUsername, lichessToken],
-  );
-
-  // How many Syncs had finished when we last looked, to notice a new result
-  const seenRunsRef = useRef(null);
-
-  const applySyncStatus = useCallback((status) => {
-    setSyncStatus(status);
-    setSyncError(null);
-    if (seenRunsRef.current === null) {
-      seenRunsRef.current = status.runs;
-    } else if (!status.running && status.runs > seenRunsRef.current) {
-      seenRunsRef.current = status.runs;
-      const result = status.result;
-      setSyncResult(result);
-      // Re-run the analysis only if the Sync changed something
-      if (result && (result.games_changed || result.repertoire_changed)) {
-        syncOrchestrator.notifyCacheReady();
-      }
-    }
-  }, []);
-
-  // Start a Sync now (the Sync button, or Retry)
-  const startSync = useCallback(async () => {
-    setSyncError(null);
-    try {
-      applySyncStatus(await syncRequest("POST"));
-    } catch (err) {
-      setSyncError(err.message);
-      syncOrchestrator.notifySyncError(err);
-    }
-  }, [syncRequest, applySyncStatus]);
-
-  // On app open: Sync if the older source's last Sync is stale
-  useEffect(() => {
-    if (!lichessToken || !chessComUsername) return;
-    let cancelled = false;
-    seenRunsRef.current = null;
-
-    (async () => {
-      try {
-        const status = await syncRequest();
-        if (cancelled) return;
-        applySyncStatus(status);
-        if (!status.running && isStale(status.last_synced_at)) {
-          const started = await syncRequest("POST");
-          if (!cancelled) applySyncStatus(started);
-        }
-      } catch (err) {
-        if (!cancelled) setSyncError(err.message);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [lichessToken, chessComUsername, syncRequest, applySyncStatus]);
-
-  // Poll the Sync's progress while it runs
-  const syncing = Boolean(syncStatus?.running);
-  useEffect(() => {
-    if (!syncing) return;
-    const id = setInterval(async () => {
-      try {
-        applySyncStatus(await syncRequest());
-      } catch (err) {
-        setSyncError(err.message);
-      }
-    }, SYNC_POLL_MS);
-    return () => clearInterval(id);
-  }, [syncing, syncRequest, applySyncStatus]);
 
   const isConnected = lichessToken && lichessUser && chessComUsername;
 
@@ -199,13 +89,6 @@ export function AuthProvider({ children }) {
     handleLogout,
     handleChessComSave,
     handleChessComClear,
-    // Sync
-    syncStatus,
-    syncing,
-    syncError,
-    syncResult,
-    startSync,
-    cachedGames: syncStatus?.cached_games ?? null,
     chessComError,
     validatingChessCom,
   };

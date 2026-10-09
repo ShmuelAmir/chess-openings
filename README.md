@@ -63,7 +63,14 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-Or from the repo root: `make test`.
+Frontend tests use Vitest:
+
+```bash
+cd frontend
+npm test
+```
+
+From the repo root, `make test` runs both suites.
 
 ### Creating Your Repertoire on Lichess
 
