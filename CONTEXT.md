@@ -21,6 +21,8 @@ Each tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each po
 
 **Which studies:** every study the user owns on Lichess, except those they have explicitly marked as "not repertoire".
 
+**Study name:** each study's name is part of the Repertoire. Renaming a study on Lichess is a change to the Repertoire, and shows once the Repertoire is next brought up to date (see Sync).
+
 **Study color:** every study belongs to exactly one color — White or Black — and contributes only to that color's tree. A study never mixes colors. The color is the orientation of the study's first chapter (Lichess PGN export with `?orientation=true`).
 
 ### Deviation
@@ -64,6 +66,14 @@ The share of analysed games in which the user made a player-error *Deviation*: t
 
 _Avoid:_ "accuracy", "error rate" — Chess.com uses "accuracy" for engine scores.
 
+### Recall view
+
+The user's ranked Recall Gaps, totals and Miss Rate under the Game Filters, together with the Repertoire's studies — each with its name, color and number of Recall Gaps — listed for the Study filter. The studies list is part of the recall view, not a separate thing beside it.
+
+### Opening Distribution
+
+How often the user plays each opening and how they score in it, from Chess.com's own opening labels. It is independent of the Repertoire: it reads the games only, and never Recall Gaps or Deviations.
+
 ### Game Filters
 
 Selection criteria for analyzing only relevant games:
@@ -71,7 +81,7 @@ Selection criteria for analyzing only relevant games:
 - **Time control:** bullet, blitz, rapid, daily
 - **Rated:** Only rated games, or both rated and casual
 - **Color:** White only, Black only, or both (Opening Distribution only — on the recall view, color is implied by the Study filter)
-- **Date range:** Year/month bounds (from_year/from_month to to_year/to_month) or Unix timestamps
+- **Date range:** on the recall view, one of four presets — the last month, the last 3 months, the last year, or all time; on Opening Distribution, explicit start and end bounds
 - **Study:** one or more studies; narrows which Recall Gaps are shown (and which games the totals count) without changing what counts as the Repertoire or as a Recall Gap. None selected means all studies. A gap is shown when any selected study contains its position; a game counts when the position where it left book (its Deviation position) is in a selected study — merely passing through a study's lines on the way into another's doesn't count.
 
 All Game Filters, including the Study filter, are remembered in the browser between visits.
@@ -213,13 +223,3 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Abstract interface: `GameSource`
    - Current adapter: `CacheGameSource` (local SQLite)
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)
-
-## Future Deepening Opportunities
-
-(From the architecture review)
-
-- **Candidate 2:** Frontend state consolidation (move analysis state from scattered components into a single context)
-- **Candidate 3:** Opening name normalization (consolidate name cleanup rules into a single `OpeningNormalizer` module)
-- **Candidate 4:** Cache sync → auto-reanalysis flow (explicit orchestration of sync + reanalysis)
-- **Candidate 5:** Deepen API clients (move domain logic from callers into `LichessClient`, `ChessComClient`)
-- **Candidate 6:** Repertoire tree traversal logic (extract `RepertoireWalker` to encapsulate tree walking)
