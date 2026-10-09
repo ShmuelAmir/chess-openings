@@ -19,10 +19,12 @@ function syncState(overrides = {}) {
   };
 }
 
+/** A Recall Gap as the backend reports it; Open unless told otherwise. */
 function gap(positionKey, status = "open") {
   return { position_key: positionKey, status };
 }
 
+/** A study of the Repertoire as the backend reports it. */
 function study(id) {
   return { id, name: id, opening_name: id, color: "white", gaps: 1 };
 }
@@ -31,6 +33,11 @@ function study(id) {
 function recallView({ gaps = [], studies = [study("italian")] } = {}) {
   return { studies, gaps, totals: { analysed: 40 } };
 }
+
+const DEFAULTS = { timeClasses: ["blitz", "rapid"], dateRange: "3months", ratedOnly: true, studies: [] };
+const UNCHANGED = { games_changed: false, repertoire_changed: false, new_games: 0 };
+// Where the browser remembers the Game Filters
+const STORAGE_KEY = "recall-view.game-filters";
 
 /** Let the backend's answers that are already due reach the recall view. */
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -54,6 +61,9 @@ describe("recall view", () => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
   });
+
+  /** The position keys of the shown Recall Gaps, in order. */
+  const shownKeys = () => view.getSnapshot().shownGaps.map((gap) => gap.position_key);
 
   async function open() {
     view = createRecallView({ backend, syncClient });
@@ -80,12 +90,10 @@ describe("recall view", () => {
       expect(view.getSnapshot().view).toBeNull();
       await settle();
 
-      expect(backend.calls("loadRecallView")).toEqual([
-        [{ timeClasses: ["blitz", "rapid"], dateRange: "3months", ratedOnly: true, studies: [] }],
-      ]);
+      expect(backend.calls("loadRecallView")).toEqual([[DEFAULTS]]);
       expect(view.getSnapshot().loading).toBe(false);
       expect(view.getSnapshot().view.totals).toEqual({ analysed: 40 });
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "b"]);
+      expect(shownKeys()).toEqual(["a", "b"]);
     });
   });
 
@@ -103,7 +111,7 @@ describe("recall view", () => {
       await settle();
 
       expect(backend.calls("loadRecallView")[1]).toEqual([BULLET]);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["b"]);
+      expect(shownKeys()).toEqual(["b"]);
     });
 
     it("remembers the filters in the browser for the next visit", async () => {
@@ -131,11 +139,11 @@ describe("recall view", () => {
       view.setFilters({ ...view.getSnapshot().filters, dateRange: "all" });
 
       await vi.advanceTimersByTimeAsync(100);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["latest"]);
+      expect(shownKeys()).toEqual(["latest"]);
       expect(view.getSnapshot().loading).toBe(false);
 
       await vi.advanceTimersByTimeAsync(400);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["latest"]);
+      expect(shownKeys()).toEqual(["latest"]);
     });
 
     it("keeps loading until the latest load answers", async () => {
@@ -153,14 +161,11 @@ describe("recall view", () => {
 
       await vi.advanceTimersByTimeAsync(400);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["latest"]);
+      expect(shownKeys()).toEqual(["latest"]);
     });
   });
 
   describe("remembered Game Filters", () => {
-    const DEFAULTS = { timeClasses: ["blitz", "rapid"], dateRange: "3months", ratedOnly: true, studies: [] };
-    const KEY = "recall-view.game-filters";
-
     beforeEach(() => backend.on("loadRecallView").answer(recallView()));
 
     it("fall back to the defaults when nothing is remembered", async () => {
@@ -172,7 +177,7 @@ describe("recall view", () => {
     });
 
     it("fall back to the defaults when what is remembered is not readable", async () => {
-      stubStorage({ [KEY]: "{not json" });
+      stubStorage({ [STORAGE_KEY]: "{not json" });
 
       await open();
 
@@ -181,7 +186,7 @@ describe("recall view", () => {
 
     it("fall back to the default for each invalid filter, keeping the valid ones", async () => {
       stubStorage({
-        [KEY]: JSON.stringify({
+        [STORAGE_KEY]: JSON.stringify({
           timeClasses: ["bullet", "hyperbullet"],
           dateRange: "decade",
           ratedOnly: false,
@@ -218,12 +223,7 @@ describe("recall view", () => {
   });
 
   describe("selected studies that left the Repertoire", () => {
-    const withStudies = (studies) => ({
-      timeClasses: ["blitz", "rapid"],
-      dateRange: "3months",
-      ratedOnly: true,
-      studies,
-    });
+    const withStudies = (studies) => ({ ...DEFAULTS, studies });
 
     it("are forgotten, and the view reloads without them", async () => {
       const remembered = stubStorage();
@@ -237,7 +237,7 @@ describe("recall view", () => {
       expect(backend.calls("loadRecallView").at(-1)).toEqual([withStudies(["italian"])]);
       expect(backend.count("loadRecallView")).toBe(3);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(JSON.parse(remembered.get("recall-view.game-filters")).studies).toEqual(["italian"]);
+      expect(JSON.parse(remembered.get(STORAGE_KEY)).studies).toEqual(["italian"]);
     });
 
     it("are kept when the returned study list is empty", async () => {
@@ -278,7 +278,7 @@ describe("recall view", () => {
 
       expect(view.getSnapshot().error).toBe("Lichess token expired");
       expect(view.getSnapshot().loading).toBe(false);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a"]);
+      expect(shownKeys()).toEqual(["a"]);
     });
 
     it("stops showing its reason once the next load starts", async () => {
@@ -326,14 +326,14 @@ describe("recall view", () => {
       await finishSync(CHANGED);
 
       expect(backend.count("loadRecallView")).toBe(2);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "new"]);
+      expect(shownKeys()).toEqual(["a", "new"]);
     });
 
     it("does not reload the view when it changed nothing", async () => {
       backend.on("loadRecallView").answer(recallView());
       await open();
 
-      await finishSync({ games_changed: false, repertoire_changed: false, new_games: 0 });
+      await finishSync(UNCHANGED);
 
       expect(backend.count("loadRecallView")).toBe(1);
     });
@@ -348,11 +348,11 @@ describe("recall view", () => {
       backend.on("loadRecallView").answer(recallView({ gaps: [gap("a"), gap("new")] }));
       await finishSync(CHANGED);
       expect(backend.count("loadRecallView")).toBe(1);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a"]);
+      expect(shownKeys()).toEqual(["a"]);
 
       view.release();
       await settle();
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "new"]);
+      expect(shownKeys()).toEqual(["a", "new"]);
     });
 
     it("drops a load that was under way and runs it again once released", async () => {
@@ -367,7 +367,7 @@ describe("recall view", () => {
       view.release();
       await vi.advanceTimersByTimeAsync(500);
       expect(backend.count("loadRecallView")).toBe(2);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a"]);
+      expect(shownKeys()).toEqual(["a"]);
     });
 
     it("does not reload on release when nothing was kept back", async () => {
@@ -393,7 +393,7 @@ describe("recall view", () => {
       await open();
 
       expect(view.getSnapshot().showClosed).toBe(false);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "c"]);
+      expect(shownKeys()).toEqual(["a", "c"]);
       expect(view.getSnapshot().closedCount).toBe(2);
     });
 
@@ -402,10 +402,10 @@ describe("recall view", () => {
 
       view.toggleClosed();
       expect(view.getSnapshot().showClosed).toBe(true);
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "b", "c", "d"]);
+      expect(shownKeys()).toEqual(["a", "b", "c", "d"]);
 
       view.toggleClosed();
-      expect(view.getSnapshot().shownGaps.map((g) => g.position_key)).toEqual(["a", "c"]);
+      expect(shownKeys()).toEqual(["a", "c"]);
     });
   });
 

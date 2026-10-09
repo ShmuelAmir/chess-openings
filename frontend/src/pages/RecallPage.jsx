@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, useSyncExternalStore } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useSyncExternalStore,
+} from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSync } from "../context/SyncContext";
 import { createRecallView } from "../recall/recallView";
@@ -17,7 +23,8 @@ export default function RecallPage() {
   const { backend, syncClient } = useSync();
   const [recallView, setRecallView] = useState(null);
 
-  useEffect(() => {
+  // Before the first paint, so the page never shows empty
+  useLayoutEffect(() => {
     if (!syncClient) return;
     const created = createRecallView({ backend, syncClient });
     setRecallView(created);

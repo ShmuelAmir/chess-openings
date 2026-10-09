@@ -24,8 +24,8 @@ export function createRecallView({ backend, syncClient }) {
   const listeners = new Set();
   // Only the latest load may update the view
   let latestLoad = 0;
-  // While held (the page is practising) no load may land; one that was
-  // dropped or kept back is owed on release
+  // While held (the page is practising) a Sync's change does not reload the
+  // view; a load dropped or kept back is owed on release
   let held = false;
   let loadOwed = false;
   let disposed = false;
@@ -58,8 +58,9 @@ export function createRecallView({ backend, syncClient }) {
 
   function changeFilters(filters) {
     if (disposed) return;
-    state = { ...state, filters };
     saveFilters(filters);
+    // The load publishes the new filters with its own snapshot
+    state = { ...state, filters };
     load();
   }
 
@@ -80,10 +81,12 @@ export function createRecallView({ backend, syncClient }) {
     setFilters: changeFilters,
     /** Select the Recall Gap with this position key. */
     selectGap(positionKey) {
+      if (disposed) return;
       setState({ selectedKey: positionKey });
     },
     /** Show or hide the Closed Recall Gaps. */
     toggleClosed() {
+      if (disposed) return;
       setState({ showClosed: !state.showClosed });
     },
     /**
@@ -91,6 +94,7 @@ export function createRecallView({ backend, syncClient }) {
      * dropped and a Sync's change kept back, until `release()`.
      */
     hold() {
+      if (disposed) return;
       held = true;
       if (state.loading) {
         latestLoad++;
