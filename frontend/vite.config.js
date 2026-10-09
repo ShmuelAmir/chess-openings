@@ -12,6 +12,10 @@ export default defineConfig({
       },
     },
   },
+  test: {
+    environment: "node",
+    include: ["src/**/*.test.js"],
+  },
   build: {
     outDir: "../backend/static",
     emptyOutDir: true,

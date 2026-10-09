@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useSync } from "../context/SyncContext";
 import GameFilters from "../components/GameFilters";
 import OpeningCharts from "../components/OpeningCharts";
 
 export default function OpeningDistributionPage() {
-  const { chessComUsername, cachedGames } = useAuth();
+  const { chessComUsername } = useAuth();
+  const { cachedGames } = useSync();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);

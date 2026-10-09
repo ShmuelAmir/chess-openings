@@ -81,7 +81,7 @@ All Game Filters, including the Study filter, are remembered in the browser betw
 Bringing both data sources up to date — Chess.com games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand.
 
 - **Partial Sync:** some Chess.com months or the Lichess refresh failed; what succeeded is kept, and the failed parts are retried on the next Sync.
-- A Sync never interrupts a Drill Attempt; its analysis is applied once practice ends.
+- A Sync never interrupts a Drill Attempt; its analysis is applied once practice ends. The recall view holds the Sync's result, with its "what changed" line, until then.
 - **What changed:** a Sync that changed something reports the difference from the previous analysis — new games, new Recall Gaps, newly Closed and reopened ones — shown in the totals strip until the app is next opened (or the Chess.com account is cleared).
 
 _Avoid:_ "refresh", "import" as synonyms — use Sync.
