@@ -6,10 +6,14 @@
 export function createHttpBackend({ lichessToken, chessComUsername }) {
   // The backend's reason for a failed response, else the call's own wording.
   // `rateLimit` is what to say instead when Lichess rate-limited the call.
-  async function request(path, { method = "GET", failure, rateLimit }) {
+  // `body` is sent as JSON.
+  async function request(path, { method = "GET", body, failure, rateLimit }) {
+    const headers = { Authorization: `Bearer ${lichessToken}` };
+    if (body) headers["Content-Type"] = "application/json";
     const response = await fetch(path, {
       method,
-      headers: { Authorization: `Bearer ${lichessToken}` },
+      headers,
+      body: body && JSON.stringify(body),
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -44,6 +48,20 @@ export function createHttpBackend({ lichessToken, chessComUsername }) {
       request(`/api/recall-view?${filterParams(filters)}`, {
         failure: "Could not load Recall Gaps",
         rateLimit: "Lichess rate limit reached. Please wait a minute and try again.",
+      }),
+    /** The practice-session queue under the Game Filters: the due Open Recall Gaps, in ranking order. */
+    loadPracticeQueue: async (filters) =>
+      (
+        await request(`/api/practice-session?${filterParams(filters)}`, {
+          failure: "Could not load the practice session",
+        })
+      ).gaps,
+    /** Record a finished Drill Attempt. */
+    recordDrillAttempt: (attempt) =>
+      request("/api/drill-attempts", {
+        method: "POST",
+        body: attempt,
+        failure: "Could not save the attempt",
       }),
   };
 }

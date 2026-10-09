@@ -2,12 +2,15 @@ import { loadFilters, saveFilters } from "./storedFilters";
 
 /**
  * The recall view, for as long as the recall page is open: the ranked Recall
- * Gaps and totals under the Game Filters, and which gap is selected.
+ * Gaps and totals under the Game Filters, which gap is selected, and the
+ * practice in progress.
  *
  * `backend` is the backend adapter and `syncClient` the account's Sync
- * client; a Sync that changed something reloads the view. Read with
- * `getSnapshot()`, and `subscribe(listener)` to hear of each new snapshot.
- * `dispose()` when the page closes; a disposed recall view does nothing more.
+ * client; a Sync that changed something reloads the view. A Sync never
+ * interrupts practice: its change, and its "what changed" line, are held
+ * until practice ends. Read with `getSnapshot()`, and `subscribe(listener)`
+ * to hear of each new snapshot. `dispose()` when the page closes; a disposed
+ * recall view does nothing more.
  */
 export function createRecallView({ backend, syncClient }) {
   let state = {
@@ -19,15 +22,29 @@ export function createRecallView({ backend, syncClient }) {
     error: null,
     selectedKey: null,
     showClosed: false,
+    // The practice in progress: null, { kind: "drill", gap } with the gap as
+    // it was when the drill started, or the practice session { kind:
+    // "session", filters, queue, index, drilled, error }. Both carry
+    // `drillNumber`, which tells the drill on the board from the one before,
+    // and `saveState`: null, then "saving", "saved" or "failed" once the
+    // drill is finished
+    practice: null,
+    // The last Sync's result, for the "what changed" line: held during
+    // practice with the analysis it describes
+    syncResult: syncClient.getSnapshot().result,
   };
   let snapshot = derive(state);
   const listeners = new Set();
   // Only the latest load may update the view
   let latestLoad = 0;
-  // While held (the page is practising) a Sync's change does not reload the
-  // view; a load dropped or kept back is owed on release
-  let held = false;
+  // A load dropped or kept back during practice, to run when practice ends
   let loadOwed = false;
+  // How many drills have started, to tell one drill from the next
+  let drills = 0;
+  // The Drill Attempt of the drill on the board, once it is finished
+  let attempt = null;
+  // Only the latest queue load may update the practice session
+  let latestQueueLoad = 0;
   let disposed = false;
 
   function setState(changes) {
@@ -64,10 +81,79 @@ export function createRecallView({ backend, syncClient }) {
     load();
   }
 
-  const stopListening = syncClient.onChanged(() => {
-    if (held) loadOwed = true;
-    else load();
-  });
+  function setPractice(changes) {
+    setState({ practice: { ...state.practice, ...changes } });
+  }
+
+  // A drill that has yet to be played, and to record its Drill Attempt
+  function newDrill() {
+    attempt = null;
+    return { drillNumber: ++drills, saveState: null };
+  }
+
+  async function saveAttempt() {
+    const { drillNumber } = state.practice;
+    // The answer is for this drill only: not the next one, nor after practice
+    const current = () => !disposed && state.practice?.drillNumber === drillNumber;
+    setPractice({ saveState: "saving" });
+    try {
+      await backend.recordDrillAttempt(attempt);
+      if (current()) setPractice({ saveState: "saved" });
+    } catch {
+      if (current()) setPractice({ saveState: "failed" });
+    }
+  }
+
+  // The practice session's queue, under the Game Filters the session started
+  // with; its first Recall Gap is the next drill
+  async function loadQueue() {
+    const request = ++latestQueueLoad;
+    setPractice({ error: null });
+    try {
+      const queue = await backend.loadPracticeQueue(state.practice.filters);
+      if (request === latestQueueLoad) setPractice({ queue, index: 0, ...newDrill() });
+    } catch (err) {
+      // The board is gone while the error shows, so a retry that fails again
+      // or keeps this queue comes back to a drill yet to be played
+      if (request === latestQueueLoad) setPractice({ error: err.message, ...newDrill() });
+    }
+  }
+
+  // Practice begins: the view stays as it is until practice ends, so a load
+  // under way is dropped
+  function startPractice(practice) {
+    latestQueueLoad++;
+    const changes = { practice: { ...practice, ...newDrill() } };
+    if (state.loading) {
+      latestLoad++;
+      loadOwed = true;
+      changes.loading = false;
+    }
+    // Keep the selected gap across the held analysis, if it still exists
+    if (snapshot.selected) changes.selectedKey = snapshot.selected.position_key;
+    setState(changes);
+  }
+
+  function endPractice() {
+    if (disposed || !state.practice) return;
+    latestQueueLoad++;
+    setState({ practice: null, syncResult: syncClient.getSnapshot().result });
+    if (loadOwed) {
+      loadOwed = false;
+      load();
+    }
+  }
+
+  const stopListening = [
+    syncClient.onChanged(() => {
+      if (state.practice) loadOwed = true;
+      else load();
+    }),
+    syncClient.subscribe(() => {
+      const { result } = syncClient.getSnapshot();
+      if (!state.practice && result !== state.syncResult) setState({ syncResult: result });
+    }),
+  ];
 
   load();
 
@@ -79,9 +165,11 @@ export function createRecallView({ backend, syncClient }) {
     },
     /** Change the Game Filters: remembered in the browser, and the view reloads. */
     setFilters: changeFilters,
-    /** Select the Recall Gap with this position key. */
+    /** Select the Recall Gap with this position key; ends a drill of another gap. */
     selectGap(positionKey) {
       if (disposed) return;
+      const { practice } = state;
+      if (practice?.kind === "drill" && positionKey !== practice.gap.position_key) endPractice();
       setState({ selectedKey: positionKey });
     },
     /** Show or hide the Closed Recall Gaps. */
@@ -89,42 +177,94 @@ export function createRecallView({ backend, syncClient }) {
       if (disposed) return;
       setState({ showClosed: !state.showClosed });
     },
+    /** Start a single drill of the selected Recall Gap. */
+    startDrill() {
+      if (disposed || !snapshot.selected) return;
+      startPractice({ kind: "drill", gap: snapshot.selected });
+    },
     /**
-     * Keep the view as it is while the page practises: a load under way is
-     * dropped and a Sync's change kept back, until `release()`.
+     * Start a practice session: the due Open Recall Gaps among those the
+     * Game Filters show now, one drill after another.
      */
-    hold() {
+    startSession() {
       if (disposed) return;
-      held = true;
-      if (state.loading) {
-        latestLoad++;
-        loadOwed = true;
-        setState({ loading: false });
+      startPractice({
+        kind: "session",
+        filters: state.filters,
+        // The due Recall Gaps in ranking order, once loaded
+        queue: null,
+        index: 0,
+        // How many gaps the session has drilled
+        drilled: 0,
+        // Why the queue failed to load, until it is loaded again
+        error: null,
+      });
+      loadQueue();
+    },
+    /**
+     * Move the practice session on to its next Recall Gap, once the Drill
+     * Attempt is saved. A queue that has run out is fetched again, so gaps
+     * failed on the way come back.
+     */
+    nextDrill() {
+      const { practice } = state;
+      if (disposed || practice?.kind !== "session" || practice.saveState !== "saved") return;
+      const drilled = practice.drilled + 1;
+      if (practice.index + 1 < practice.queue.length) {
+        setPractice({ drilled, index: practice.index + 1, ...newDrill() });
+      } else {
+        setPractice({ drilled });
+        loadQueue();
       }
     },
-    /** End the hold, and load now if a load is owed. */
-    release() {
-      held = false;
-      if (loadOwed && !disposed) {
-        loadOwed = false;
-        load();
-      }
+    /** Load the practice session's queue again after it failed to load. */
+    retryQueue() {
+      if (disposed || state.practice?.kind !== "session" || !state.practice.error) return;
+      loadQueue();
     },
+    /**
+     * The drill on the board is finished: record its Drill Attempt, once
+     * however often it is reported.
+     */
+    finishDrill(finished) {
+      if (disposed || !state.practice || attempt) return;
+      attempt = finished;
+      saveAttempt();
+    },
+    /** Save the Drill Attempt again after its save failed. */
+    retrySave() {
+      if (disposed || state.practice?.saveState !== "failed") return;
+      saveAttempt();
+    },
+    /** Start a new drill of the single drill's Recall Gap. */
+    drillAgain() {
+      if (disposed || state.practice?.kind !== "drill") return;
+      setPractice(newDrill());
+    },
+    /** End the practice, and apply what a Sync changed meanwhile. */
+    endPractice,
     dispose() {
       disposed = true;
       latestLoad++;
-      stopListening();
+      latestQueueLoad++;
+      stopListening.forEach((stop) => stop());
       listeners.clear();
     },
   };
 }
 
 // What the page renders from: the state, and what follows from it
-function derive({ selectedKey, ...state }) {
+function derive({ selectedKey, practice, ...state }) {
   const gaps = state.view?.gaps ?? [];
   const shownGaps = gaps.filter((gap) => state.showClosed || gap.status === "open");
   return {
     ...state,
+    // A practice session's `gap` is the one to drill now; none while the
+    // queue loads, or once nothing is due
+    practice:
+      practice?.kind === "session"
+        ? { ...practice, gap: practice.queue?.[practice.index] }
+        : practice,
     shownGaps,
     closedCount: gaps.filter((gap) => gap.status === "closed").length,
     // The selected gap if it is still shown, else the first
