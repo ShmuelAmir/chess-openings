@@ -104,10 +104,10 @@ function Recall({ recallView }) {
         // The drill hides the gap's details, which would give the answer away
         <section className="rv-detail">
           <DrillBoard
-            key={practice.drill}
+            key={practice.drillNumber}
             gap={practice.gap}
             boardWidth={BOARD_WIDTH}
-            saveState={practice.save}
+            saveState={practice.saveState}
             onFinished={recallView.finishDrill}
             onRetrySave={recallView.retrySave}
             onAgain={recallView.drillAgain}

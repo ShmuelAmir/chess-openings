@@ -43,10 +43,10 @@ export default function PracticeSession({
         <p className="rv-muted">Loading the due Recall Gaps…</p>
       ) : gap ? (
         <DrillBoard
-          key={session.drill}
+          key={session.drillNumber}
           gap={gap}
           boardWidth={BOARD_WIDTH}
-          saveState={session.save}
+          saveState={session.saveState}
           onFinished={onFinished}
           onRetrySave={onRetrySave}
           onNext={onNext}

@@ -520,13 +520,13 @@ describe("recall view", () => {
 
     it("records its Drill Attempt, showing saving and then saved", async () => {
       backend.on("recordDrillAttempt").delay(200).answer({});
-      expect(view.getSnapshot().practice.save).toBeNull();
+      expect(view.getSnapshot().practice.saveState).toBeNull();
 
       view.finishDrill(FAIL);
-      expect(view.getSnapshot().practice.save).toBe("saving");
+      expect(view.getSnapshot().practice.saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.save).toBe("saved");
+      expect(view.getSnapshot().practice.saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL]]);
     });
 
@@ -540,21 +540,21 @@ describe("recall view", () => {
       await settle();
 
       expect(backend.count("recordDrillAttempt")).toBe(1);
-      expect(view.getSnapshot().practice.save).toBe("saved");
+      expect(view.getSnapshot().practice.saveState).toBe("saved");
     });
 
     it("shows a failed save as failed, and saves the same Drill Attempt on retry", async () => {
       backend.on("recordDrillAttempt").fail("Server error");
       view.finishDrill(FAIL);
       await settle();
-      expect(view.getSnapshot().practice.save).toBe("failed");
+      expect(view.getSnapshot().practice.saveState).toBe("failed");
 
       backend.on("recordDrillAttempt").delay(200).answer({});
       view.retrySave();
-      expect(view.getSnapshot().practice.save).toBe("saving");
+      expect(view.getSnapshot().practice.saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.save).toBe("saved");
+      expect(view.getSnapshot().practice.saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [FAIL]]);
     });
 
@@ -577,13 +577,13 @@ describe("recall view", () => {
 
       view.drillAgain();
       const again = view.getSnapshot().practice;
-      expect(again).toMatchObject({ kind: "drill", gap: first.gap, save: null });
-      expect(again.drill).not.toBe(first.drill);
+      expect(again).toMatchObject({ kind: "drill", gap: first.gap, saveState: null });
+      expect(again.drillNumber).not.toBe(first.drillNumber);
 
       view.finishDrill(PASS);
       await settle();
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [PASS]]);
-      expect(view.getSnapshot().practice.save).toBe("saved");
+      expect(view.getSnapshot().practice.saveState).toBe("saved");
     });
 
     it("leaves the next drill alone when its save answers after \"Drill again\"", async () => {
@@ -593,7 +593,7 @@ describe("recall view", () => {
       view.drillAgain();
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.save).toBeNull();
+      expect(view.getSnapshot().practice.saveState).toBeNull();
     });
 
     it("leaves the view alone when its save answers after practice ended", async () => {
@@ -639,7 +639,7 @@ describe("recall view", () => {
         queue: [gap("b"), gap("c")],
         index: 0,
         gap: gap("b"),
-        save: null,
+        saveState: null,
       });
     });
 
@@ -663,7 +663,7 @@ describe("recall view", () => {
       backend.on("recordDrillAttempt").delay(200).answer({});
       view.startSession();
       await settle();
-      const first = view.getSnapshot().practice.drill;
+      const first = view.getSnapshot().practice.drillNumber;
 
       view.nextDrill();
       expect(view.getSnapshot().practice.index).toBe(0);
@@ -677,9 +677,9 @@ describe("recall view", () => {
         index: 1,
         gap: gap("b"),
         drilled: 1,
-        save: null,
+        saveState: null,
       });
-      expect(view.getSnapshot().practice.drill).not.toBe(first);
+      expect(view.getSnapshot().practice.drillNumber).not.toBe(first);
       expect(backend.count("loadPracticeQueue")).toBe(1);
     });
 
@@ -693,7 +693,7 @@ describe("recall view", () => {
       await settle();
       view.nextDrill();
 
-      expect(view.getSnapshot().practice).toMatchObject({ index: 0, drilled: 0, save: "failed" });
+      expect(view.getSnapshot().practice).toMatchObject({ index: 0, drilled: 0, saveState: "failed" });
     });
 
     it("records one Drill Attempt for each drill of the queue", async () => {
@@ -718,7 +718,7 @@ describe("recall view", () => {
       await finishAndSave();
       view.nextDrill();
       await finishAndSave();
-      const last = view.getSnapshot().practice.drill;
+      const last = view.getSnapshot().practice.drillNumber;
 
       backend.on("loadPracticeQueue").answer([gap("b")]);
       view.nextDrill();
@@ -730,9 +730,9 @@ describe("recall view", () => {
         index: 0,
         gap: gap("b"),
         drilled: 2,
-        save: null,
+        saveState: null,
       });
-      expect(view.getSnapshot().practice.drill).not.toBe(last);
+      expect(view.getSnapshot().practice.drillNumber).not.toBe(last);
     });
 
     it("reports nothing due, and how many gaps were drilled, when the queue comes back empty", async () => {
@@ -775,6 +775,25 @@ describe("recall view", () => {
 
       expect(view.getSnapshot().practice).toMatchObject({ error: null, gap: gap("a") });
       expect(backend.count("loadPracticeQueue")).toBe(2);
+    });
+
+    it("records a new Drill Attempt for the gap drilled again after its queue failed to load", async () => {
+      backend.on("loadPracticeQueue").answer([gap("a")]);
+      view.startSession();
+      await settle();
+      await finishAndSave();
+      const before = view.getSnapshot().practice.drillNumber;
+
+      backend.on("loadPracticeQueue").fail("Could not load the practice session");
+      view.nextDrill();
+      await settle();
+      backend.on("loadPracticeQueue").delay(300).answer([]);
+      view.retryQueue();
+
+      expect(view.getSnapshot().practice).toMatchObject({ gap: gap("a"), saveState: null });
+      expect(view.getSnapshot().practice.drillNumber).not.toBe(before);
+      await finishAndSave();
+      expect(backend.count("recordDrillAttempt")).toBe(2);
     });
 
     it("can be stopped when its queue failed to load", async () => {

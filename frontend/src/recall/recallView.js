@@ -8,9 +8,9 @@ import { loadFilters, saveFilters } from "./storedFilters";
  * `backend` is the backend adapter and `syncClient` the account's Sync
  * client; a Sync that changed something reloads the view. A Sync never
  * interrupts practice: its change, and its "what changed" line, are held
- * until practice ends. Read with
- * `getSnapshot()`, and `subscribe(listener)` to hear of each new snapshot.
- * `dispose()` when the page closes; a disposed recall view does nothing more.
+ * until practice ends. Read with `getSnapshot()`, and `subscribe(listener)`
+ * to hear of each new snapshot. `dispose()` when the page closes; a disposed
+ * recall view does nothing more.
  */
 export function createRecallView({ backend, syncClient }) {
   let state = {
@@ -24,9 +24,10 @@ export function createRecallView({ backend, syncClient }) {
     showClosed: false,
     // The practice in progress: null, { kind: "drill", gap } with the gap as
     // it was when the drill started, or the practice session { kind:
-    // "session", filters, queue, index, drilled, error }. Both carry `drill`,
-    // which numbers the drill on the board, and `save`: null, then "saving",
-    // "saved" or "failed" once the drill is finished
+    // "session", filters, queue, index, drilled, error }. Both carry
+    // `drillNumber`, which tells the drill on the board from the one before,
+    // and `saveState`: null, then "saving", "saved" or "failed" once the
+    // drill is finished
     practice: null,
     // The last Sync's result, for the "what changed" line: held during
     // practice with the analysis it describes
@@ -87,19 +88,19 @@ export function createRecallView({ backend, syncClient }) {
   // A drill that has yet to be played, and to record its Drill Attempt
   function newDrill() {
     attempt = null;
-    return { drill: ++drills, save: null };
+    return { drillNumber: ++drills, saveState: null };
   }
 
   async function saveAttempt() {
-    const { drill } = state.practice;
+    const { drillNumber } = state.practice;
     // The answer is for this drill only: not the next one, nor after practice
-    const current = () => !disposed && state.practice?.drill === drill;
-    setPractice({ save: "saving" });
+    const current = () => !disposed && state.practice?.drillNumber === drillNumber;
+    setPractice({ saveState: "saving" });
     try {
       await backend.recordDrillAttempt(attempt);
-      if (current()) setPractice({ save: "saved" });
+      if (current()) setPractice({ saveState: "saved" });
     } catch {
-      if (current()) setPractice({ save: "failed" });
+      if (current()) setPractice({ saveState: "failed" });
     }
   }
 
@@ -112,7 +113,9 @@ export function createRecallView({ backend, syncClient }) {
       const queue = await backend.loadPracticeQueue(state.practice.filters);
       if (request === latestQueueLoad) setPractice({ queue, index: 0, ...newDrill() });
     } catch (err) {
-      if (request === latestQueueLoad) setPractice({ error: err.message });
+      // The board is gone while the error shows, so a retry that fails again
+      // or keeps this queue comes back to a drill yet to be played
+      if (request === latestQueueLoad) setPractice({ error: err.message, ...newDrill() });
     }
   }
 
@@ -205,7 +208,7 @@ export function createRecallView({ backend, syncClient }) {
      */
     nextDrill() {
       const { practice } = state;
-      if (disposed || practice?.kind !== "session" || practice.save !== "saved") return;
+      if (disposed || practice?.kind !== "session" || practice.saveState !== "saved") return;
       const drilled = practice.drilled + 1;
       if (practice.index + 1 < practice.queue.length) {
         setPractice({ drilled, index: practice.index + 1, ...newDrill() });
@@ -230,7 +233,7 @@ export function createRecallView({ backend, syncClient }) {
     },
     /** Save the Drill Attempt again after its save failed. */
     retrySave() {
-      if (disposed || state.practice?.save !== "failed") return;
+      if (disposed || state.practice?.saveState !== "failed") return;
       saveAttempt();
     },
     /** Start a new drill of the single drill's Recall Gap. */
