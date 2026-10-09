@@ -21,6 +21,8 @@ Each tree is indexed by chess moves (SAN notation, e.g. "e4", "Nf3"). At each po
 
 **Which studies:** every study the user owns on Lichess, except those they have explicitly marked as "not repertoire".
 
+**Study name:** each study's name is part of the Repertoire. Renaming a study on Lichess is a change to the Repertoire, and shows once the Repertoire is next brought up to date (see Sync).
+
 **Study color:** every study belongs to exactly one color — White or Black — and contributes only to that color's tree. A study never mixes colors. The color is the orientation of the study's first chapter (Lichess PGN export with `?orientation=true`).
 
 ### Deviation
@@ -64,6 +66,14 @@ The share of analysed games in which the user made a player-error *Deviation*: t
 
 _Avoid:_ "accuracy", "error rate" — Chess.com uses "accuracy" for engine scores.
 
+### Recall view
+
+The user's ranked Recall Gaps, totals and Miss Rate under the Game Filters, together with the Repertoire's studies — each with its name, color and number of Recall Gaps — listed for the Study filter. The studies list is part of the recall view, not a separate thing beside it.
+
+### Opening Distribution
+
+How often the user plays each opening and how they score in it, from Chess.com's own opening labels. It is independent of the Repertoire: it reads the games only, and never Recall Gaps or Deviations.
+
 ### Game Filters
 
 Selection criteria for analyzing only relevant games:
@@ -71,7 +81,7 @@ Selection criteria for analyzing only relevant games:
 - **Time control:** bullet, blitz, rapid, daily
 - **Rated:** Only rated games, or both rated and casual
 - **Color:** White only, Black only, or both (Opening Distribution only — on the recall view, color is implied by the Study filter)
-- **Date range:** Year/month bounds (from_year/from_month to to_year/to_month) or Unix timestamps
+- **Date range:** on the recall view, one of four presets — the last month, the last 3 months, the last year, or all time; on Opening Distribution, explicit start and end bounds
 - **Study:** one or more studies; narrows which Recall Gaps are shown (and which games the totals count) without changing what counts as the Repertoire or as a Recall Gap. None selected means all studies. A gap is shown when any selected study contains its position; a game counts when the position where it left book (its Deviation position) is in a selected study — merely passing through a study's lines on the way into another's doesn't count.
 
 All Game Filters, including the Study filter, are remembered in the browser between visits.
@@ -100,7 +110,7 @@ The system is organized in horizontal layers from request → response:
    - Defines FastAPI endpoints (e.g. `/api/recall-view`)
    - Parses query parameters into domain objects
    - Delegates to orchestration layer
-   - Returns JSON responses
+   - Returns JSON responses; the recall view is serialised as the pipeline returns it
 
 2. **Orchestration Layer** (`pipeline.py`)
    - **`RepertoireAnalysisPipeline`:** Stateful orchestrator that coordinates the full analysis workflow
@@ -117,7 +127,7 @@ The system is organized in horizontal layers from request → response:
 4. **Domain Logic Layer**
    - **`repertoire.py`:** Defines `Repertoire`, `RepertoireNode`, `RepertoireBuilder`
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
-   - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into ranked Recall Gaps and totals under the Game Filters
+   - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into the recall view (studies, ranked Recall Gaps, totals) under the Game Filters. Its view dataclasses are the wire contract of `/api/recall-view`
    - **`game_cache.py`:** SQLite game storage and filtering
    - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
@@ -160,7 +170,7 @@ A Sync rebuilds the Repertoire at once (joining a build already in flight, or sk
 ### Error Handling
 
 - **Analysis failure (per-game):** Log and continue. One failed game doesn't block the entire analysis.
-- **Source failure (invalid token, study not accessible):** Fail fast at the HTTP layer. It is a user error, not a transient issue.
+- **Source failure (invalid token, study not accessible):** Fail fast at the HTTP layer. It is a user error, not a transient issue. The recall view and practice sessions meet an invalid token only when the Repertoire is fetched: while it is cached, a revoked token still gets the cached view.
 
 ## Data Flows
 
@@ -169,7 +179,8 @@ A Sync rebuilds the Repertoire at once (joining a build already in flight, or sk
 ```
 HTTP /api/recall-view (Game Filters, token)
   ↓
-HTTP layer validates token
+HTTP layer builds the Game Filters (RecallFilters.for_date_range; an unknown
+date range preset is a 422)
   ↓
 Reuse the user's RepertoireAnalysisPipeline (one per Lichess user, created on
 first request with LichessRepertoireSource(token, list_studies), CacheGameSource())
@@ -182,19 +193,24 @@ LichessRepertoireSource.fetch_repertoire()
   ├─ List the user's owned studies, minus those marked "not repertoire"
   ├─ Fetch each owned study's PGN from Lichess (?orientation=true)
   ├─ Feed to RepertoireBuilder (each study into its first chapter's color tree)
-  └─ Return built Repertoire (white_tree, black_tree, study membership)
+  └─ Return built Repertoire (white_tree, black_tree, study membership, and
+     each study's color and name)
+  (Lichess refusing the token here, 401/403, is answered 401 "Invalid Lichess
+  token"; the token is not checked while the Repertoire is cached)
   ↓
 Pipeline calls game_source.fetch_games(username, GameFilters()) — every cached game
   ↓
 Pipeline walks each game with RepertoireWalker into a walk record
   ↓
-aggregate(walked games, filters, studies of a position, now) groups the
-player errors inside the filters into ranked Recall Gaps, counts the totals
-and the Miss Rate, buckets the last 12 months' Miss Rate under every filter
-but the date range, counts the Open gaps shown and the gaps Closed in the
-date range, and counts each study's Recall Gaps under every filter but the
+aggregate(walked games, filters, Repertoire, now) groups the player errors
+inside the filters into ranked Recall Gaps, each naming and deep-linking its
+studies, counts the totals and the Miss Rate, buckets the last 12 months'
+Miss Rate under every filter but the date range, counts the Open gaps shown
+and the gaps Closed in the date range, and lists the Repertoire's studies
+sorted by opening name, each with its Recall Gaps under every filter but the
 Study filter
   ↓
+HTTP layer returns the RecallView as is:
 Return {studies: [{id, name, opening_name, color, gaps}], gaps: [...],
         totals: {analysed, opponent_left_book, book_completed, miss_rate,
                  trend: [{month, games, miss_rate}], open_gaps, closed_in_range}}
@@ -213,13 +229,3 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Abstract interface: `GameSource`
    - Current adapter: `CacheGameSource` (local SQLite)
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)
-
-## Future Deepening Opportunities
-
-(From the architecture review)
-
-- **Candidate 2:** Frontend state consolidation (move analysis state from scattered components into a single context)
-- **Candidate 3:** Opening name normalization (consolidate name cleanup rules into a single `OpeningNormalizer` module)
-- **Candidate 4:** Cache sync → auto-reanalysis flow (explicit orchestration of sync + reanalysis)
-- **Candidate 5:** Deepen API clients (move domain logic from callers into `LichessClient`, `ChessComClient`)
-- **Candidate 6:** Repertoire tree traversal logic (extract `RepertoireWalker` to encapsulate tree walking)

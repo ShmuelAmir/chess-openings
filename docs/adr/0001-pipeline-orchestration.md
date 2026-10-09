@@ -1,7 +1,7 @@
 # ADR-0001: Pipeline Orchestration with Dependency Injection
 
 **Date:** 2026-05-08  
-**Status:** Accepted (repertoire caching amended 2026-10-01, see below)  
+**Status:** Accepted (repertoire caching amended 2026-10-01, recall view assembly amended 2026-10-09, see below)  
 **Context:** Backend analysis workflow orchestration
 
 ## Problem
@@ -106,3 +106,7 @@ The Repertoire is now every study the user owns on Lichess (issue #21), so the c
 ## Amendment (2026-10-01): recall view replaces per-game analysis
 
 The pipeline's `analyze` (one row per game via `DeviationAnalyzer`) is replaced by `pipeline.recall_view(username, filters)` (issue #22). It fetches every cached game, walks each through the Repertoire, and hands the walk records to the pure Recall Gap aggregator (`recall_gaps.py`), which applies the Game Filters itself, so that later rules can read all games while showing only the filtered ones. `/api/analyze` and `analyzer.py` are removed; `/api/recall-view` serves the view. The rest of this decision stands.
+
+## Amendment (2026-10-09): the pipeline returns the complete recall view
+
+`pipeline.recall_view(username, filters)` now returns the whole recall view (issue #59): the Repertoire's studies — name, opening name, color and number of Recall Gaps, sorted by opening name — beside the ranked Recall Gaps and the totals, and each gap's studies carry their name and deep link. Study names come from the Repertoire (`Repertoire.study_names`, filled by `RepertoireBuilder`), so the handler no longer lists the user's studies on every request, and a rename on Lichess is a Repertoire change that shows at the next rebuild. The handler serialises the view as is: the view dataclasses in `recall_gaps.py` (`RecallView`, `StudyView`, `RecallGap`, `Totals` and those they hold) are the wire contract, so a field added to them is a field added to the response. The date-range presets are built by `RecallFilters.for_date_range`, and `study_url` sits in `repertoire.py`. `/api/recall-view` and `/api/practice-session` no longer check the token on each request — a revoked token keeps getting the cached view until the Repertoire is next rebuilt — but still answer an upstream 401/403 from the Repertoire fetch with `401 "Invalid Lichess token"`. `/api/practice-session` returns the queued gaps in the recall view's shape, without `due_at`. The rest of this decision stands.

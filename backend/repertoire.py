@@ -35,6 +35,19 @@ class ChapterLocation(NamedTuple):
     mainline_ply: Optional[int]
 
 
+def study_url(study_id: str, chapter_id: Optional[str], mainline_ply: Optional[int]) -> str:
+    """
+    Link to a position in a Lichess study: the chapter at the ply when the
+    position is on the chapter's mainline, else the chapter itself.
+    """
+    url = f"https://lichess.org/study/{study_id}"
+    if chapter_id:
+        url += f"/{chapter_id}"
+        if mainline_ply is not None:
+            url += f"#{mainline_ply}"
+    return url
+
+
 def position_key(board: chess.Board) -> str:
     """The FEN without the halfmove and fullmove counters."""
     return " ".join(board.fen().split(" ")[:4])
@@ -52,6 +65,8 @@ class Repertoire:
     black_tree: RepertoireNode = field(default_factory=RepertoireNode)
     # study id -> the one color the study belongs to
     study_colors: dict[str, chess.Color] = field(default_factory=dict)
+    # study id -> the study's name on Lichess
+    study_names: dict[str, str] = field(default_factory=dict)
     # (study color, position key) -> {study id: where the position sits in that study}
     _study_membership: dict[tuple[chess.Color, str], dict[str, ChapterLocation]] = field(default_factory=dict)
 
@@ -133,6 +148,7 @@ class RepertoireBuilder:
         color = self._orientation(chapters[0])
         if study_id:
             self.repertoire.study_colors[study_id] = color
+            self.repertoire.study_names[study_id] = study_name
 
         for game in chapters:
             # Extract chapter name from PGN headers

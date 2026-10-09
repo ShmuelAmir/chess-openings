@@ -28,15 +28,25 @@ class QueuedGap:
 
 def practice_queue(
     gaps: Sequence[RecallGap],
+    last_occurrences: Mapping[str, int],
     attempts: Iterable[DrillAttempt],
     now: int,
 ) -> list[QueuedGap]:
     """
     A practice session's queue: the due Open gaps among `gaps`, in their
     (ranking) order. Closed gaps are left out; they are drilled on demand.
+
+    Args:
+        gaps: The Recall Gaps the Game Filters show, ranked
+        last_occurrences: Each gap's latest occurrence time by position key,
+            over every game whatever the Game Filters
+        attempts: Every Drill Attempt (of any gap)
+        now: Unix timestamp
     """
     open_gaps = [gap for gap in gaps if gap.status == "open"]
-    result = schedule({gap.position_key: gap.last_occurrence for gap in open_gaps}, attempts, now)
+    result = schedule(
+        {gap.position_key: last_occurrences[gap.position_key] for gap in open_gaps}, attempts, now
+    )
     due = set(result.due)
     return [
         QueuedGap(gap, result.next_due[gap.position_key])

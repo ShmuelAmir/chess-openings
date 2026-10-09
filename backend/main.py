@@ -16,18 +16,17 @@ from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from contextlib import contextmanager
 from datetime import datetime
 
-import chess
-
-from lichess import LichessClient, LichessRateLimitError, study_url
+from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComClient
 from game_cache import get_game_cache
 from exclusions import get_exclusion_store
 from drill_attempts import get_drill_attempt_store
 from opening_normalizer import OpeningNormalizer
 from pipeline import RepertoireAnalysisPipeline, GameFilters
-from recall_gaps import GAMES_TO_CLOSE, RecallFilters, RecallGap
+from recall_gaps import RecallFilters
 from sources import LichessRepertoireSource, CacheGameSource
 from sync import ChessComSync, RepertoireSyncLog, Sync
 
@@ -253,16 +252,21 @@ async def get_lichess_studies(authorization: str = Header(...)):
     return {"studies": await fetch_studies_cached(token)}
 
 
-async def owned_studies_or_401(token: str) -> list[dict]:
-    """The token owner's studies; an invalid token is the user's error (401)."""
+@contextmanager
+def invalid_token_is_401():
+    """Lichess refusing the token upstream (401/403) is the user's error (401)."""
     try:
-        return await fetch_studies_cached(token)
-    except LichessRateLimitError:
-        raise
+        yield
     except httpx.HTTPStatusError as e:
         if e.response.status_code in (401, 403):
             raise HTTPException(status_code=401, detail="Invalid Lichess token")
         raise
+
+
+async def owned_studies_or_401(token: str) -> list[dict]:
+    """The token owner's studies; an invalid token is the user's error (401)."""
+    with invalid_token_is_401():
+        return await fetch_studies_cached(token)
 
 
 def not_repertoire_view(owned_studies: list[dict]) -> dict:
@@ -341,10 +345,6 @@ async def get_chess_com_archives(username: str):
         return {"archives": archives}
 
 
-# Date range presets of the recall view, in days back from now (None = all time)
-DATE_RANGE_DAYS = {"month": 30, "3months": 91, "year": 365, "all": None}
-
-
 def recall_filters(
     time_classes: list[str] | None,
     date_range: str,
@@ -353,57 +353,16 @@ def recall_filters(
     now: int,
 ) -> RecallFilters:
     """The recall view's Game Filters from its query parameters."""
-    if date_range not in DATE_RANGE_DAYS:
-        raise HTTPException(
-            status_code=422,
-            detail=f"date_range must be one of {', '.join(DATE_RANGE_DAYS)}",
+    try:
+        return RecallFilters.for_date_range(
+            date_range,
+            now=now,
+            time_classes=time_classes,
+            rated_only=rated_only,
+            studies=studies,
         )
-    days = DATE_RANGE_DAYS[date_range]
-    return RecallFilters(
-        time_classes=time_classes,
-        rated_only=rated_only,
-        since=now - days * 24 * 60 * 60 if days else None,
-        studies=frozenset(studies) if studies else None,
-    )
-
-
-def gap_view(gap: RecallGap, study_names: dict[str, str]) -> dict:
-    """One Recall Gap as the recall view and practice sessions return it."""
-    return {
-        "position_key": gap.position_key,
-        "color": gap.color,
-        "path": gap.path,
-        "wrong_moves": [{"san": m.san, "count": m.count} for m in gap.wrong_moves],
-        "book_moves": gap.book_moves,
-        "studies": [
-            {
-                "id": study.id,
-                "name": study_names.get(study.id, study.id),
-                "url": study_url(study.id, study.chapter_id, study.mainline_ply),
-            }
-            for study in gap.studies
-        ],
-        "occurrences": gap.occurrences,
-        "last_seen": gap.last_seen,
-        "status": gap.status,
-        "progress": gap.progress,
-        "games_to_close": GAMES_TO_CLOSE,
-        "closed_at": gap.closed_at,
-        "drill_turns": [
-            {"ply": t.ply, "position_key": t.position_key, "book_moves": t.book_moves}
-            for t in gap.drill_turns
-        ],
-        "games": [
-            {
-                "url": g.url,
-                "date": g.date,
-                "time_class": g.time_class,
-                "move_played": g.move_played,
-                "result": g.result,
-            }
-            for g in gap.games
-        ],
-    }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @app.get("/api/recall-view")
@@ -416,49 +375,15 @@ async def recall_view(
     authorization: str = Header(...),
 ):
     """
-    The ranked Recall Gaps and totals of the user's cached games, under the
-    Game Filters, and the user's studies with their color for the filter rail.
+    The recall view under the Game Filters: the Repertoire's studies, the
+    ranked Recall Gaps and the totals of the user's cached games.
     """
     token = authorization.replace("Bearer ", "")
     now = int(time.time())
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
 
-    # Validate token (early fail); the studies also name the gaps' studies
-    owned_studies = await owned_studies_or_401(token)
-
-    pipeline = pipeline_for(token)
-    view = await pipeline.recall_view(chess_com_username, filters, now=now)
-    study_colors = await pipeline.study_colors()
-
-    study_names = {study["id"]: study["name"] for study in owned_studies}
-    return {
-        "studies": sorted(
-            (
-                {
-                    "id": study_id,
-                    "name": study_names.get(study_id, study_id),
-                    "opening_name": OpeningNormalizer.normalize(study_names.get(study_id, study_id)),
-                    "color": "white" if color == chess.WHITE else "black",
-                    "gaps": view.gaps_by_study.get(study_id, 0),
-                }
-                for study_id, color in study_colors.items()
-            ),
-            key=lambda study: study["opening_name"].lower(),
-        ),
-        "gaps": [gap_view(gap, study_names) for gap in view.gaps],
-        "totals": {
-            "analysed": view.totals.analysed,
-            "opponent_left_book": view.totals.opponent_left_book,
-            "book_completed": view.totals.book_completed,
-            "miss_rate": view.miss_rate,
-            "trend": [
-                {"month": m.month, "games": m.games, "miss_rate": m.miss_rate}
-                for m in view.trend
-            ],
-            "open_gaps": view.open_gaps,
-            "closed_in_range": view.closed_in_range,
-        },
-    }
+    with invalid_token_is_401():
+        return await pipeline_for(token).recall_view(chess_com_username, filters, now=now)
 
 
 @app.get("/api/practice-session")
@@ -472,22 +397,14 @@ async def practice_session(
 ):
     """
     The practice-session queue: the due Open Recall Gaps among those the
-    Game Filters show, in ranking order, each with when it fell due.
+    Game Filters show, in ranking order, each as the recall view shows it.
     """
     token = authorization.replace("Bearer ", "")
     now = int(time.time())
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
-    owned_studies = await owned_studies_or_401(token)
 
-    queue = await pipeline_for(token).practice_queue(chess_com_username, filters, now=now)
-
-    study_names = {study["id"]: study["name"] for study in owned_studies}
-    return {
-        "gaps": [
-            {**gap_view(queued.gap, study_names), "due_at": queued.due_at}
-            for queued in queue
-        ],
-    }
+    with invalid_token_is_401():
+        return {"gaps": await pipeline_for(token).practice_queue(chess_com_username, filters, now=now)}
 
 
 class DrillAttemptIn(BaseModel):

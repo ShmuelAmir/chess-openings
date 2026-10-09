@@ -28,19 +28,6 @@ def _retry_after_seconds(response: httpx.Response, default: int = 60) -> int:
         return default
 
 
-def study_url(study_id: str, chapter_id: Optional[str], mainline_ply: Optional[int]) -> str:
-    """
-    Link to a position in a Lichess study: the chapter at the ply when the
-    position is on the chapter's mainline, else the chapter itself.
-    """
-    url = f"https://lichess.org/study/{study_id}"
-    if chapter_id:
-        url += f"/{chapter_id}"
-        if mainline_ply is not None:
-            url += f"#{mainline_ply}"
-    return url
-
-
 class LichessClient:
     """Client for Lichess API with OAuth support."""
 
