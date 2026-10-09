@@ -1,4 +1,10 @@
-const CALLS = ["readSyncState", "startSync", "loadRecallView"];
+const CALLS = [
+  "readSyncState",
+  "startSync",
+  "loadRecallView",
+  "loadPracticeQueue",
+  "recordDrillAttempt",
+];
 
 const unscripted = (name) => ({
   delayMs: 0,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Chessboard } from "react-chessboard";
 import {
   startDrill,
@@ -21,13 +21,22 @@ const TARGET_STYLE = {
 
 /**
  * A Drill Attempt of one Recall Gap on an in-app board, oriented to the
- * user's color. Records exactly one Drill Attempt when the drill is done.
- * In a practice session, `onNext` moves on once the attempt is saved.
+ * user's color. Reports the Drill Attempt with `onFinished` when the drill is
+ * done; `saveState` is how its save is going ("saving", "saved" or "failed").
+ * In a practice session, `onNext` moves on once the attempt is saved; a
+ * single drill can be drilled again with `onAgain`.
  */
-export default function DrillBoard({ gap, boardWidth, onClose, onNext }) {
+export default function DrillBoard({
+  gap,
+  boardWidth,
+  saveState,
+  onFinished,
+  onRetrySave,
+  onClose,
+  onNext,
+  onAgain,
+}) {
   const [drill, setDrill] = useState(() => startDrill(gap));
-  const [saveState, setSaveState] = useState(null); // "saving" | "saved" | "error"
-  const recorded = useRef(false);
   // The square of the piece picked up by a click, waiting for its target
   const [selected, setSelected] = useState(null);
 
@@ -40,25 +49,8 @@ export default function DrillBoard({ gap, boardWidth, onClose, onNext }) {
     return () => clearTimeout(timer);
   }, [drill, turn]);
 
-  const saveAttempt = async () => {
-    setSaveState("saving");
-    try {
-      const response = await fetch("/api/drill-attempts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(drillAttempt(drill)),
-      });
-      if (!response.ok) throw new Error();
-      setSaveState("saved");
-    } catch {
-      setSaveState("error");
-    }
-  };
-
   useEffect(() => {
-    if (!drill.done || recorded.current) return;
-    recorded.current = true;
-    saveAttempt();
+    if (drill.done) onFinished(drillAttempt(drill));
   }, [drill.done]);
 
   const tryMove = (move) => {
@@ -112,11 +104,11 @@ export default function DrillBoard({ gap, boardWidth, onClose, onNext }) {
         <div className={`rv-drill-msg ${passed ? "good" : "bad"}`}>
           {passed ? "Passed — every move was book." : "Failed — this attempt missed a book move."}
           {saveState === "saving" && <span className="rv-muted"> Saving…</span>}
-          {saveState === "error" && (
+          {saveState === "failed" && (
             <span>
               {" "}
               Could not save the attempt.{" "}
-              <button className="rv-link" onClick={saveAttempt}>
+              <button className="rv-link" onClick={onRetrySave}>
                 Retry
               </button>
             </span>
@@ -147,17 +139,7 @@ export default function DrillBoard({ gap, boardWidth, onClose, onNext }) {
             Next
           </button>
         )}
-        {drill.done && !onNext && (
-          <button
-            onClick={() => {
-              recorded.current = false;
-              setSaveState(null);
-              setDrill(startDrill(gap));
-            }}
-          >
-            Drill again
-          </button>
-        )}
+        {drill.done && !onNext && <button onClick={onAgain}>Drill again</button>}
         <button className="secondary" onClick={onClose}>
           {drill.done && !onNext ? "Close" : "Stop"}
         </button>
