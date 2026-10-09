@@ -30,8 +30,9 @@ class LichessRepertoireSource(RepertoireSource):
         """
         Args:
             lichess_token: The user's Lichess token
-            list_studies: Lists the user's owned studies (id, name); called on
-                every rebuild, so new studies join the Repertoire
+            list_studies: Lists the user's owned studies (id, name) from
+                Lichess afresh; called on every rebuild, so new studies join
+                the Repertoire
             excluded_studies: The ids of the studies marked "not repertoire";
                 read on every rebuild
         """

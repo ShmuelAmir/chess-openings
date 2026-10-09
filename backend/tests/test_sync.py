@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 
+from chess_com import ChessComAccountNotFoundError
 from game_cache import GameCache
 from sync import ChessComSync, GamesSyncResult, GapChanges, RepertoireSyncLog, Sync, gap_changes
 
@@ -269,6 +270,32 @@ def test_a_failed_chess_com_sync_keeps_the_repertoire_refresh():
     assert result.repertoire_changed and not result.games_changed
     assert sync.status()["sources"]["chess_com"]["status"] == "failed"
     assert sync.status()["sources"]["lichess"]["status"] == "ok"
+
+
+class UnknownAccount(FakeChessCom):
+    """Chess.com has no such account."""
+
+    def __init__(self):
+        super().__init__({})
+
+    async def get_archives(self, username):
+        raise ChessComAccountNotFoundError(username)
+
+
+def test_a_sync_against_an_unknown_account_names_it(tmp_path):
+    _, games_sync = chess_com_sync(tmp_path, UnknownAccount())
+    sources = Sources(repertoire_changed=True)
+    sync = sources.sync()
+    sync.sync_games = lambda on_month: games_sync.sync("nobody", on_month)
+
+    result = run(sync)
+
+    assert sync.status()["sources"]["chess_com"] == {
+        "status": "failed",
+        "last_success_at": None,
+        "error": "No Chess.com account named 'nobody'",
+    }
+    assert result.repertoire_changed
 
 
 def test_failed_months_mark_chess_com_failed_and_name_them():
