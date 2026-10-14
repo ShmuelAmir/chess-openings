@@ -1,6 +1,7 @@
 """
-The app's Users, each identified by their Lichess token: their analysis
-pipeline and their Sync, kept between requests. See User in CONTEXT.md.
+The app's Users, each identified by their Lichess token: their Lichess
+account, their analysis pipeline and their Sync, kept between requests. See
+User in CONTEXT.md.
 """
 import asyncio
 import hashlib
@@ -8,8 +9,8 @@ import time
 from functools import cached_property
 
 from chess_com import ChessComClient
-from drill_attempts import get_drill_attempt_store
-from exclusions import get_exclusion_store
+from drill_attempts import DrillAttemptStore
+from exclusions import ExclusionStore
 from game_cache import get_game_cache
 from lichess import LichessClient
 from pipeline import RepertoireAnalysisPipeline
@@ -66,48 +67,96 @@ async def fetch_studies_afresh(token: str) -> list[dict]:
 
 class User:
     """
-    One User: the pipeline holding their cached Repertoire and last analysis,
-    and their one Sync, of whichever Chess.com account each request names.
+    One User: their Lichess account, whose "not repertoire" exclusion list and
+    Drill Attempts they keep; the pipeline holding their cached Repertoire and
+    last analysis; and their one Sync, of whichever Chess.com account each
+    request names.
     """
 
-    def __init__(self, key: str, pipeline: RepertoireAnalysisPipeline, games_sync: ChessComSync):
+    def __init__(
+        self,
+        key: str,
+        account: str,
+        pipeline: RepertoireAnalysisPipeline,
+        games_sync: ChessComSync,
+        exclusions: ExclusionStore,
+        drill_attempts: DrillAttemptStore,
+    ):
         """
         Args:
-            key: The User's token key, under which their Lichess Sync is logged
-            pipeline: The User's analysis pipeline; its clock is the Sync's too
+            key: The User's token key
+            account: The User's Lichess account (lowercase), under which their
+                exclusions, Drill Attempts and Lichess Sync are kept, so a new
+                token for the same account finds them
+            pipeline: The User's analysis pipeline, reading `exclusions` and
+                `drill_attempts`; its clock is the Sync's too
             games_sync: Syncs a Chess.com account's games into the game cache
+            exclusions: The account's "not repertoire" exclusion list
+            drill_attempts: The account's Drill Attempts
         """
         self.key = key
+        self.account = account
         self.pipeline = pipeline
         self.games_sync = games_sync
+        self.exclusions = exclusions
+        self.drill_attempts = drill_attempts
 
     @cached_property
     def sync(self) -> Sync:
         """The User's one Sync, made on first use (its log opens the database)."""
-        return Sync(self.pipeline, self.games_sync, RepertoireSyncLog(user=self.key), self.pipeline.clock)
+        return Sync(self.pipeline, self.games_sync, RepertoireSyncLog(user=self.account), self.pipeline.clock)
 
 
 _users: dict[str, User] = {}
+# Each token key's Lichess account, asked of Lichess once
+_accounts: dict[str, str] = {}
 
 
-def user_for(token: str) -> User:
-    """The User this Lichess token belongs to, made on their first request."""
+async def account_for(token: str) -> str:
+    """
+    The Lichess account (lowercase) the token belongs to. Lichess refusing the
+    token raises its HTTPStatusError.
+    """
+    key = token_key(token)
+    if key not in _accounts:
+        async with LichessClient(token=token) as client:
+            account = await client.get_account()
+        _accounts[key] = account["username"].lower()
+    return _accounts[key]
+
+
+async def user_for(token: str) -> User:
+    """
+    The User this Lichess token belongs to, made on their first request, when
+    Lichess is asked whose token it is.
+    """
     key = token_key(token)
     if key not in _users:
-        _users[key] = User(
-            key,
-            RepertoireAnalysisPipeline(
-                repertoire_source=LichessRepertoireSource(
-                    lichess_token=token,
-                    list_studies=lambda: fetch_studies_afresh(token),
-                    excluded_studies=get_exclusion_store().excluded_studies,
-                ),
-                game_source=CacheGameSource(get_game_cache()),
-                drill_attempts=get_drill_attempt_store().attempts,
-            ),
-            ChessComSync(get_game_cache(), client=ChessComClient),
-        )
+        account = await account_for(token)
+        if key not in _users:  # another request may have made them meanwhile
+            _users[key] = _new_user(token, account)
     return _users[key]
+
+
+def _new_user(token: str, account: str) -> User:
+    exclusions = ExclusionStore(account)
+    drill_attempts = DrillAttemptStore(account)
+    return User(
+        token_key(token),
+        account,
+        RepertoireAnalysisPipeline(
+            repertoire_source=LichessRepertoireSource(
+                lichess_token=token,
+                list_studies=lambda: fetch_studies_afresh(token),
+                excluded_studies=exclusions.excluded_studies,
+            ),
+            game_source=CacheGameSource(get_game_cache()),
+            drill_attempts=drill_attempts.attempts,
+        ),
+        ChessComSync(get_game_cache(), client=ChessComClient),
+        exclusions,
+        drill_attempts,
+    )
 
 
 def invalidate_analyses():
