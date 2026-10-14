@@ -225,17 +225,29 @@ def _error_message(error: Exception) -> str:
 REPERTOIRE_FRESH_SECONDS = 30
 
 
+@dataclass
+class _AccountSyncs:
+    """One Chess.com account's finished Syncs in this process."""
+    chess_com: SourceStatus
+    result: SyncResult
+    runs: int = 0  # so a client can tell a new result
+
+
 class Sync:
     """
-    One user's Sync of one Chess.com account: syncs both sources, tracks each
-    source's status and last-success time, and reports progress while running.
+    One user's Sync: syncs their Lichess Repertoire and the games of the
+    Chess.com account it is asked for, tracks each source's status and
+    last-success time, and reports progress while running.
+
+    The account arrives with each call. A Sync running for one account
+    finishes for it; a start for another remembers that account as next.
+    Each account's result, Chess.com status and run count are its own.
     """
 
     def __init__(
         self,
         pipeline: RepertoireAnalysisPipeline,
         games: ChessComSync,
-        chess_com_username: str,
         repertoire_log: RepertoireSyncLog,
         clock: Callable[[], float],
     ):
@@ -243,58 +255,81 @@ class Sync:
         Args:
             pipeline: The user's analysis pipeline: refreshes their
                 Repertoire, and its analysis gives "what changed"
-            games: Syncs the Chess.com games into the game cache
-            chess_com_username: The Chess.com account whose games are synced
+            games: Syncs a Chess.com account's games into the game cache
             repertoire_log: When the Repertoire last synced from Lichess
             clock: The current Unix time; the pipeline's own
         """
         self.pipeline = pipeline
         self.games = games
-        self.chess_com_username = chess_com_username
         self.repertoire_log = repertoire_log
         self.clock = clock
 
-        self.chess_com = SourceStatus()
         self.lichess = SourceStatus()
         self.progress: Optional[str] = None
-        self.result: Optional[SyncResult] = None
-        self.runs = 0  # finished Syncs, so a client can tell a new result
+        self._running_account: Optional[str] = None  # the account syncing now
+        self._next_account: Optional[str] = None  # the account waiting its turn
+        self._accounts: dict[str, _AccountSyncs] = {}  # by lowercased account
         self._task: Optional[asyncio.Task] = None
 
     @property
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
 
-    def start(self):
-        """Start a Sync in the background, unless one is already running."""
+    def start(self, chess_com_username: str):
+        """
+        Start a Sync of the account in the background. While one is running
+        for another account, the account runs next, replacing any other next.
+        """
         if not self.running:
-            self._task = asyncio.create_task(self.run())
+            self._running_account = chess_com_username
+            self._task = asyncio.create_task(self._run_in_turn())
+        elif chess_com_username.lower() not in {
+            self._running_account.lower(),
+            (self._next_account or "").lower(),
+        }:
+            self._next_account = chess_com_username
 
-    async def run(self) -> SyncResult:
+    async def _run_in_turn(self):
+        """
+        Run the account's Sync, then the account next in turn, if any; one
+        that breaks doesn't stop the next.
+        """
+        try:
+            while self._running_account is not None:
+                try:
+                    await self.run(self._running_account)
+                except Exception as e:
+                    logger.exception(f"Sync of {self._running_account} failed: {e}")
+                    self.progress = None
+                self._running_account, self._next_account = self._next_account, None
+        finally:
+            self._running_account = self._next_account = None
+
+    async def run(self, chess_com_username: str) -> SyncResult:
         """Sync both sources; a failing source doesn't stop the other."""
         new_games = 0
         games_changed = repertoire_changed = False
+        chess_com = SourceStatus()
         # Never runs an analysis, so the Repertoire refresh isn't pre-empted
-        before = self.pipeline.last_gap_statuses(self.chess_com_username)
+        before = self.pipeline.last_gap_statuses(chess_com_username)
 
         try:
             games = await self.games.sync(
-                self.chess_com_username,
+                chess_com_username,
                 lambda year, month: self._set_progress(f"Fetching games… {year}-{month:02d}"),
             )
             new_games = games.new_games
             games_changed = new_games > 0
             if games.failed_months:
                 months = ", ".join(f"{y}-{m:02d}" for y, m in games.failed_months)
-                self.chess_com.status = "failed"
-                self.chess_com.error = f"Could not fetch {months}"
+                chess_com.status = "failed"
+                chess_com.error = f"Could not fetch {months}"
             else:
-                self.chess_com.status = "ok"
-                self.chess_com.error = None
+                chess_com.status = "ok"
         except Exception as e:
             logger.warning(f"Chess.com sync failed: {e}")
-            self.chess_com.status = "failed"
-            self.chess_com.error = _error_message(e)
+            chess_com.status = "failed"
+            chess_com.error = _error_message(e)
 
         # Before the Lichess step, so no request walks the old games meanwhile
         if games_changed:
@@ -315,19 +350,21 @@ class Sync:
 
         gaps = GapChanges()
         if before is not None and (games_changed or repertoire_changed):
-            after = await self._gap_statuses_after()
+            after = await self._gap_statuses_after(chess_com_username)
             if after is not None:
                 gaps = gap_changes(before, after)
 
-        self.result = SyncResult(games_changed, repertoire_changed, new_games, gaps)
-        self.runs += 1
+        result = SyncResult(games_changed, repertoire_changed, new_games, gaps)
+        account = chess_com_username.lower()
+        previous = self._accounts.get(account)
+        self._accounts[account] = _AccountSyncs(chess_com, result, (previous.runs if previous else 0) + 1)
         self.progress = None
-        return self.result
+        return result
 
-    async def _gap_statuses_after(self) -> Optional[GapStatuses]:
+    async def _gap_statuses_after(self, chess_com_username: str) -> Optional[GapStatuses]:
         """Each Recall Gap's status after the Sync, or None if the analysis failed."""
         try:
-            return await self.pipeline.gap_statuses(self.chess_com_username)
+            return await self.pipeline.gap_statuses(chess_com_username)
         except Exception as e:
             logger.warning(f"Analysis for the Sync's changes failed: {e}")
             return None
@@ -335,35 +372,44 @@ class Sync:
     def _set_progress(self, message: str):
         self.progress = message
 
-    def status(self) -> dict:
-        """The Sync's state, as the API reports it."""
+    def status(self, chess_com_username: str) -> dict:
+        """The Sync's state for the account, as the API reports it."""
+        account = chess_com_username.lower()
+        last = self._accounts.get(account)
+        if self.running and self._running_account and self._running_account.lower() == account:
+            running, progress = True, self.progress
+        elif self.running and self._next_account and self._next_account.lower() == account:
+            running, progress = True, "Waiting for another Sync…"
+        else:
+            running, progress = False, None
+
         chess_com = {
-            **self.chess_com.as_dict(),
-            "last_success_at": self.games.last_success(self.chess_com_username),
+            **(last.chess_com if last else SourceStatus()).as_dict(),
+            "last_success_at": self.games.last_success(chess_com_username),
         }
         lichess = {**self.lichess.as_dict(), "last_success_at": self.repertoire_log.last_success()}
         last_successes = [chess_com["last_success_at"], lichess["last_success_at"]]
         return {
-            "running": self.running,
-            "progress": self.progress,
+            "running": running,
+            "progress": progress,
             "sources": {
                 "chess_com": chess_com,
                 "lichess": lichess,
             },
             # The older of the two; never synced if either never was
             "last_synced_at": None if None in last_successes else min(last_successes),
-            "runs": self.runs,
-            "cached_games": self.games.cached_games(self.chess_com_username),
+            "runs": last.runs if last else 0,
+            "cached_games": self.games.cached_games(chess_com_username),
             "result": (
                 {
-                    "games_changed": self.result.games_changed,
-                    "repertoire_changed": self.result.repertoire_changed,
-                    "new_games": self.result.new_games,
-                    "new_gaps": self.result.gaps.new,
-                    "closed_gaps": self.result.gaps.closed,
-                    "reopened_gaps": self.result.gaps.reopened,
+                    "games_changed": last.result.games_changed,
+                    "repertoire_changed": last.result.repertoire_changed,
+                    "new_games": last.result.new_games,
+                    "new_gaps": last.result.gaps.new,
+                    "closed_gaps": last.result.gaps.closed,
+                    "reopened_gaps": last.result.gaps.reopened,
                 }
-                if self.result
+                if last
                 else None
             ),
         }

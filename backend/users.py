@@ -1,10 +1,11 @@
 """
 The app's Users, each identified by their Lichess token: their analysis
-pipeline and their Syncs, kept between requests. See User in CONTEXT.md.
+pipeline and their Sync, kept between requests. See User in CONTEXT.md.
 """
 import asyncio
 import hashlib
 import time
+from functools import cached_property
 
 from chess_com import ChessComClient
 from drill_attempts import get_drill_attempt_store
@@ -66,33 +67,24 @@ async def fetch_studies_afresh(token: str) -> list[dict]:
 class User:
     """
     One User: the pipeline holding their cached Repertoire and last analysis,
-    and their Sync of each Chess.com account.
+    and their one Sync, of whichever Chess.com account each request names.
     """
 
     def __init__(self, key: str, pipeline: RepertoireAnalysisPipeline, games_sync: ChessComSync):
         """
         Args:
             key: The User's token key, under which their Lichess Sync is logged
-            pipeline: The User's analysis pipeline; its clock is the Syncs' too
+            pipeline: The User's analysis pipeline; its clock is the Sync's too
             games_sync: Syncs a Chess.com account's games into the game cache
         """
         self.key = key
         self.pipeline = pipeline
         self.games_sync = games_sync
-        self._syncs: dict[str, Sync] = {}
 
-    def sync(self, chess_com_username: str) -> Sync:
-        """The Sync of this User's Lichess Repertoire and the account's games."""
-        account = chess_com_username.lower()
-        if account not in self._syncs:
-            self._syncs[account] = Sync(
-                self.pipeline,
-                self.games_sync,
-                chess_com_username,
-                RepertoireSyncLog(user=self.key),
-                self.pipeline.clock,
-            )
-        return self._syncs[account]
+    @cached_property
+    def sync(self) -> Sync:
+        """The User's one Sync, made on first use (its log opens the database)."""
+        return Sync(self.pipeline, self.games_sync, RepertoireSyncLog(user=self.key), self.pipeline.clock)
 
 
 _users: dict[str, User] = {}

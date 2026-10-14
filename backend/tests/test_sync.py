@@ -209,16 +209,16 @@ class World:
         self.games_sync = ChessComSync(self.cache, client=lambda: self.account, now=lambda: now)
         self.repertoire_log = InMemoryLog()
 
-    def sync(self, username="magnus"):
-        return Sync(self.pipeline, self.games_sync, username, self.repertoire_log, clock=self.clock)
+    def sync(self):
+        return Sync(self.pipeline, self.games_sync, self.repertoire_log, clock=self.clock)
 
     def analyse(self):
         """Open the recall view, as the page does: the last analysis."""
         return asyncio.run(self.pipeline.recall_view("magnus", RecallFilters()))
 
 
-def run(sync):
-    return asyncio.run(sync.run())
+def run(sync, account="magnus"):
+    return asyncio.run(sync.run(account))
 
 
 def test_a_sync_reports_new_games_and_reanalyses(tmp_path):
@@ -259,7 +259,7 @@ def test_a_repertoire_fetched_moments_ago_is_not_fetched_again(tmp_path):
     world.clock.at += 29
     run(sync)
     fetched_within_30_seconds = world.studies.fetches
-    lichess = sync.status()["sources"]["lichess"]
+    lichess = sync.status("magnus")["sources"]["lichess"]
     world.clock.at += 2
     run(sync)
 
@@ -274,7 +274,7 @@ def test_each_source_records_its_own_last_success(tmp_path):
 
     run(sync)
 
-    status = sync.status()
+    status = sync.status("magnus")
     assert status["sources"]["chess_com"]["status"] == "ok"
     assert status["sources"]["chess_com"]["last_success_at"] is not None
     assert status["sources"]["lichess"] == {"status": "ok", "last_success_at": 1000, "error": None}
@@ -285,10 +285,10 @@ def test_last_synced_is_the_older_of_the_two_sources(tmp_path):
     sync = world.sync()
 
     world.clock.at = 4_000_000_000  # Lichess syncs after the game cache's real time
-    assert sync.status()["last_synced_at"] is None
+    assert sync.status("magnus")["last_synced_at"] is None
     run(sync)
-    chess_com_synced_at = sync.status()["sources"]["chess_com"]["last_success_at"]
-    assert sync.status()["last_synced_at"] == chess_com_synced_at < 4_000_000_000
+    chess_com_synced_at = sync.status("magnus")["sources"]["chess_com"]["last_success_at"]
+    assert sync.status("magnus")["last_synced_at"] == chess_com_synced_at < 4_000_000_000
 
 
 def test_a_failed_lichess_refresh_keeps_the_new_games(tmp_path):
@@ -299,11 +299,11 @@ def test_a_failed_lichess_refresh_keeps_the_new_games(tmp_path):
     result = run(sync)
 
     assert result.games_changed
-    assert sync.status()["sources"]["lichess"] == {
+    assert sync.status("magnus")["sources"]["lichess"] == {
         "status": "failed", "last_success_at": None, "error": "Lichess is down",
     }
-    assert sync.status()["sources"]["chess_com"]["status"] == "ok"
-    assert sync.status()["cached_games"] == 2
+    assert sync.status("magnus")["sources"]["chess_com"]["status"] == "ok"
+    assert sync.status("magnus")["cached_games"] == 2
 
 
 class ChessComDown(FakeChessCom):
@@ -324,8 +324,8 @@ def test_a_failed_chess_com_sync_keeps_the_repertoire_refresh(tmp_path):
     result = run(sync)
 
     assert result.repertoire_changed and not result.games_changed
-    assert sync.status()["sources"]["chess_com"]["status"] == "failed"
-    assert sync.status()["sources"]["lichess"]["status"] == "ok"
+    assert sync.status("magnus")["sources"]["chess_com"]["status"] == "failed"
+    assert sync.status("magnus")["sources"]["lichess"]["status"] == "ok"
 
 
 class UnknownAccount(FakeChessCom):
@@ -340,16 +340,16 @@ class UnknownAccount(FakeChessCom):
 
 def test_a_sync_against_an_unknown_account_names_it(tmp_path):
     world = World(tmp_path, account=UnknownAccount())
-    sync = world.sync("nobody")
+    sync = world.sync()
 
-    run(sync)
+    run(sync, "nobody")
 
-    assert sync.status()["sources"]["chess_com"] == {
+    assert sync.status("nobody")["sources"]["chess_com"] == {
         "status": "failed",
         "last_success_at": None,
         "error": "No Chess.com account named 'nobody'",
     }
-    assert sync.status()["sources"]["lichess"]["status"] == "ok"
+    assert sync.status("magnus")["sources"]["lichess"]["status"] == "ok"
 
 
 def test_failed_months_mark_chess_com_failed_and_name_them(tmp_path):
@@ -359,10 +359,16 @@ def test_failed_months_mark_chess_com_failed_and_name_them(tmp_path):
 
     result = run(sync)
 
-    chess_com = sync.status()["sources"]["chess_com"]
+    chess_com = sync.status("magnus")["sources"]["chess_com"]
     assert result.games_changed
     assert chess_com["status"] == "failed"
     assert "2023-04" in chess_com["error"]
+
+
+async def until_idle(sync, account):
+    """Poll the account's status, as the page does, until its Sync is done."""
+    while sync.status(account)["running"]:
+        await asyncio.sleep(0)
 
 
 class Watched(FakeChessCom):
@@ -374,7 +380,7 @@ class Watched(FakeChessCom):
         self.progress = []
 
     async def get_all_games_for_month(self, username, year, month):
-        self.progress.append(self.sync.status()["progress"])
+        self.progress.append(self.sync.status("magnus")["progress"])
         return await super().get_all_games_for_month(username, year, month)
 
 
@@ -383,11 +389,15 @@ def test_progress_names_the_month_being_fetched(tmp_path):
     world = World(tmp_path, account=account)
     sync = account.sync = world.sync()
 
-    run(sync)
+    async def started():
+        sync.start("magnus")
+        await until_idle(sync, "magnus")
+
+    asyncio.run(started())
 
     assert account.progress == ["Fetching games… 2023-04"]
-    assert sync.status()["progress"] is None
-    assert sync.status()["running"] is False
+    assert sync.status("magnus")["progress"] is None
+    assert sync.status("magnus")["running"] is False
 
 
 def test_new_games_drop_the_last_analysis_before_the_lichess_refresh(tmp_path):
@@ -413,7 +423,7 @@ def test_the_lichess_last_success_survives_a_restart(tmp_path):
     world.repertoire_log = RepertoireSyncLog(tmp_path / "app.db")
     restarted = world.sync()
 
-    assert restarted.status()["sources"]["lichess"]["last_success_at"] == 1000
+    assert restarted.status("magnus")["sources"]["lichess"]["last_success_at"] == 1000
 
 
 def test_a_sync_reports_what_changed_in_the_analysis(tmp_path):
@@ -437,7 +447,7 @@ def test_a_sync_reports_what_changed_in_the_analysis(tmp_path):
     result = run(sync)
 
     assert result.gaps == GapChanges(new=1, closed=1, reopened=1)
-    assert sync.status()["result"] == {
+    assert sync.status("magnus")["result"] == {
         "games_changed": True,
         "repertoire_changed": False,
         "new_games": 4,
@@ -467,7 +477,141 @@ def test_a_failed_analysis_leaves_the_gaps_out_of_the_diff(tmp_path):
     result = run(sync)
 
     assert result.new_games == 1 and result.gaps == GapChanges()
-    assert sync.status()["sources"]["chess_com"]["status"] == "ok"
+    assert sync.status("magnus")["sources"]["chess_com"]["status"] == "ok"
+
+
+# ---- One Sync per user, whichever Chess.com account is linked ----
+
+
+class Accounts(FakeChessCom):
+    """Several Chess.com accounts; an account's Sync can be held at its archive listing."""
+
+    def __init__(self, months_by_account):
+        super().__init__({})
+        self.accounts = {name: FakeChessCom(months) for name, months in months_by_account.items()}
+        self.held: dict[str, asyncio.Event] = {}
+
+    async def get_archives(self, username):
+        if username in self.held:
+            await self.held[username].wait()
+        return await self.accounts[username].get_archives(username)
+
+    async def get_all_games_for_month(self, username, year, month):
+        self.fetched.append((username, year, month))
+        return await self.accounts[username].get_all_games_for_month(username, year, month)
+
+
+def test_a_start_for_another_account_runs_after_the_running_sync(tmp_path):
+    accounts = Accounts({
+        "magnus": {(2024, 3): [game("a")]},
+        "hikaru": {(2024, 3): [game("b"), game("c")]},
+    })
+    world = World(tmp_path, account=accounts)
+    sync = world.sync()
+
+    async def scenario():
+        accounts.held["magnus"] = asyncio.Event()
+        sync.start("magnus")
+        await asyncio.sleep(0)
+        sync.start("hikaru")
+        waiting = sync.status("hikaru")
+        accounts.held["magnus"].set()
+        await until_idle(sync, "magnus")
+        magnus_done = sync.status("magnus")
+        await until_idle(sync, "hikaru")
+        return waiting, magnus_done
+
+    waiting, magnus_done = asyncio.run(scenario())
+
+    assert (waiting["running"], waiting["progress"]) == (True, "Waiting for another Sync…")
+    assert (waiting["result"], waiting["runs"]) == (None, 0)
+    assert (magnus_done["result"]["new_games"], magnus_done["runs"]) == (1, 1)
+    assert accounts.fetched == [("magnus", 2024, 3), ("hikaru", 2024, 3)]
+    hikaru = sync.status("hikaru")
+    assert (hikaru["result"]["new_games"], hikaru["runs"], hikaru["cached_games"]) == (2, 1, 2)
+    magnus = sync.status("magnus")
+    assert (magnus["result"]["new_games"], magnus["runs"], magnus["cached_games"]) == (1, 1, 1)
+
+
+def test_another_accounts_status_has_its_own_chess_com_side_and_the_users_lichess_side(tmp_path):
+    accounts = Accounts({"magnus": {(2024, 3): [game("a")]}, "hikaru": {}})
+    world = World(tmp_path, account=accounts)
+    sync = world.sync()
+
+    run(sync, "magnus")
+
+    hikaru = sync.status("hikaru")
+    assert (hikaru["running"], hikaru["progress"], hikaru["result"]) == (False, None, None)
+    assert hikaru["sources"]["chess_com"] == {"status": "never", "error": None, "last_success_at": None}
+    assert (hikaru["cached_games"], hikaru["last_synced_at"]) == (0, None)
+    assert hikaru["sources"]["lichess"] == {"status": "ok", "error": None, "last_success_at": 1000}
+
+
+def test_only_the_latest_start_for_another_account_waits_its_turn(tmp_path):
+    accounts = Accounts({"magnus": {}, "hikaru": {}, "fabiano": {}})
+    world = World(tmp_path, account=accounts)
+    sync = world.sync()
+
+    async def scenario():
+        accounts.held["magnus"] = asyncio.Event()
+        sync.start("magnus")
+        await asyncio.sleep(0)
+        sync.start("hikaru")
+        sync.start("fabiano")
+        sync.start("Magnus")
+        sync.start("fabiano")
+        hikaru_replaced = sync.status("hikaru")
+        accounts.held["magnus"].set()
+        await until_idle(sync, "fabiano")
+        return hikaru_replaced
+
+    hikaru_replaced = asyncio.run(scenario())
+
+    assert hikaru_replaced["running"] is False
+    assert [sync.status(name)["runs"] for name in ("magnus", "hikaru", "fabiano")] == [1, 0, 1]
+
+
+def test_the_account_waiting_its_turn_still_runs_when_the_running_sync_breaks(tmp_path):
+    accounts = Accounts({"magnus": {(2024, 3): [game("a")]}, "hikaru": {(2024, 3): [game("b")]}})
+    world = World(tmp_path, account=accounts)
+    sync = world.sync()
+    invalidate_games = world.pipeline.invalidate_games
+    breaks = [RuntimeError("Analysis unavailable")]
+
+    def broken_once():
+        if breaks:
+            raise breaks.pop()
+        invalidate_games()
+
+    world.pipeline.invalidate_games = broken_once
+
+    async def scenario():
+        accounts.held["magnus"] = asyncio.Event()
+        sync.start("magnus")
+        await asyncio.sleep(0)
+        sync.start("hikaru")
+        accounts.held["magnus"].set()
+        await until_idle(sync, "hikaru")
+
+    asyncio.run(scenario())
+
+    hikaru = sync.status("hikaru")
+    assert (hikaru["runs"], hikaru["result"]["new_games"], hikaru["progress"]) == (1, 1, None)
+
+
+def test_after_switching_account_and_back_a_sync_does_not_diff_against_the_other_account(tmp_path):
+    accounts = Accounts({"magnus": {(2024, 3): [game("a", MISS)]}, "hikaru": {}})
+    world = World(tmp_path, account=accounts)
+    sync = world.sync()
+    run(sync, "magnus")
+    world.analyse()
+    run(sync, "hikaru")
+    asyncio.run(world.pipeline.recall_view("hikaru", RecallFilters()))
+    accounts.accounts["magnus"].months[(2024, 3)].append(game("b", ["e4", "c5"]))
+
+    result = run(sync, "magnus")
+
+    assert (result.new_games, result.gaps) == (1, GapChanges())
 
 
 def test_gap_changes_count_new_newly_closed_and_reopened_gaps():
