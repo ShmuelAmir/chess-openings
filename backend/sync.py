@@ -8,13 +8,13 @@ something changed.
 import asyncio
 import logging
 import sqlite3
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Awaitable, Callable, Optional
+from typing import Callable, Optional
 
 from game_cache import GameCache
+from pipeline import RepertoireAnalysisPipeline
 
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,15 @@ class ChessComSync:
             failed_months=failed,
         )
 
+    def last_success(self, username: str) -> Optional[int]:
+        """When the account's games last synced without a failed month."""
+        status = self.cache.get_sync_status(username)
+        return status["last_sync_at"] if status else None
+
+    def cached_games(self, username: str) -> int:
+        """How many of the account's games are cached."""
+        return self.cache.count_games(username)
+
 
 class RepertoireSyncLog:
     """
@@ -211,46 +220,38 @@ def _error_message(error: Exception) -> str:
     return str(error) or type(error).__name__
 
 
+# A Repertoire built this recently (e.g. by the page that just opened) is
+# fresh enough for a Sync, and spares the Lichess rate limit
+REPERTOIRE_FRESH_SECONDS = 30
+
+
 class Sync:
     """
-    One user's Sync: syncs both sources, tracks each source's status and
-    last-success time, and reports progress while running.
+    One user's Sync of one Chess.com account: syncs both sources, tracks each
+    source's status and last-success time, and reports progress while running.
     """
 
     def __init__(
         self,
-        sync_games: Callable[[Callable[[int, int], None]], Awaitable[GamesSyncResult]],
-        refresh_repertoire: Callable[[], Awaitable[bool]],
-        games_last_success: Callable[[], Optional[int]],
+        pipeline: RepertoireAnalysisPipeline,
+        games: ChessComSync,
+        chess_com_username: str,
         repertoire_log: RepertoireSyncLog,
-        on_games_changed: Callable[[], None],
-        previous_gap_statuses: Callable[[], Optional[GapStatuses]],
-        gap_statuses: Callable[[], Awaitable[GapStatuses]],
-        clock: Callable[[], float] = time.time,
+        clock: Callable[[], float],
     ):
         """
         Args:
-            sync_games: Syncs the Chess.com games, reporting each month fetched
-            refresh_repertoire: Rebuilds the Repertoire from Lichess; returns
-                whether it changed
-            games_last_success: When the games last synced without failure
-                (persisted with the game cache)
+            pipeline: The user's analysis pipeline: refreshes their
+                Repertoire, and its analysis gives "what changed"
+            games: Syncs the Chess.com games into the game cache
+            chess_com_username: The Chess.com account whose games are synced
             repertoire_log: When the Repertoire last synced from Lichess
-            on_games_changed: Drops the analysis of the old games
-            previous_gap_statuses: Each Recall Gap's status in the last
-                analysis, or None if there is none; never runs one, so the
-                Sync's Repertoire refresh isn't pre-empted
-            gap_statuses: Runs the analysis (every game, no Game Filters)
-                and returns each Recall Gap's status
-            clock: The current Unix time
+            clock: The current Unix time; the pipeline's own
         """
-        self.sync_games = sync_games
-        self.refresh_repertoire = refresh_repertoire
-        self.games_last_success = games_last_success
+        self.pipeline = pipeline
+        self.games = games
+        self.chess_com_username = chess_com_username
         self.repertoire_log = repertoire_log
-        self.on_games_changed = on_games_changed
-        self.previous_gap_statuses = previous_gap_statuses
-        self.gap_statuses = gap_statuses
         self.clock = clock
 
         self.chess_com = SourceStatus()
@@ -273,11 +274,13 @@ class Sync:
         """Sync both sources; a failing source doesn't stop the other."""
         new_games = 0
         games_changed = repertoire_changed = False
-        before = self.previous_gap_statuses()
+        # Never runs an analysis, so the Repertoire refresh isn't pre-empted
+        before = self.pipeline.last_gap_statuses(self.chess_com_username)
 
         try:
-            games = await self.sync_games(
-                lambda year, month: self._set_progress(f"Fetching games… {year}-{month:02d}")
+            games = await self.games.sync(
+                self.chess_com_username,
+                lambda year, month: self._set_progress(f"Fetching games… {year}-{month:02d}"),
             )
             new_games = games.new_games
             games_changed = new_games > 0
@@ -295,11 +298,13 @@ class Sync:
 
         # Before the Lichess step, so no request walks the old games meanwhile
         if games_changed:
-            self.on_games_changed()
+            self.pipeline.invalidate_games()
 
         self._set_progress("Syncing studies…")
         try:
-            repertoire_changed = await self.refresh_repertoire()
+            repertoire_changed = await self.pipeline.refresh_repertoire(
+                fresh_within=REPERTOIRE_FRESH_SECONDS
+            )
             self.repertoire_log.record_success(int(self.clock()))
             self.lichess.status = "ok"
             self.lichess.error = None
@@ -322,7 +327,7 @@ class Sync:
     async def _gap_statuses_after(self) -> Optional[GapStatuses]:
         """Each Recall Gap's status after the Sync, or None if the analysis failed."""
         try:
-            return await self.gap_statuses()
+            return await self.pipeline.gap_statuses(self.chess_com_username)
         except Exception as e:
             logger.warning(f"Analysis for the Sync's changes failed: {e}")
             return None
@@ -332,7 +337,10 @@ class Sync:
 
     def status(self) -> dict:
         """The Sync's state, as the API reports it."""
-        chess_com = {**self.chess_com.as_dict(), "last_success_at": self.games_last_success()}
+        chess_com = {
+            **self.chess_com.as_dict(),
+            "last_success_at": self.games.last_success(self.chess_com_username),
+        }
         lichess = {**self.lichess.as_dict(), "last_success_at": self.repertoire_log.last_success()}
         last_successes = [chess_com["last_success_at"], lichess["last_success_at"]]
         return {
@@ -345,6 +353,7 @@ class Sync:
             # The older of the two; never synced if either never was
             "last_synced_at": None if None in last_successes else min(last_successes),
             "runs": self.runs,
+            "cached_games": self.games.cached_games(self.chess_com_username),
             "result": (
                 {
                     "games_changed": self.result.games_changed,
