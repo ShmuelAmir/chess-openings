@@ -1,6 +1,6 @@
 """
-Drill Attempt store - every practice run of a Recall Gap, stored in SQLite
-next to the game cache. See Drill Attempt in CONTEXT.md.
+Drill Attempt store - every practice run of a Recall Gap by a Lichess
+account, stored in SQLite next to the game cache. See Drill Attempt in CONTEXT.md.
 """
 import sqlite3
 from pathlib import Path
@@ -15,12 +15,19 @@ class DrillAttempt(NamedTuple):
 
 
 class DrillAttemptStore:
-    """The persisted Drill Attempts."""
+    """One Lichess account's persisted Drill Attempts."""
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, account: str, db_path: Optional[str] = None):
+        """
+        Args:
+            account: The Lichess account the Drill Attempts belong to. The
+                first account to open the store adopts those stored before
+                Drill Attempts had accounts.
+        """
         if db_path is None:
             db_path = Path(__file__).parent / "chess_games.db"
         self.db_path = str(db_path)
+        self.account = account
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS drill_attempts (
@@ -28,9 +35,14 @@ class DrillAttemptStore:
                     gap_position_key TEXT NOT NULL,
                     at INTEGER NOT NULL,
                     passed INTEGER NOT NULL,
-                    first_miss_position_key TEXT
+                    first_miss_position_key TEXT,
+                    account TEXT
                 )
             """)
+            columns = [row[1] for row in conn.execute("PRAGMA table_info(drill_attempts)")]
+            if "account" not in columns:
+                conn.execute("ALTER TABLE drill_attempts ADD COLUMN account TEXT")
+            conn.execute("UPDATE drill_attempts SET account = ? WHERE account IS NULL", (account,))
             conn.commit()
 
     def record(
@@ -40,34 +52,24 @@ class DrillAttemptStore:
         first_miss_position_key: Optional[str],
         at: int,
     ):
-        """Record one Drill Attempt: a pass, or a fail with its first miss."""
+        """Record one of the account's Drill Attempts: a pass, or a fail with its first miss."""
         if passed != (first_miss_position_key is None):
             raise ValueError("A failed Drill Attempt needs its first miss, and a pass has none")
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT INTO drill_attempts (gap_position_key, at, passed, first_miss_position_key)"
-                " VALUES (?, ?, ?, ?)",
-                (gap_position_key, at, int(passed), first_miss_position_key),
+                "INSERT INTO drill_attempts (account, gap_position_key, at, passed, first_miss_position_key)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (self.account, gap_position_key, at, int(passed), first_miss_position_key),
             )
             conn.commit()
 
     def attempts(self) -> list[DrillAttempt]:
-        """Every Drill Attempt, oldest first."""
+        """Every one of the account's Drill Attempts, oldest first."""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
                 "SELECT gap_position_key, at, passed, first_miss_position_key"
-                " FROM drill_attempts ORDER BY at, id"
+                " FROM drill_attempts WHERE account = ? ORDER BY at, id",
+                (self.account,),
             ).fetchall()
         return [DrillAttempt(key, at, bool(passed), miss) for key, at, passed, miss in rows]
 
-
-# Global store instance
-_store: Optional[DrillAttemptStore] = None
-
-
-def get_drill_attempt_store() -> DrillAttemptStore:
-    """Get or create the global Drill Attempt store."""
-    global _store
-    if _store is None:
-        _store = DrillAttemptStore()
-    return _store

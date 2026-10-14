@@ -1,7 +1,7 @@
 # ADR-0001: Pipeline Orchestration with Dependency Injection
 
 **Date:** 2026-05-08  
-**Status:** Accepted (repertoire caching amended 2026-10-01, recall view assembly amended 2026-10-09, per-user registry and Sync amended 2026-10-14, game seam amended 2026-10-14, see below)  
+**Status:** Accepted (repertoire caching amended 2026-10-01, recall view assembly amended 2026-10-09, per-user registry and Sync amended 2026-10-14, game seam amended 2026-10-14, per-account stores amended 2026-10-14, see below)  
 **Context:** Backend analysis workflow orchestration
 
 ## Problem
@@ -120,3 +120,7 @@ A User then has one Sync (issue #64): the Chess.com username moves from the Sync
 ## Amendment (2026-10-14): the game seam returns typed Games
 
 `GameSource.fetch_games(username, filters)` becomes `GameSource.games(username) -> list[Game]` (issue #68), and `GameFilters` is removed: the pipeline always passed an empty one, since the Recall Gap aggregator filters by itself. A `Game` (`games.py`) carries the user's color and result, which `CacheGameSource` decides once from the players' names and White's result code; the pipeline, the game cache and the Opening Distribution no longer work out the user's side again. The game cache filters nothing. `/api/opening-stats` now reads through `CacheGameSource` as well, and `opening_distribution.py` applies the Opening Distribution's own Game Filters (`DistributionFilters`) to the `Game`s; its request and response do not change. The seam stays where it was, only narrower. The rest of this decision stands.
+
+## Amendment (2026-10-14): a User's stores are their Lichess account's
+
+The "not repertoire" exclusion list and the Drill Attempts were stored for nobody, so every User read and replaced the same ones (issue #70). A User now knows their Lichess account: `users.user_for(token)` asks Lichess for it on the token's first request (remembering it for the token; a refusal is a 401) and gives the User that account's `ExclusionStore` and `DrillAttemptStore`, which the pipeline reads. `RepertoireSyncLog` is keyed by the account too, not the token, so signing in again keeps all three. The global `get_exclusion_store()` and `get_drill_attempt_store()` are removed, and `POST /api/drill-attempts` reads the token. Rows stored before are adopted by the first account to open each store. The registry is still kept per token. The rest of this decision stands.

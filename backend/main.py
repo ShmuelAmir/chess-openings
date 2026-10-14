@@ -21,13 +21,11 @@ from contextlib import contextmanager
 from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComAccountNotFoundError, ChessComClient
 from game_cache import get_game_cache
-from exclusions import get_exclusion_store
-from drill_attempts import get_drill_attempt_store
 from opening_distribution import DistributionFilters, opening_distribution
 from opening_normalizer import OpeningNormalizer
 from recall_gaps import RecallFilters
 from sources import CacheGameSource
-from users import fetch_studies_cached, invalidate_analyses, user_for
+from users import User, fetch_studies_cached, invalidate_analyses, user_for
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -141,15 +139,21 @@ def invalid_token_is_401():
         raise
 
 
+async def user_or_401(token: str) -> User:
+    """The token's User; a token Lichess refuses is the user's error (401)."""
+    with invalid_token_is_401():
+        return await user_for(token)
+
+
 async def owned_studies_or_401(token: str) -> list[dict]:
     """The token owner's studies; an invalid token is the user's error (401)."""
     with invalid_token_is_401():
         return await fetch_studies_cached(token)
 
 
-def not_repertoire_view(owned_studies: list[dict]) -> dict:
-    """Every owned study, and whether it is marked "not repertoire"."""
-    excluded = get_exclusion_store().excluded_studies()
+def not_repertoire_view(user: User, owned_studies: list[dict]) -> dict:
+    """Every owned study, and whether the User marked it "not repertoire"."""
+    excluded = user.exclusions.excluded_studies()
     return {
         "studies": sorted(
             (
@@ -170,7 +174,8 @@ def not_repertoire_view(owned_studies: list[dict]) -> dict:
 async def get_not_repertoire(authorization: str = Header(...)):
     """The "not repertoire" exclusion list, over every study the user owns."""
     token = authorization.replace("Bearer ", "")
-    return not_repertoire_view(await owned_studies_or_401(token))
+    user = await user_or_401(token)
+    return not_repertoire_view(user, await owned_studies_or_401(token))
 
 
 class NotRepertoireUpdate(BaseModel):
@@ -187,14 +192,15 @@ async def update_not_repertoire(
     without the excluded studies on the next request.
     """
     token = authorization.replace("Bearer ", "")
+    user = await user_or_401(token)
     owned_studies = await owned_studies_or_401(token)
 
     # Only the user's own studies can be excluded; this also drops stale ids
     owned_ids = {study["id"] for study in owned_studies}
-    get_exclusion_store().set_excluded_studies(set(update.excluded) & owned_ids)
-    user_for(token).pipeline.invalidate_repertoire()
+    user.exclusions.set_excluded_studies(set(update.excluded) & owned_ids)
+    user.pipeline.invalidate_repertoire()
 
-    return not_repertoire_view(owned_studies)
+    return not_repertoire_view(user, owned_studies)
 
 
 @app.get("/api/chess-com/validate/{username}")
@@ -249,7 +255,8 @@ async def recall_view(
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
 
     with invalid_token_is_401():
-        return await user_for(token).pipeline.recall_view(chess_com_username, filters, now=now)
+        user = await user_for(token)
+        return await user.pipeline.recall_view(chess_com_username, filters, now=now)
 
 
 @app.get("/api/practice-session")
@@ -270,7 +277,8 @@ async def practice_session(
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
 
     with invalid_token_is_401():
-        return {"gaps": await user_for(token).pipeline.practice_queue(chess_com_username, filters, now=now)}
+        user = await user_for(token)
+        return {"gaps": await user.pipeline.practice_queue(chess_com_username, filters, now=now)}
 
 
 class DrillAttemptIn(BaseModel):
@@ -280,13 +288,14 @@ class DrillAttemptIn(BaseModel):
 
 
 @app.post("/api/drill-attempts", status_code=201)
-async def record_drill_attempt(attempt: DrillAttemptIn):
+async def record_drill_attempt(attempt: DrillAttemptIn, authorization: str = Header(...)):
     """
-    Record a finished Drill Attempt: a pass, or a fail with the position of
-    its first miss. Drill Attempts never change Recall Gaps.
+    Record one of the user's finished Drill Attempts: a pass, or a fail with
+    the position of its first miss. Drill Attempts never change Recall Gaps.
     """
+    user = await user_or_401(authorization.replace("Bearer ", ""))
     try:
-        get_drill_attempt_store().record(
+        user.drill_attempts.record(
             attempt.gap_position_key,
             passed=attempt.passed,
             first_miss_position_key=attempt.first_miss_position_key,
@@ -332,7 +341,7 @@ async def get_sync(
 ):
     """The Sync's state: progress, each source's status and the last result."""
     token = authorization.replace("Bearer ", "")
-    return user_for(token).sync.status(chess_com_username)
+    return (await user_or_401(token)).sync.status(chess_com_username)
 
 
 @app.post("/api/sync")
@@ -346,7 +355,7 @@ async def start_sync(
     account's runs after it.
     """
     token = authorization.replace("Bearer ", "")
-    sync = user_for(token).sync
+    sync = (await user_or_401(token)).sync
     sync.start(chess_com_username)
     return sync.status(chess_com_username)
 

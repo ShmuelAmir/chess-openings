@@ -2,11 +2,13 @@ import asyncio
 
 import chess
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import main
 import users
 from chess_com import ChessComAccountNotFoundError
+from drill_attempts import DrillAttempt, DrillAttemptStore
 from exclusions import ExclusionStore
 from game_cache import GameCache
 from games import Game
@@ -46,12 +48,17 @@ class OneMiss(GameSource):
                      color=chess.WHITE, result="loss")]
 
 
-def sign_in(token, source, tmp_path):
-    """Make the token's User one whose Repertoire comes from `source`."""
+def sign_in(token, source, tmp_path, account="me"):
+    """Make the token's User one of the Lichess account whose Repertoire comes from `source`."""
+    exclusions = ExclusionStore(account, tmp_path / "app.db")
+    drill_attempts = DrillAttemptStore(account, tmp_path / "app.db")
     users._users[users.token_key(token)] = users.User(
         users.token_key(token),
-        RepertoireAnalysisPipeline(source, OneMiss()),
+        account,
+        RepertoireAnalysisPipeline(source, OneMiss(), drill_attempts=drill_attempts.attempts),
         ChessComSync(GameCache(tmp_path / "games.db"), client=None),
+        exclusions,
+        drill_attempts,
     )
 
 
@@ -108,15 +115,14 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
 
 def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(monkeypatch, tmp_path):
     monkeypatch.setattr(users, "_users", {})
-    monkeypatch.setattr(main, "get_exclusion_store", lambda: ExclusionStore(tmp_path / "app.db"))
 
     async def owned_studies(token):
         return [{"id": "abc", "name": "Italian-Game"}]
 
     monkeypatch.setattr(main, "fetch_studies_cached", owned_studies)
     mine, theirs = ItalianSource(), ItalianSource()
-    sign_in("my-token", mine, tmp_path)
-    sign_in("their-token", theirs, tmp_path)
+    sign_in("my-token", mine, tmp_path, account="me")
+    sign_in("their-token", theirs, tmp_path, account="them")
     get_recall_view("my-token")
     get_recall_view("their-token")
 
@@ -129,6 +135,8 @@ def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(mo
 
     assert response.json()["studies"][0]["excluded"] is True
     assert (mine.fetches, theirs.fetches) == (2, 1)
+    their_list = TestClient(main.app).get("/api/not-repertoire", headers={"Authorization": "Bearer their-token"})
+    assert their_list.json()["studies"][0]["excluded"] is False
 
 
 def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monkeypatch, tmp_path):
@@ -190,13 +198,105 @@ def test_each_linked_account_is_reported_by_the_users_one_sync(monkeypatch, tmp_
     monkeypatch.setattr(users, "_users", {})
     monkeypatch.setattr(users, "RepertoireSyncLog", lambda user: RepertoireSyncLog(tmp_path / "app.db", user))
     sign_in("my-token", ItalianSource(), tmp_path)
-    sync = users.user_for("my-token").sync
+    sync = asyncio.run(users.user_for("my-token")).sync
 
     asyncio.run(sync.run("me"))
     mine, other = get_sync("my-token", "Me"), get_sync("my-token", "you")
 
-    assert users.user_for("my-token").sync is sync
+    assert asyncio.run(users.user_for("my-token")).sync is sync
     assert (mine["runs"], mine["result"] is not None) == (1, True)
     assert (other["runs"], other["result"]) == (0, None)
     assert mine["sources"]["lichess"] == other["sources"]["lichess"]
     assert other["sources"]["lichess"]["status"] == "ok"
+
+
+class LichessAccounts:
+    """Lichess, knowing each token's account; it refuses any other token."""
+
+    def __init__(self, accounts):
+        self.accounts = accounts
+
+    def __call__(self, token=None):
+        self.token = token
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        pass
+
+    async def get_account(self):
+        if self.token not in self.accounts:
+            request = httpx.Request("GET", "https://lichess.org/api/account")
+            raise httpx.HTTPStatusError(
+                "401 Unauthorized", request=request, response=httpx.Response(401, request=request)
+            )
+        return {"username": self.accounts[self.token]}
+
+
+@pytest.fixture
+def lichess_accounts(monkeypatch, tmp_path):
+    """Users made by users.user_for over these Lichess accounts and a temporary database."""
+    monkeypatch.setattr(users, "_users", {})
+    monkeypatch.setattr(users, "_accounts", {})
+    monkeypatch.setattr(users, "ExclusionStore", lambda account: ExclusionStore(account, tmp_path / "app.db"))
+    monkeypatch.setattr(users, "DrillAttemptStore", lambda account: DrillAttemptStore(account, tmp_path / "app.db"))
+    monkeypatch.setattr(users, "get_game_cache", lambda: GameCache(tmp_path / "games.db"))
+    lichess = LichessAccounts({"my-token": "Me", "my-new-token": "me", "their-token": "Them"})
+    monkeypatch.setattr(users, "LichessClient", lichess)
+    return lichess
+
+
+def test_a_users_exclusions_and_drill_attempts_are_their_lichess_accounts(lichess_accounts):
+    async def run():
+        mine, mine_again, theirs = [
+            await users.user_for(token) for token in ("my-token", "my-new-token", "their-token")
+        ]
+        mine.exclusions.set_excluded_studies({"scratch"})
+        mine.drill_attempts.record("gap", passed=True, first_miss_position_key=None, at=100)
+        return mine, mine_again, theirs
+
+    mine, mine_again, theirs = asyncio.run(run())
+
+    assert (mine.account, mine_again.account, theirs.account) == ("me", "me", "them")
+    assert mine_again.exclusions.excluded_studies() == {"scratch"}
+    assert len(mine_again.drill_attempts.attempts()) == 1
+    assert theirs.exclusions.excluded_studies() == set()
+    assert theirs.drill_attempts.attempts() == []
+    assert mine.pipeline.drill_attempts() == mine.drill_attempts.attempts()
+    assert theirs.pipeline.drill_attempts() == []
+
+
+def test_lichess_is_asked_for_a_tokens_account_once(lichess_accounts):
+    async def run():
+        return await users.user_for("my-token"), await users.user_for("my-token")
+
+    first, second = asyncio.run(run())
+    lichess_accounts.accounts.clear()  # Lichess would now refuse it
+
+    assert first is second
+    assert asyncio.run(users.user_for("my-token")) is first
+
+
+def post_drill_attempt(token):
+    return TestClient(main.app).post(
+        "/api/drill-attempts",
+        json={"gap_position_key": "gap", "passed": True},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_a_drill_attempt_is_recorded_for_the_tokens_account(lichess_accounts, tmp_path):
+    response = post_drill_attempt("my-token")
+
+    assert response.status_code == 201
+    assert [a.gap_position_key for a in DrillAttemptStore("me", tmp_path / "app.db").attempts()] == ["gap"]
+    assert DrillAttemptStore("them", tmp_path / "app.db").attempts() == []
+
+
+def test_recording_a_drill_attempt_with_a_refused_token_is_a_401(lichess_accounts):
+    response = post_drill_attempt("revoked-token")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid Lichess token"}
