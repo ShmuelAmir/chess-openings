@@ -3,7 +3,6 @@ Chess Opening Deviation Analyzer - FastAPI Backend
 """
 import os
 import time
-import asyncio
 import secrets
 import hashlib
 import base64
@@ -25,10 +24,8 @@ from exclusions import get_exclusion_store
 from drill_attempts import get_drill_attempt_store
 from opening_distribution import opening_distribution
 from opening_normalizer import OpeningNormalizer
-from pipeline import RepertoireAnalysisPipeline, GameFilters
 from recall_gaps import RecallFilters
-from sources import LichessRepertoireSource, CacheGameSource
-from sync import ChessComSync, RepertoireSyncLog, Sync
+from users import fetch_studies_cached, invalidate_analyses, user_for
 
 app = FastAPI(title="Chess Opening Analyzer")
 
@@ -47,120 +44,6 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5173/callback")
 
 # In-memory PKCE store (for demo; in production use Redis or similar)
 pkce_store: dict[str, str] = {}
-
-# Short-lived cache of a token's studies, so repeated page loads / duplicate
-# frontend requests don't each hit the Lichess API (which rate-limits hard).
-STUDIES_CACHE_TTL = 60  # seconds
-_studies_cache: dict[str, tuple[float, list[dict]]] = {}
-_studies_locks: dict[str, asyncio.Lock] = {}
-
-
-def _token_key(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-async def _list_studies_into_cache(token: str) -> list[dict]:
-    """List the token owner's studies from Lichess, into the cache."""
-    async with LichessClient(token=token) as client:
-        account = await client.get_account()
-        studies = await client.get_user_studies(account["username"])
-
-    _studies_cache[_token_key(token)] = (time.monotonic(), studies)
-    return studies
-
-
-async def fetch_studies_cached(token: str) -> list[dict]:
-    """
-    Return the token owner's studies, using a short-lived cache.
-
-    Concurrent callers for the same token share a single upstream request.
-    """
-    key = _token_key(token)
-
-    async with _studies_locks.setdefault(key, asyncio.Lock()):
-        cached = _studies_cache.get(key)
-        if cached and time.monotonic() - cached[0] < STUDIES_CACHE_TTL:
-            return cached[1]
-
-        return await _list_studies_into_cache(token)
-
-
-async def fetch_studies_afresh(token: str) -> list[dict]:
-    """
-    Return the token owner's studies as Lichess lists them now, so new ones
-    join the Repertoire being built; the cache then holds this listing.
-    """
-    async with _studies_locks.setdefault(_token_key(token), asyncio.Lock()):
-        return await _list_studies_into_cache(token)
-
-
-# One pipeline per Lichess user, so their Repertoire stays cached between requests.
-_pipelines: dict[str, RepertoireAnalysisPipeline] = {}
-
-
-def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
-    """The analysis pipeline holding this user's cached Repertoire."""
-    key = _token_key(token)
-    if key not in _pipelines:
-        _pipelines[key] = RepertoireAnalysisPipeline(
-            repertoire_source=LichessRepertoireSource(
-                lichess_token=token,
-                list_studies=lambda: fetch_studies_afresh(token),
-                excluded_studies=get_exclusion_store().excluded_studies,
-            ),
-            game_source=CacheGameSource(get_game_cache()),
-            drill_attempts=get_drill_attempt_store().attempts,
-        )
-    return _pipelines[key]
-
-
-def invalidate_analyses():
-    """Drop every pipeline's last analysis, after the cached games changed."""
-    for pipeline in _pipelines.values():
-        pipeline.invalidate_games()
-
-
-# One Sync per Lichess user and Chess.com account
-REPERTOIRE_FRESH_SECONDS = 30
-_syncs: dict[tuple[str, str], Sync] = {}
-
-
-def sync_for(token: str, chess_com_username: str) -> Sync:
-    """The Sync of this user's Chess.com games and Lichess Repertoire."""
-    key = (_token_key(token), chess_com_username.lower())
-    if key not in _syncs:
-        pipeline = pipeline_for(token)
-
-        async def refresh_repertoire() -> bool:
-            # A Repertoire built moments ago (e.g. by the page that just
-            # opened) is fresh enough, and spares the Lichess rate limit
-            return await pipeline.refresh_repertoire(fresh_within=REPERTOIRE_FRESH_SECONDS)
-
-        def games_last_success():
-            status = get_game_cache().get_sync_status(chess_com_username)
-            return status["last_sync_at"] if status else None
-
-        games_sync = ChessComSync(get_game_cache(), client=ChessComClient)
-
-        _syncs[key] = Sync(
-            sync_games=lambda on_month: games_sync.sync(chess_com_username, on_month),
-            refresh_repertoire=refresh_repertoire,
-            games_last_success=games_last_success,
-            repertoire_log=RepertoireSyncLog(user=_token_key(token)),
-            on_games_changed=invalidate_analyses,
-            previous_gap_statuses=lambda: pipeline.last_gap_statuses(chess_com_username),
-            gap_statuses=lambda: pipeline.gap_statuses(chess_com_username),
-        )
-    return _syncs[key]
-
-
-def sync_view(token: str, chess_com_username: str) -> dict:
-    """The Sync's state, with how many games are cached."""
-    return {
-        **sync_for(token, chess_com_username).status(),
-        "cached_games": get_game_cache().count_games(chess_com_username),
-    }
-
 
 @app.exception_handler(LichessRateLimitError)
 async def lichess_rate_limit_handler(request: Request, exc: LichessRateLimitError):
@@ -307,8 +190,7 @@ async def update_not_repertoire(
     # Only the user's own studies can be excluded; this also drops stale ids
     owned_ids = {study["id"] for study in owned_studies}
     get_exclusion_store().set_excluded_studies(set(update.excluded) & owned_ids)
-    for pipeline in _pipelines.values():
-        pipeline.invalidate_repertoire()
+    user_for(token).pipeline.invalidate_repertoire()
 
     return not_repertoire_view(owned_studies)
 
@@ -365,7 +247,7 @@ async def recall_view(
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
 
     with invalid_token_is_401():
-        return await pipeline_for(token).recall_view(chess_com_username, filters, now=now)
+        return await user_for(token).pipeline.recall_view(chess_com_username, filters, now=now)
 
 
 @app.get("/api/practice-session")
@@ -386,7 +268,7 @@ async def practice_session(
     filters = recall_filters(time_classes, date_range, rated_only, studies, now)
 
     with invalid_token_is_401():
-        return {"gaps": await pipeline_for(token).practice_queue(chess_com_username, filters, now=now)}
+        return {"gaps": await user_for(token).pipeline.practice_queue(chess_com_username, filters, now=now)}
 
 
 class DrillAttemptIn(BaseModel):
@@ -451,7 +333,7 @@ async def get_sync(
 ):
     """The Sync's state: progress, each source's status and the last result."""
     token = authorization.replace("Bearer ", "")
-    return sync_view(token, chess_com_username)
+    return user_for(token).sync(chess_com_username).status()
 
 
 @app.post("/api/sync")
@@ -464,8 +346,9 @@ async def start_sync(
     state; poll GET /api/sync for progress.
     """
     token = authorization.replace("Bearer ", "")
-    sync_for(token, chess_com_username).start()
-    return sync_view(token, chess_com_username)
+    sync = user_for(token).sync(chess_com_username)
+    sync.start()
+    return sync.status()
 
 
 @app.delete("/api/chess-com/cache/{username}")

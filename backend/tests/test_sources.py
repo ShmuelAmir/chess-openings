@@ -1,7 +1,7 @@
 import asyncio
 
-import main
 import sources
+import users
 from sources import LichessRepertoireSource
 
 
@@ -36,22 +36,22 @@ class FakeLichess:
 def repertoire_source(token):
     return LichessRepertoireSource(
         lichess_token=token,
-        list_studies=lambda: main.fetch_studies_afresh(token),
+        list_studies=lambda: users.fetch_studies_afresh(token),
         excluded_studies=set,
     )
 
 
 def test_a_build_lists_the_studies_afresh_and_the_listing_cache_returns_them(monkeypatch):
     lichess = FakeLichess("italian")
-    monkeypatch.setattr(main, "LichessClient", lichess)
+    monkeypatch.setattr(users, "LichessClient", lichess)
     monkeypatch.setattr(sources, "LichessClient", lichess)
     token = "a build lists afresh"
 
     async def run():
-        cached_before = await main.fetch_studies_cached(token)
+        cached_before = await users.fetch_studies_cached(token)
         lichess.study_ids.append("sicilian")
         repertoire = await repertoire_source(token).fetch_repertoire()
-        return cached_before, repertoire, await main.fetch_studies_cached(token)
+        return cached_before, repertoire, await users.fetch_studies_cached(token)
 
     cached_before, repertoire, cached_after = asyncio.run(run())
 

@@ -88,6 +88,14 @@ All Game Filters, including the Study filter, are remembered in the browser betw
 
 The Game Filters cannot be changed during practice (a single drill or a practice session).
 
+### User
+
+The person using the app, identified by their Lichess account: the Repertoire is theirs.
+
+- **Linked Chess.com account:** the Chess.com account whose games the user analyses. It is something the user has linked, not part of who they are: they can change it, and the Repertoire stays the same.
+
+_Avoid:_ "player" for the user — a game has two players.
+
 ### Sync
 
 Bringing both data sources up to date — Chess.com games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand.
@@ -106,10 +114,11 @@ Human-readable label for a repertoire line. Examples: "Sicilian Defense", "Vienn
 
 The system is organized in horizontal layers from request → response:
 
-1. **HTTP Layer** (`main.py`)
+1. **HTTP Layer** (`main.py`, `users.py`)
    - Defines FastAPI endpoints (e.g. `/api/recall-view`)
    - Parses query parameters into domain objects
-   - Delegates to orchestration layer
+   - Delegates to orchestration layer: each handler asks `users.py` for the User (by Lichess token) and uses their pipeline or Sync
+   - **`users.py`:** the per-User registry. Each User holds their pipeline and their Syncs between requests; `main.py` keeps no per-User state
    - Returns JSON responses; the recall view is serialised as the pipeline returns it
 
 2. **Orchestration Layer** (`pipeline.py`)
@@ -145,7 +154,7 @@ The system is organized in horizontal layers from request → response:
 
 ### Dependency Injection
 
-The pipeline accepts abstract source interfaces, not concrete implementations. Callers (main.py) instantiate the concrete sources and inject them:
+The pipeline accepts abstract source interfaces, not concrete implementations. `users.py` instantiates the concrete sources and injects them when it makes a User:
 
 ```python
 repertoire_source = LichessRepertoireSource(lichess_token=token, list_studies=list_owned_studies)
@@ -157,17 +166,17 @@ pipeline = RepertoireAnalysisPipeline(
 view = await pipeline.recall_view(username, filters)
 ```
 
-This makes the pipeline testable: tests can inject mock sources.
+This makes the pipeline testable: tests can inject mock sources. The pipeline also takes a clock (default: real time), read wherever it needs the time; the User's Syncs share it. The Sync takes the pipeline itself, so Sync tests run the real pipeline and fake only `RepertoireSource`, `GameSource` and the Chess.com client.
 
 ### Repertoire Caching
 
-The HTTP layer keeps one pipeline per Lichess user, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild. Changing the "not repertoire" exclusion list (stored in SQLite next to the game cache) drops the cached Repertoire, so the change takes effect on the next request.
+`users.py` keeps one pipeline per User, and that pipeline caches the user's Repertoire with a 1-hour TTL. It is keyed as "the user's Repertoire", not by a set of study ids: the Study filter never changes what the Repertoire contains. Requests within the TTL reuse the cached trees; after it expires the Repertoire is rebuilt from every owned study, so a study newly created on Lichess joins at the next rebuild. Changing the "not repertoire" exclusion list (stored in SQLite next to the game cache) drops the cached Repertoire of the User who changed it, so the change takes effect on their next request.
 
-A Sync rebuilds the Repertoire at once (joining a build already in flight, or skipping one fetched in the last 30 seconds) and keeps the previous trees if nothing changed. The pipeline also keeps its last analysis (every cached game walked through the Repertoire) and reuses it until the Repertoire changes or a Sync brings new games, so re-analysis runs only if something changed.
+A Sync rebuilds the Repertoire at once (joining a build already in flight, or skipping one fetched in the last 30 seconds) and keeps the previous trees if nothing changed. The pipeline also keeps its last analysis (every cached game walked through the Repertoire) and reuses it until the Repertoire changes or a Sync brings new games, so re-analysis runs only if something changed. New games drop only the syncing User's last analysis: another User linked to the same Chess.com account keeps theirs until their own next Sync or Repertoire change. Clearing an account's cached games drops every User's last analysis.
 
 ### Sync Service
 
-`sync.py` holds the Sync (one per Lichess user and Chess.com account, kept by the HTTP layer). `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, `RepertoireSyncLog` for Lichess), and reports progress ("Fetching games… 2023-04"). It also diffs each Recall Gap's status in the pipeline's last analysis against the analysis after the Sync (`gap_changes`) for the "what changed" line; with no last analysis (e.g. the first Sync) only the new games are reported. `POST /api/sync` starts one; `GET /api/sync` polls it.
+`sync.py` holds the Sync (one per User and Chess.com account, kept by `users.py`). A Sync is made of the User's pipeline, `ChessComSync`, `RepertoireSyncLog` and the pipeline's clock, and calls the pipeline directly to refresh the Repertoire (skipping one fetched under `REPERTOIRE_FRESH_SECONDS`, 30, ago), drop the last analysis and diff the Recall Gaps. `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, read through `ChessComSync`, and `RepertoireSyncLog` for Lichess), the number of cached games, and reports progress ("Fetching games… 2023-04"). It also diffs each Recall Gap's status in the pipeline's last analysis against the analysis after the Sync (`gap_changes`) for the "what changed" line; with no last analysis (e.g. the first Sync) only the new games are reported. `POST /api/sync` starts one; `GET /api/sync` polls it.
 
 ### Error Handling
 
@@ -184,8 +193,9 @@ HTTP /api/recall-view (Game Filters, token)
 HTTP layer builds the Game Filters (RecallFilters.for_date_range; an unknown
 date range preset is a 422)
   ↓
-Reuse the user's RepertoireAnalysisPipeline (one per Lichess user, created on
-first request with LichessRepertoireSource(token, list_studies), CacheGameSource())
+users.user_for(token): reuse the User's RepertoireAnalysisPipeline (one per
+User, created on first request with LichessRepertoireSource(token, list_studies),
+CacheGameSource())
   ↓
 Call pipeline.recall_view(username, filters)
   ↓

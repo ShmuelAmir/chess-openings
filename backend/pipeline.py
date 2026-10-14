@@ -94,10 +94,16 @@ class RepertoireAnalysisPipeline:
         game_source: GameSource,
         repertoire_ttl_seconds: int = 3600,  # 1 hour TTL
         drill_attempts: Callable[[], list[DrillAttempt]] = list,
+        clock: Callable[[], float] = time.time,
     ):
+        """
+        Args:
+            clock: The current Unix time, wherever the pipeline reads it
+        """
         self.repertoire_source = repertoire_source
         self.game_source = game_source
         self.drill_attempts = drill_attempts
+        self.clock = clock
         self.repertoire_ttl_seconds = repertoire_ttl_seconds
         
         # The user's Repertoire and when it was built
@@ -139,7 +145,7 @@ class RepertoireAnalysisPipeline:
             walked,
             filters,
             repertoire,
-            now=int(time.time()) if now is None else now,
+            now=int(self.clock()) if now is None else now,
         )
 
     async def practice_queue(
@@ -152,7 +158,7 @@ class RepertoireAnalysisPipeline:
         A practice session's queue: the due Open Recall Gaps among those the
         filters show, in ranking order, each as the recall view shows it.
         """
-        now = int(time.time()) if now is None else now
+        now = int(self.clock()) if now is None else now
         repertoire = await self._get_repertoire()
         walked = await self._walk_games(username, repertoire)
         view = aggregate(walked, filters, repertoire, now=now)
@@ -228,7 +234,7 @@ class RepertoireAnalysisPipeline:
         previous = None
         if self._repertoire_cache is not None:
             previous, fetched_at = self._repertoire_cache
-            if time.time() - fetched_at < fresh_within:
+            if self.clock() - fetched_at < fresh_within:
                 return False
 
         generation = self._repertoire_generation
@@ -260,7 +266,7 @@ class RepertoireAnalysisPipeline:
         Returns:
             Repertoire object
         """
-        now = time.time()
+        now = self.clock()
         
         if self._repertoire_cache is not None:
             cached_repertoire, cached_time = self._repertoire_cache
@@ -288,7 +294,7 @@ class RepertoireAnalysisPipeline:
         if self._inflight is not None and self._inflight[0] == generation:
             _, started, task = self._inflight
         else:
-            started = time.time()
+            started = self.clock()
             task = asyncio.ensure_future(self.repertoire_source.fetch_repertoire())
             self._inflight = (generation, started, task)
 

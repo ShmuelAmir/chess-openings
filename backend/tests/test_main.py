@@ -2,13 +2,21 @@ import httpx
 from fastapi.testclient import TestClient
 
 import main
+import users
 from chess_com import ChessComAccountNotFoundError
+from exclusions import ExclusionStore
+from game_cache import GameCache
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from repertoire import RepertoireBuilder
+from sync import ChessComSync
 
 
 class ItalianSource(RepertoireSource):
+    def __init__(self):
+        self.fetches = 0
+
     async def fetch_repertoire(self):
+        self.fetches += 1
         builder = RepertoireBuilder()
         builder.add_study(
             '[ChapterURL "https://lichess.org/study/abc/ch1"]\n\n1. e4 e5 2. Nf3 *\n',
@@ -33,8 +41,16 @@ class OneMiss(GameSource):
                  "date": 100, "time_class": "blitz", "rated": True, "user_result": "loss"}]
 
 
-def get_recall_view(token, source):
-    main._pipelines[main._token_key(token)] = RepertoireAnalysisPipeline(source, OneMiss())
+def sign_in(token, source, tmp_path):
+    """Make the token's User one whose Repertoire comes from `source`."""
+    users._users[users.token_key(token)] = users.User(
+        users.token_key(token),
+        RepertoireAnalysisPipeline(source, OneMiss()),
+        ChessComSync(GameCache(tmp_path / "games.db"), client=None),
+    )
+
+
+def get_recall_view(token):
     return TestClient(main.app).get(
         "/api/recall-view",
         params={"chess_com_username": "me", "date_range": "all", "studies": ["abc"]},
@@ -42,10 +58,12 @@ def get_recall_view(token, source):
     )
 
 
-def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch):
-    monkeypatch.setattr(main, "_pipelines", {})
+def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_path):
+    monkeypatch.setattr(users, "_users", {})
+    sign_in("good-token", ItalianSource(), tmp_path)
+    sign_in("bad-token", RefusedSource(), tmp_path)
 
-    response = get_recall_view("good-token", ItalianSource())
+    response = get_recall_view("good-token")
 
     assert response.status_code == 200
     view = response.json()
@@ -77,10 +95,35 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch):
     }
     assert set(gap["drill_turns"][0]) == {"ply", "position_key", "book_moves"}
 
-    refused = get_recall_view("bad-token", RefusedSource())
+    refused = get_recall_view("bad-token")
 
     assert refused.status_code == 401
     assert refused.json() == {"detail": "Invalid Lichess token"}
+
+
+def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(monkeypatch, tmp_path):
+    monkeypatch.setattr(users, "_users", {})
+    monkeypatch.setattr(main, "get_exclusion_store", lambda: ExclusionStore(tmp_path / "app.db"))
+
+    async def owned_studies(token):
+        return [{"id": "abc", "name": "Italian-Game"}]
+
+    monkeypatch.setattr(main, "fetch_studies_cached", owned_studies)
+    mine, theirs = ItalianSource(), ItalianSource()
+    sign_in("my-token", mine, tmp_path)
+    sign_in("their-token", theirs, tmp_path)
+    get_recall_view("my-token")
+    get_recall_view("their-token")
+
+    response = TestClient(main.app).put(
+        "/api/not-repertoire", json={"excluded": ["abc"]},
+        headers={"Authorization": "Bearer my-token"},
+    )
+    get_recall_view("my-token")
+    get_recall_view("their-token")
+
+    assert response.json()["studies"][0]["excluded"] is True
+    assert (mine.fetches, theirs.fetches) == (2, 1)
 
 
 class CachedGames:
