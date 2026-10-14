@@ -98,7 +98,10 @@ _Avoid:_ "player" for the user — a game has two players.
 
 ### Sync
 
-Bringing both data sources up to date — Chess.com games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand.
+Bringing both data sources up to date — the linked Chess.com account's games into the local cache, and the Lichess Repertoire (studies and their lines) — then re-running the analysis if anything changed. Runs automatically when the app opens if the last Sync is stale, or on demand. A user has one Sync.
+
+- **Changing the linked Chess.com account:** a Sync already running finishes for the account it started with; the Sync of the newly linked account runs after it. A Sync's result and "what changed" line belong to the account it ran for, and are never shown for another.
+- **Already up to date:** a Repertoire built moments ago counts as up to date; the Sync does not fetch it again, and its Lichess side still succeeds.
 
 - **Partial Sync:** some Chess.com months or the Lichess refresh failed; what succeeded is kept, and the failed parts are retried on the next Sync.
 - A Sync never interrupts a Drill Attempt; its analysis is applied once practice ends. The recall view holds the Sync's result, with its "what changed" line, until then.
@@ -118,7 +121,7 @@ The system is organized in horizontal layers from request → response:
    - Defines FastAPI endpoints (e.g. `/api/recall-view`)
    - Parses query parameters into domain objects
    - Delegates to orchestration layer: each handler asks `users.py` for the User (by Lichess token) and uses their pipeline or Sync
-   - **`users.py`:** the per-User registry. Each User holds their pipeline and their Syncs between requests; `main.py` keeps no per-User state
+   - **`users.py`:** the per-User registry. Each User holds their pipeline and their one Sync between requests; `main.py` keeps no per-User state
    - Returns JSON responses; the recall view is serialised as the pipeline returns it
 
 2. **Orchestration Layer** (`pipeline.py`)
@@ -166,7 +169,7 @@ pipeline = RepertoireAnalysisPipeline(
 view = await pipeline.recall_view(username, filters)
 ```
 
-This makes the pipeline testable: tests can inject mock sources. The pipeline also takes a clock (default: real time), read wherever it needs the time; the User's Syncs share it. The Sync takes the pipeline itself, so Sync tests run the real pipeline and fake only `RepertoireSource`, `GameSource` and the Chess.com client.
+This makes the pipeline testable: tests can inject mock sources. The pipeline also takes a clock (default: real time), read wherever it needs the time; the User's Sync shares it. The Sync takes the pipeline itself, so Sync tests run the real pipeline and fake only `RepertoireSource`, `GameSource` and the Chess.com client.
 
 ### Repertoire Caching
 
@@ -176,7 +179,7 @@ A Sync rebuilds the Repertoire at once (joining a build already in flight, or sk
 
 ### Sync Service
 
-`sync.py` holds the Sync (one per User and Chess.com account, kept by `users.py`). A Sync is made of the User's pipeline, `ChessComSync`, `RepertoireSyncLog` and the pipeline's clock, and calls the pipeline directly to refresh the Repertoire (skipping one fetched under `REPERTOIRE_FRESH_SECONDS`, 30, ago), drop the last analysis and diff the Recall Gaps. `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, read through `ChessComSync`, and `RepertoireSyncLog` for Lichess), the number of cached games, and reports progress ("Fetching games… 2023-04"). It also diffs each Recall Gap's status in the pipeline's last analysis against the analysis after the Sync (`gap_changes`) for the "what changed" line; with no last analysis (e.g. the first Sync) only the new games are reported. `POST /api/sync` starts one; `GET /api/sync` polls it.
+`sync.py` holds the Sync (one per User, kept by `users.py`). The backend keeps no record of the linked Chess.com account: the browser names it on every request, so `start` and `status` take it. A Sync is made of the User's pipeline, `ChessComSync`, `RepertoireSyncLog` and the pipeline's clock, and calls the pipeline directly to refresh the Repertoire (skipping one fetched under `REPERTOIRE_FRESH_SECONDS`, 30, ago), drop the last analysis and diff the Recall Gaps. `ChessComSync` fetches the months the cache may lack — months not yet cached, months that failed last time (recorded in SQLite), and every month from the one of the last Sync on — and only advances the Chess.com last-sync time when no month failed. `Sync` runs both sources, each failing on its own, tracks each source's status and last-success time (both times persisted in SQLite: the game cache for Chess.com, read through `ChessComSync`, and `RepertoireSyncLog` for Lichess), the number of cached games, and reports progress ("Fetching games… 2023-04"). It also diffs each Recall Gap's status in the pipeline's last analysis against the analysis after the Sync (`gap_changes`) for the "what changed" line; with no last analysis for the account (e.g. the first Sync, or the pipeline last analysed another account) only the new games are reported. Each account's result, Chess.com status and `runs` (finished Syncs) are kept apart, and a status for an account reports only its own, with that account's Chess.com last-success time and cached-game count; the Lichess side is the User's whichever account is asked about. A start for another account while a Sync runs makes that account next (at most one; a later start for yet another replaces it), and it runs once the running one finishes; while it waits, its status is `running` with "Waiting for another Sync…". `POST /api/sync` starts one; `GET /api/sync` polls it.
 
 ### Error Handling
 

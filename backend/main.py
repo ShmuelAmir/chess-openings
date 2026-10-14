@@ -333,7 +333,7 @@ async def get_sync(
 ):
     """The Sync's state: progress, each source's status and the last result."""
     token = authorization.replace("Bearer ", "")
-    return user_for(token).sync(chess_com_username).status()
+    return user_for(token).sync.status(chess_com_username)
 
 
 @app.post("/api/sync")
@@ -342,13 +342,14 @@ async def start_sync(
     authorization: str = Header(...),
 ):
     """
-    Start a Sync of both sources (unless one is running) and return its
-    state; poll GET /api/sync for progress.
+    Start a Sync of both sources and return its state; poll GET /api/sync
+    for progress. While the user's Sync runs for another account, this
+    account's runs after it.
     """
     token = authorization.replace("Bearer ", "")
-    sync = user_for(token).sync(chess_com_username)
-    sync.start()
-    return sync.status()
+    sync = user_for(token).sync
+    sync.start(chess_com_username)
+    return sync.status(chess_com_username)
 
 
 @app.delete("/api/chess-com/cache/{username}")

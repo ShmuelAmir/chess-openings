@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 from fastapi.testclient import TestClient
 
@@ -8,7 +10,7 @@ from exclusions import ExclusionStore
 from game_cache import GameCache
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from repertoire import RepertoireBuilder
-from sync import ChessComSync
+from sync import ChessComSync, RepertoireSyncLog
 
 
 class ItalianSource(RepertoireSource):
@@ -176,3 +178,27 @@ def test_validating_an_unknown_chess_com_account_is_a_404(monkeypatch):
     assert response.json()["detail"] == (
         "No Chess.com account named 'nobody'. Use your Chess.com username, not your email."
     )
+
+
+def get_sync(token, chess_com_username):
+    return TestClient(main.app).get(
+        "/api/sync",
+        params={"chess_com_username": chess_com_username},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+
+
+def test_each_linked_account_is_reported_by_the_users_one_sync(monkeypatch, tmp_path):
+    monkeypatch.setattr(users, "_users", {})
+    monkeypatch.setattr(users, "RepertoireSyncLog", lambda user: RepertoireSyncLog(tmp_path / "app.db", user))
+    sign_in("my-token", ItalianSource(), tmp_path)
+    sync = users.user_for("my-token").sync
+
+    asyncio.run(sync.run("me"))
+    mine, other = get_sync("my-token", "Me"), get_sync("my-token", "you")
+
+    assert users.user_for("my-token").sync is sync
+    assert (mine["runs"], mine["result"] is not None) == (1, True)
+    assert (other["runs"], other["result"]) == (0, None)
+    assert mine["sources"]["lichess"] == other["sources"]["lichess"]
+    assert other["sources"]["lichess"]["status"] == "ok"
