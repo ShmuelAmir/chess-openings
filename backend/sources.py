@@ -5,7 +5,10 @@ Concrete implementations of RepertoireSource and GameSource.
 import logging
 from typing import Awaitable, Callable, Optional
 
-from pipeline import RepertoireSource, GameSource, GameFilters
+import chess
+
+from games import Game
+from pipeline import RepertoireSource, GameSource
 from repertoire import Repertoire, RepertoireBuilder
 from game_cache import GameCache
 from lichess import LichessClient
@@ -79,44 +82,37 @@ class LichessRepertoireSource(RepertoireSource):
 
 
 class CacheGameSource(GameSource):
-    """Fetches games from the local cache."""
+    """Reads the user's games from the local cache."""
     
     def __init__(self, game_cache: Optional[GameCache] = None):
         self.game_cache = game_cache or GameCache()
     
-    async def fetch_games(
-        self,
-        username: str,
-        filters: GameFilters,
-    ) -> list[dict]:
+    async def games(self, username: str) -> list[Game]:
         """
-        Fetch games from cache with applied filters.
+        Every cached game of the user's, newest first.
         
         Args:
             username: Chess.com username
-            filters: Game filtering parameters
-        
-        Returns:
-            List of game dicts, each with the user's result as "user_result"
         """
-        logger.debug(f"Fetching games for {username} with filters: {filters}")
-        
-        games = self.game_cache.get_cached_games(
-            username=username,
-            time_classes=filters.time_classes,
-            rated=filters.rated,
-            color=filters.color,
-            from_year=filters.from_year,
-            from_month=filters.from_month,
-            to_year=filters.to_year,
-            to_month=filters.to_month,
-            from_ts=filters.from_ts,
-            to_ts=filters.to_ts,
-        )
-        
-        for game in games:
-            user_is_white = game.get("white", "").lower() == username.lower()
-            game["user_result"] = player_result(game.get("result") or "", user_is_white)
-
+        games = [_game(row, username) for row in self.game_cache.get_cached_games(username)]
         logger.debug(f"Found {len(games)} cached games for {username}")
         return games
+
+
+def _game(row: dict, username: str) -> Game:
+    """
+    A cached game as the user's Game: the one place their color and result
+    are worked out from the players' names and White's result code.
+    """
+    user_is_white = (row.get("white") or "").lower() == username.lower()
+    return Game(
+        url=row["url"],
+        date=row.get("date"),
+        month=(row["year"], row["month"]),
+        time_class=row.get("time_class") or "",
+        rated=bool(row.get("rated")),
+        opening_name=row.get("opening_name") or "",
+        moves=tuple(row.get("moves") or ()),
+        color=chess.WHITE if user_is_white else chess.BLACK,
+        result=player_result(row.get("result") or "", user_is_white),
+    )

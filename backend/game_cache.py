@@ -72,31 +72,13 @@ class GameCache:
             """)
             conn.commit()
     
-    def get_cached_games(
-        self,
-        username: str,
-        time_classes: Optional[list[str]] = None,
-        rated: Optional[bool] = None,
-        color: Optional[str] = None,
-        from_year: Optional[int] = None,
-        from_month: Optional[int] = None,
-        to_year: Optional[int] = None,
-        to_month: Optional[int] = None,
-        from_ts: Optional[int] = None,
-        to_ts: Optional[int] = None,
-    ) -> list[dict]:
-        """
-        Get cached games for a user with optional filters.
-        
-        All filtering is done in Python for flexibility.
-        """
-        username_lower = username.lower()
-        
+    def get_cached_games(self, username: str) -> list[dict]:
+        """Every cached game of the user's, newest first."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM games WHERE username = ? ORDER BY date DESC",
-                (username_lower,)
+                (username.lower(),)
             )
             rows = cursor.fetchall()
         
@@ -107,40 +89,6 @@ class GameCache:
             game["moves"] = json.loads(game["moves"]) if game["moves"] else []
             game["headers"] = json.loads(game["headers"]) if game["headers"] else {}
             game["rated"] = bool(game["rated"])
-            
-            # Apply filters
-            if time_classes and game["time_class"] not in time_classes:
-                continue
-            if rated is not None and game["rated"] != rated:
-                continue
-            
-            # Color filter
-            if color:
-                is_white = game["white"].lower() == username_lower
-                if color == "white" and not is_white:
-                    continue
-                if color == "black" and is_white:
-                    continue
-            
-            # Date range filter
-            game_ts = game.get("date")
-            if from_ts is not None or to_ts is not None:
-                if game_ts is None:
-                    continue
-                if from_ts is not None and game_ts < from_ts:
-                    continue
-                if to_ts is not None and game_ts > to_ts:
-                    continue
-
-            if from_year and from_month:
-                game_date = (game["year"], game["month"])
-                if game_date < (from_year, from_month):
-                    continue
-            if to_year and to_month:
-                game_date = (game["year"], game["month"])
-                if game_date > (to_year, to_month):
-                    continue
-            
             games.append(game)
         
         return games

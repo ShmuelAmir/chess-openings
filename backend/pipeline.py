@@ -6,12 +6,10 @@ Abstracts fetching repertoire and games from the orchestration logic.
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Callable, Optional
 import logging
 
-import chess
-
+from games import Game
 from repertoire import Repertoire
 from repertoire_walker import RepertoireWalker
 from drill_attempts import DrillAttempt
@@ -29,20 +27,6 @@ from recall_gaps import (
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class GameFilters:
-    """Game filtering parameters."""
-    time_classes: Optional[list[str]] = None
-    rated: Optional[bool] = None
-    color: Optional[str] = None  # "white", "black", or None for both
-    from_year: Optional[int] = None
-    from_month: Optional[int] = None
-    to_year: Optional[int] = None
-    to_month: Optional[int] = None
-    from_ts: Optional[int] = None
-    to_ts: Optional[int] = None
-
-
 class RepertoireSource(ABC):
     """Abstract interface for fetching and building repertoires."""
     
@@ -58,24 +42,15 @@ class RepertoireSource(ABC):
 
 
 class GameSource(ABC):
-    """Abstract interface for fetching games."""
+    """Abstract interface for fetching the user's games."""
     
     @abstractmethod
-    async def fetch_games(
-        self,
-        username: str,
-        filters: GameFilters,
-    ) -> list[dict]:
+    async def games(self, username: str) -> list[Game]:
         """
-        Fetch games matching filters.
+        Every game of the user's, each with their color and result decided.
         
         Args:
             username: Chess.com username
-            filters: Game filtering parameters
-        
-        Returns:
-            List of game dicts with 'moves', 'white', 'black', 'url', and
-            the user's result as 'user_result' ("win", "loss" or "draw")
         """
         ...
 
@@ -190,30 +165,26 @@ class RepertoireAnalysisPipeline:
             if cached_username == username.lower() and cached_repertoire is repertoire:
                 return cached_walked
 
-        games = await self.game_source.fetch_games(username, GameFilters())
+        games = await self.game_source.games(username)
         walker = RepertoireWalker(repertoire)
 
         walked = []
         for game in games:
             try:
-                is_white = game.get("white", "").lower() == username.lower()
-                color = chess.WHITE if is_white else chess.BLACK
-                moves = game.get("moves", [])
+                moves = list(game.moves)
                 walked.append(WalkedGame(
-                    url=game.get("url", ""),
-                    date=game.get("date") or 0,
-                    time_class=game.get("time_class", ""),
-                    rated=bool(game.get("rated")),
-                    result=game.get("user_result", ""),
+                    url=game.url,
+                    date=game.date or 0,
+                    time_class=game.time_class,
+                    rated=game.rated,
+                    result=game.result,
                     moves=moves,
-                    color=color,
-                    record=walker.walk_game(color, moves),
+                    color=game.color,
+                    record=walker.walk_game(game.color, moves),
                 ))
             except Exception as e:
                 # Log and continue on individual game analysis failures
-                logger.warning(
-                    f"Failed to analyze game {game.get('url', 'unknown')}: {e}"
-                )
+                logger.warning(f"Failed to analyze game {game.url or 'unknown'}: {e}")
 
         self._walked_cache = (username.lower(), repertoire, walked)
         return walked

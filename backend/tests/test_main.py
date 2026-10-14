@@ -1,5 +1,6 @@
 import asyncio
 
+import chess
 import httpx
 from fastapi.testclient import TestClient
 
@@ -8,6 +9,7 @@ import users
 from chess_com import ChessComAccountNotFoundError
 from exclusions import ExclusionStore
 from game_cache import GameCache
+from games import Game
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from repertoire import RepertoireBuilder
 from sync import ChessComSync, RepertoireSyncLog
@@ -38,9 +40,10 @@ class RefusedSource(RepertoireSource):
 
 
 class OneMiss(GameSource):
-    async def fetch_games(self, username, filters):
-        return [{"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
-                 "date": 100, "time_class": "blitz", "rated": True, "user_result": "loss"}]
+    async def games(self, username):
+        return [Game(url="g1", date=100, month=(2026, 3), time_class="blitz", rated=True,
+                     opening_name="Italian Game", moves=("e4", "e5", "Bc4"),
+                     color=chess.WHITE, result="loss")]
 
 
 def sign_in(token, source, tmp_path):
@@ -128,17 +131,15 @@ def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(mo
     assert (mine.fetches, theirs.fetches) == (2, 1)
 
 
-class CachedGames:
-    """A game cache holding one win as White in the Italian."""
-
-    def get_cached_games(self, **filters):
-        self.filters = filters
-        return [{"white": "me", "black": "x", "result": "win",
-                 "opening_name": "Italian Game", "date": 100}]
-
-
-def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monkeypatch):
-    cache = CachedGames()
+def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monkeypatch, tmp_path):
+    cache = GameCache(tmp_path / "games.db")
+    cache.save_games("me", [
+        {"url": "g1", "white": "me", "black": "x", "result": "win", "opening_name": "Italian Game", "date": 100},
+        {"url": "g2", "white": "x", "black": "me", "result": "win", "opening_name": "Sicilian Defense", "date": 100},
+    ], 2026, 2)
+    cache.save_games("me", [
+        {"url": "g3", "white": "me", "black": "x", "result": "win", "opening_name": "London System", "date": 100},
+    ], 2026, 4)
     monkeypatch.setattr(main, "get_game_cache", lambda: cache)
 
     response = TestClient(main.app).post(
@@ -151,9 +152,6 @@ def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monke
     assert response.json()["top_openings"] == [
         {"opening": "Italian Game", "games": 1, "wins": 1, "draws": 0, "losses": 0, "win_rate": 100.0}
     ]
-    assert cache.filters["username"] == "me"
-    assert cache.filters["color"] == "white"
-    assert (cache.filters["from_year"], cache.filters["to_month"]) == (2026, 3)
 
 
 class NoSuchAccount:

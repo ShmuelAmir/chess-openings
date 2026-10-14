@@ -8,6 +8,7 @@ import hashlib
 import base64
 from urllib.parse import urlencode
 
+import chess
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Header, Request
 from fastapi.staticfiles import StaticFiles
@@ -22,9 +23,10 @@ from chess_com import ChessComAccountNotFoundError, ChessComClient
 from game_cache import get_game_cache
 from exclusions import get_exclusion_store
 from drill_attempts import get_drill_attempt_store
-from opening_distribution import opening_distribution
+from opening_distribution import DistributionFilters, opening_distribution
 from opening_normalizer import OpeningNormalizer
 from recall_gaps import RecallFilters
+from sources import CacheGameSource
 from users import fetch_studies_cached, invalidate_analyses, user_for
 
 app = FastAPI(title="Chess Opening Analyzer")
@@ -309,19 +311,16 @@ async def opening_stats(
     color: str = Query(None),  # "white", "black", or None for both
 ):
     """The Opening Distribution of the user's cached Chess.com games."""
-    games = get_game_cache().get_cached_games(
-        username=chess_com_username,
+    games = await CacheGameSource(get_game_cache()).games(chess_com_username)
+    return opening_distribution(games, DistributionFilters(
         time_classes=time_classes,
         rated=rated,
-        color=color,
-        from_year=from_year,
-        from_month=from_month,
-        to_year=to_year,
-        to_month=to_month,
+        color={"white": chess.WHITE, "black": chess.BLACK}.get(color),
+        from_month=(from_year, from_month),
+        to_month=(to_year, to_month),
         from_ts=from_ts,
         to_ts=to_ts,
-    )
-    return opening_distribution(games, chess_com_username)
+    ))
 
 
 # ================== Game Cache Endpoints ==================
