@@ -184,11 +184,11 @@ class CountedGames(CacheGameSource):
         self.reads = 0
         self.error = None
 
-    async def fetch_games(self, username, filters):
+    async def games(self, username):
         self.reads += 1
         if self.error:
             raise self.error
-        return await super().fetch_games(username, filters)
+        return await super().games(username)
 
 
 # White plays Bc4 where the Repertoire has Nf3: one occurrence of a Recall Gap

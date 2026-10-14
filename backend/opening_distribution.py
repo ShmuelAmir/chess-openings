@@ -1,13 +1,17 @@
 """
 Opening Distribution - how often the user plays each opening and how they score in it.
 
-Pure: takes cached games and returns the Opening Distribution. No I/O. See
-Opening Distribution in CONTEXT.md.
+Pure: takes the user's games and its Game Filters, and returns the Opening
+Distribution. No I/O. See Opening Distribution in CONTEXT.md.
 """
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Optional
 
-from game_result import player_result
+import chess
+
+from games import Game
 
 # Openings whose monthly counts make up the trend
 TREND_OPENINGS = 5
@@ -26,6 +30,39 @@ _CATEGORY_KEYWORDS = {
 }
 
 
+@dataclass(frozen=True)
+class DistributionFilters:
+    """The Game Filters of the Opening Distribution. None means no bound."""
+    time_classes: Optional[list[str]] = None  # None or empty means every time control
+    rated: Optional[bool] = None  # True: rated games only; False: casual games only
+    color: Optional[chess.Color] = None  # the user's color
+    from_month: Optional[tuple[int, int]] = None  # (year, month) of the Chess.com archive
+    to_month: Optional[tuple[int, int]] = None
+    from_ts: Optional[int] = None  # Unix timestamps the game ended between
+    to_ts: Optional[int] = None
+
+    def shows(self, game: Game) -> bool:
+        """Whether the filters show the game. A game with no date is outside any timestamp bound."""
+        if self.time_classes and game.time_class not in self.time_classes:
+            return False
+        if self.rated is not None and game.rated != self.rated:
+            return False
+        if self.color is not None and game.color != self.color:
+            return False
+        if self.from_month is not None and game.month < self.from_month:
+            return False
+        if self.to_month is not None and game.month > self.to_month:
+            return False
+        if self.from_ts is not None or self.to_ts is not None:
+            if game.date is None:
+                return False
+            if self.from_ts is not None and game.date < self.from_ts:
+                return False
+            if self.to_ts is not None and game.date > self.to_ts:
+                return False
+        return True
+
+
 def categorize_opening(opening_name: str) -> str:
     """Categorize an opening by its first move family."""
     name_lower = opening_name.lower()
@@ -35,14 +72,13 @@ def categorize_opening(opening_name: str) -> str:
     return "Other"
 
 
-def opening_distribution(games: list[dict], username: str) -> dict:
+def opening_distribution(games: list[Game], filters: DistributionFilters = DistributionFilters()) -> dict:
     """
-    The Opening Distribution of the user's games.
+    The Opening Distribution of the user's games that the filters show.
 
     Args:
-        games: Cached games, each with Chess.com's opening label as
-            'opening_name' and White's result code as 'result'
-        username: The user's Chess.com username
+        games: The user's games
+        filters: The Opening Distribution's Game Filters
 
     Returns:
         The response of /api/opening-stats: every opening most played first
@@ -50,7 +86,7 @@ def opening_distribution(games: list[dict], username: str) -> dict:
         and the monthly (UTC) counts of the most played openings. A game with no
         result is a game played, but not a win, draw or loss.
     """
-    username_lower = username.lower()
+    games = [game for game in games if filters.shows(game)]
 
     opening_counts = Counter()
     results = defaultdict(Counter)  # {opening: {"win" | "draw" | "loss": count}}
@@ -58,18 +94,15 @@ def opening_distribution(games: list[dict], username: str) -> dict:
     monthly_counts = defaultdict(Counter)  # {month: {opening: count}}
 
     for game in games:
-        opening_name = game.get("opening_name") or "Unknown"
+        opening_name = game.opening_name or "Unknown"
         opening_counts[opening_name] += 1
         category_counts[categorize_opening(opening_name)] += 1
 
-        user_is_white = (game.get("white") or "").lower() == username_lower
-        result = player_result(game.get("result") or "", user_is_white)
-        if result:
-            results[opening_name][result] += 1
+        if game.result:
+            results[opening_name][game.result] += 1
 
-        date_ts = game.get("date")
-        if date_ts:
-            month = datetime.fromtimestamp(date_ts, timezone.utc).strftime("%Y-%m")
+        if game.date:
+            month = datetime.fromtimestamp(game.date, timezone.utc).strftime("%Y-%m")
             monthly_counts[month][opening_name] += 1
 
     top_openings = []

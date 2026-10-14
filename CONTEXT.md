@@ -133,16 +133,17 @@ The system is organized in horizontal layers from request → response:
 3. **Source Layer** (`sources.py`)
    - Concrete implementations of abstract source interfaces
    - **`LichessRepertoireSource`:** Fetches every study the user owns from Lichess and builds their `Repertoire`
-   - **`CacheGameSource`:** Fetches games from the local SQLite cache, applies filters
+   - **`CacheGameSource`:** Reads the user's games from the local SQLite cache as typed `Game`s, deciding the user's color and result (the only place either is worked out from the players' names)
    - These are adapters at the seams between the pipeline and external systems
 
 4. **Domain Logic Layer**
    - **`repertoire.py`:** Defines `Repertoire`, `RepertoireNode`, `RepertoireBuilder`
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
    - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into the recall view (studies, ranked Recall Gaps, totals) under the Game Filters. Its view dataclasses are the wire contract of `/api/recall-view`
-   - **`opening_distribution.py`:** The pure Opening Distribution: openings by games played, the user's wins, draws and losses in each (by the result rule the recall view uses), first-move categories and the monthly trend, in UTC months, of the five most played openings
-   - **`game_result.py`:** The pure result rule (`player_result`): the user's win, loss or draw from White's Chess.com result code, shared by the recall view and the Opening Distribution
-   - **`game_cache.py`:** SQLite game storage and filtering
+   - **`games.py`:** `Game`, one of the user's games as it crosses the game seam: URL, date, archive month, time class, rated, Chess.com's opening label, moves, and the user's color and result
+   - **`opening_distribution.py`:** The pure Opening Distribution: filters the user's `Game`s by its own Game Filters (`DistributionFilters`: time controls, rated, color, archive-month and timestamp bounds), then counts openings by games played, the user's wins, draws and losses in each (by the result rule the recall view uses), first-move categories and the monthly trend, in UTC months, of the five most played openings
+   - **`game_result.py`:** The pure result rule (`player_result`): the user's win, loss or draw from White's Chess.com result code, applied once by `CacheGameSource`, so the recall view and the Opening Distribution read the same result
+   - **`game_cache.py`:** SQLite game storage; it returns a user's cached games and filters none
    - **`sync.py`:** The Sync service: Chess.com months into the game cache, the Lichess Repertoire refresh, each source's status
    - **`exclusions.py`:** The persisted "not repertoire" exclusion list (SQLite, next to the game cache)
    - **`drill_attempts.py`:** The persisted Drill Attempts (SQLite, next to the game cache)
@@ -213,7 +214,8 @@ LichessRepertoireSource.fetch_repertoire()
   (Lichess refusing the token here, 401/403, is answered 401 "Invalid Lichess
   token"; the token is not checked while the Repertoire is cached)
   ↓
-Pipeline calls game_source.fetch_games(username, GameFilters()) — every cached game
+Pipeline calls game_source.games(username) — every cached game, as typed Games
+with the user's color and result
   ↓
 Pipeline walks each game with RepertoireWalker into a walk record
   ↓
@@ -241,6 +243,6 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Alternative adapters: `MockRepertoireSource` (for testing), `FileRepertoireSource` (load from PGN file)
 
 2. **Game fetching seam:**
-   - Abstract interface: `GameSource`
-   - Current adapter: `CacheGameSource` (local SQLite)
+   - Abstract interface: `GameSource.games(username) -> list[Game]`; filtering is the reader's (the Recall Gap aggregator, the Opening Distribution)
+   - Current adapter: `CacheGameSource` (local SQLite); `/api/opening-stats` reads through it too
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)

@@ -1,7 +1,7 @@
 # ADR-0001: Pipeline Orchestration with Dependency Injection
 
 **Date:** 2026-05-08  
-**Status:** Accepted (repertoire caching amended 2026-10-01, recall view assembly amended 2026-10-09, per-user registry and Sync amended 2026-10-14, see below)  
+**Status:** Accepted (repertoire caching amended 2026-10-01, recall view assembly amended 2026-10-09, per-user registry and Sync amended 2026-10-14, game seam amended 2026-10-14, see below)  
 **Context:** Backend analysis workflow orchestration
 
 ## Problem
@@ -116,3 +116,7 @@ The pipeline's `analyze` (one row per game via `DeviationAnalyzer`) is replaced 
 The per-user registry moves from `main.py` to `users.py` (issue #63). There, each User (identified by their Lichess token) holds their pipeline and their Syncs; handlers ask `users.user_for(token)` for the User, and `main.py` no longer keeps or iterates over pipelines. A Sync takes the pipeline directly (with `ChessComSync`, `RepertoireSyncLog` and a clock) and calls `refresh_repertoire`, `invalidate_games`, `last_gap_statuses` and `gap_statuses` itself, with no callables in between: the pipeline has one implementation. It also takes the Chess.com username it syncs, since a Sync is still kept per User and Chess.com account. The short-lived listing cache of a token's studies moves to `users.py` with the registry, which builds `LichessRepertoireSource` with it. The pipeline takes an injected clock, which the User's Syncs share. The seams stay `RepertoireSource`, `GameSource` and the Chess.com client, so Sync tests run the real pipeline over fakes at those seams. Invalidation now follows the User: a Sync's new games drop only its own User's last analysis, and a "not repertoire" change drops only the changing User's Repertoire; clearing an account's cached games (no token) still drops every User's analysis. The rest of this decision stands.
 
 A User then has one Sync (issue #64): the Chess.com username moves from the Sync's constructor to `start` and `status`, since the browser names the linked account on every request. This replaces the per-account Sync above. The rest of this decision stands.
+
+## Amendment (2026-10-14): the game seam returns typed Games
+
+`GameSource.fetch_games(username, filters)` becomes `GameSource.games(username) -> list[Game]` (issue #68), and `GameFilters` is removed: the pipeline always passed an empty one, since the Recall Gap aggregator filters by itself. A `Game` (`games.py`) carries the user's color and result, which `CacheGameSource` decides once from the players' names and White's result code; the pipeline, the game cache and the Opening Distribution no longer work out the user's side again. The game cache filters nothing. `/api/opening-stats` now reads through `CacheGameSource` as well, and `opening_distribution.py` applies the Opening Distribution's own Game Filters (`DistributionFilters`) to the `Game`s; its request and response do not change. The seam stays where it was, only narrower. The rest of this decision stands.

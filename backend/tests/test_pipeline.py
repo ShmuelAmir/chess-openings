@@ -1,6 +1,9 @@
 import asyncio
 
+import chess
+
 from drill_attempts import DrillAttempt
+from games import Game
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from recall_gaps import RecallFilters
 from repertoire import RepertoireBuilder
@@ -27,8 +30,14 @@ class StudiesSource(RepertoireSource):
         return repertoire_of(*study_ids)
 
 
+def white_game(moves, url="g1", date=100, time_class="blitz", rated=True):
+    """A game the user played as White, with no known result."""
+    return Game(url=url, date=date, month=(2026, 3), time_class=time_class, rated=rated,
+                opening_name="", moves=tuple(moves), color=chess.WHITE, result="")
+
+
 class NoGames(GameSource):
-    async def fetch_games(self, username, filters):
+    async def games(self, username):
         return []
 
 
@@ -85,9 +94,9 @@ class CountingGames(GameSource):
     def __init__(self):
         self.fetches = 0
 
-    async def fetch_games(self, username, filters):
+    async def games(self, username):
         self.fetches += 1
-        return [{"url": "g1", "white": "me", "black": "them", "moves": ["e4", "c5"], "date": 1}]
+        return [white_game(["e4", "c5"], date=1)]
 
 
 def test_a_refresh_reports_whether_the_repertoire_changed():
@@ -159,10 +168,10 @@ def test_a_refresh_skips_a_repertoire_fetched_moments_ago():
 
 class FixedGames(GameSource):
     def __init__(self, games):
-        self.games = games
+        self.fixed = games
 
-    async def fetch_games(self, username, filters):
-        return self.games
+    async def games(self, username):
+        return self.fixed
 
 
 class ItalianSource(RepertoireSource):
@@ -174,8 +183,7 @@ class ItalianSource(RepertoireSource):
 
 def test_gap_statuses_cover_every_game():
     games = FixedGames([
-        {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
-         "date": 100, "time_class": "bullet", "rated": False},
+        white_game(["e4", "e5", "Bc4"], time_class="bullet", rated=False),
     ])
     pipeline = RepertoireAnalysisPipeline(ItalianSource(), games)
 
@@ -194,8 +202,7 @@ def test_gap_statuses_cover_every_game():
 
 def test_the_practice_queue_reads_the_drill_attempts():
     games = FixedGames([
-        {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
-         "date": 100, "time_class": "blitz", "rated": True},
+        white_game(["e4", "e5", "Bc4"]),
     ])
     attempts = []
     pipeline = RepertoireAnalysisPipeline(ItalianSource(), games, drill_attempts=lambda: attempts)
@@ -225,8 +232,7 @@ class NamedSource(RepertoireSource):
         return builder.build()
 
 
-BC4_MISS = {"white": "me", "black": "x", "moves": ["e4", "e5", "Bc4"], "url": "g1",
-            "date": 100, "time_class": "blitz", "rated": True}
+BC4_MISS = white_game(["e4", "e5", "Bc4"])
 
 
 def test_the_recall_view_lists_the_studies_by_opening_name():
