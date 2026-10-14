@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from contextlib import contextmanager
 
 from lichess import LichessClient, LichessRateLimitError
-from chess_com import ChessComClient
+from chess_com import ChessComAccountNotFoundError, ChessComClient
 from game_cache import get_game_cache
 from exclusions import get_exclusion_store
 from drill_attempts import get_drill_attempt_store
@@ -59,6 +59,16 @@ def _token_key(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+async def _list_studies_into_cache(token: str) -> list[dict]:
+    """List the token owner's studies from Lichess, into the cache."""
+    async with LichessClient(token=token) as client:
+        account = await client.get_account()
+        studies = await client.get_user_studies(account["username"])
+
+    _studies_cache[_token_key(token)] = (time.monotonic(), studies)
+    return studies
+
+
 async def fetch_studies_cached(token: str) -> list[dict]:
     """
     Return the token owner's studies, using a short-lived cache.
@@ -66,19 +76,22 @@ async def fetch_studies_cached(token: str) -> list[dict]:
     Concurrent callers for the same token share a single upstream request.
     """
     key = _token_key(token)
-    lock = _studies_locks.setdefault(key, asyncio.Lock())
 
-    async with lock:
+    async with _studies_locks.setdefault(key, asyncio.Lock()):
         cached = _studies_cache.get(key)
         if cached and time.monotonic() - cached[0] < STUDIES_CACHE_TTL:
             return cached[1]
 
-        async with LichessClient(token=token) as client:
-            account = await client.get_account()
-            studies = await client.get_user_studies(account["username"])
+        return await _list_studies_into_cache(token)
 
-        _studies_cache[key] = (time.monotonic(), studies)
-        return studies
+
+async def fetch_studies_afresh(token: str) -> list[dict]:
+    """
+    Return the token owner's studies as Lichess lists them now, so new ones
+    join the Repertoire being built; the cache then holds this listing.
+    """
+    async with _studies_locks.setdefault(_token_key(token), asyncio.Lock()):
+        return await _list_studies_into_cache(token)
 
 
 # One pipeline per Lichess user, so their Repertoire stays cached between requests.
@@ -92,7 +105,7 @@ def pipeline_for(token: str) -> RepertoireAnalysisPipeline:
         _pipelines[key] = RepertoireAnalysisPipeline(
             repertoire_source=LichessRepertoireSource(
                 lichess_token=token,
-                list_studies=lambda: fetch_studies_cached(token),
+                list_studies=lambda: fetch_studies_afresh(token),
                 excluded_studies=get_exclusion_store().excluded_studies,
             ),
             game_source=CacheGameSource(get_game_cache()),
@@ -119,10 +132,8 @@ def sync_for(token: str, chess_com_username: str) -> Sync:
         pipeline = pipeline_for(token)
 
         async def refresh_repertoire() -> bool:
-            # List the studies afresh, so new ones join the Repertoire; a
-            # Repertoire built moments ago (e.g. by the page that just
+            # A Repertoire built moments ago (e.g. by the page that just
             # opened) is fresh enough, and spares the Lichess rate limit
-            _studies_cache.pop(_token_key(token), None)
             return await pipeline.refresh_repertoire(fresh_within=REPERTOIRE_FRESH_SECONDS)
 
         def games_last_success():
@@ -131,19 +142,8 @@ def sync_for(token: str, chess_com_username: str) -> Sync:
 
         games_sync = ChessComSync(get_game_cache(), client=ChessComClient)
 
-        async def sync_games(on_month):
-            try:
-                return await games_sync.sync(chess_com_username, on_month)
-            except httpx.HTTPStatusError as e:
-                # Chess.com answers unknown players with 404 or 410 Gone.
-                if e.response.status_code in (404, 410):
-                    raise RuntimeError(
-                        f"No Chess.com account named '{chess_com_username}'"
-                    ) from e
-                raise
-
         _syncs[key] = Sync(
-            sync_games=sync_games,
+            sync_games=lambda on_month: games_sync.sync(chess_com_username, on_month),
             refresh_repertoire=refresh_repertoire,
             games_last_success=games_last_success,
             repertoire_log=RepertoireSyncLog(user=_token_key(token)),
@@ -319,14 +319,11 @@ async def validate_chess_com_username(username: str):
     async with ChessComClient() as client:
         try:
             await client.get_archives(username)
-        except httpx.HTTPStatusError as e:
-            # Chess.com answers unknown players with 404 or 410 Gone.
-            if e.response.status_code in (404, 410):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No Chess.com account named '{username}'. Use your Chess.com username, not your email.",
-                )
-            raise
+        except ChessComAccountNotFoundError as e:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{e}. Use your Chess.com username, not your email.",
+            )
     return {"username": username, "valid": True}
 
 

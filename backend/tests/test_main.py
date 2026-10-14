@@ -2,6 +2,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 import main
+from chess_com import ChessComAccountNotFoundError
 from pipeline import GameSource, RepertoireAnalysisPipeline, RepertoireSource
 from repertoire import RepertoireBuilder
 
@@ -108,3 +109,27 @@ def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monke
     assert cache.filters["username"] == "me"
     assert cache.filters["color"] == "white"
     assert (cache.filters["from_year"], cache.filters["to_month"]) == (2026, 3)
+
+
+class NoSuchAccount:
+    """Chess.com has no such account."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        pass
+
+    async def get_archives(self, username):
+        raise ChessComAccountNotFoundError(username)
+
+
+def test_validating_an_unknown_chess_com_account_is_a_404(monkeypatch):
+    monkeypatch.setattr(main, "ChessComClient", NoSuchAccount)
+
+    response = TestClient(main.app).get("/api/chess-com/validate/nobody")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "No Chess.com account named 'nobody'. Use your Chess.com username, not your email."
+    )

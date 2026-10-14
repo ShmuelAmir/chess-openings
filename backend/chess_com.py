@@ -9,12 +9,24 @@ import chess.pgn
 from opening_normalizer import OpeningNormalizer
 
 
+class ChessComAccountNotFoundError(Exception):
+    """Chess.com has no account with this username."""
+
+    def __init__(self, username: str):
+        super().__init__(f"No Chess.com account named '{username}'")
+
+
 class ChessComClient:
     """Client for Chess.com Public API."""
     
     BASE_URL = "https://api.chess.com/pub"
     
-    def __init__(self):
+    def __init__(self, transport: Optional[httpx.AsyncBaseTransport] = None):
+        """
+        Args:
+            transport: Carries the requests, in place of the network (tests)
+        """
+        self._transport = transport
         self._client: Optional[httpx.AsyncClient] = None
     
     async def __aenter__(self):
@@ -25,6 +37,7 @@ class ChessComClient:
                 "User-Agent": "ChessOpeningAnalyzer/1.0 (github.com/chess-opening-analyzer)",
             },
             timeout=30.0,
+            transport=self._transport,
         )
         return self
     
@@ -33,8 +46,16 @@ class ChessComClient:
             await self._client.aclose()
     
     async def get_archives(self, username: str) -> list[str]:
-        """Get list of available monthly game archives."""
+        """
+        Get list of available monthly game archives.
+
+        Raises:
+            ChessComAccountNotFoundError: Chess.com has no such account
+        """
         response = await self._client.get(f"/player/{username}/games/archives")
+        # Chess.com answers unknown accounts with 404 or 410 Gone.
+        if response.status_code in (404, 410):
+            raise ChessComAccountNotFoundError(username)
         response.raise_for_status()
         return response.json().get("archives", [])
     

@@ -79,7 +79,8 @@ class ChessComSync:
             How many games are new, and which months failed to fetch
 
         Raises:
-            Whatever the archive listing raises (e.g. an unknown account)
+            Whatever the archive listing raises (ChessComAccountNotFoundError for
+            an unknown account)
         """
         today = self.now()
         current: Month = (today.year, today.month)
