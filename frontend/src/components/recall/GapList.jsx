@@ -74,38 +74,40 @@ export default function GapList({
         </div>
       )}
 
-      {gaps.map((gap, i) => (
-        <button
-          key={gap.position_key}
-          type="button"
-          className={[
-            "rv-row",
-            gap.position_key === selectedKey && "active",
-            gap.status === "closed" && "closed",
-          ]
-            .filter(Boolean)
-            .join(" ")}
-          onClick={() => onSelect(gap.position_key)}
-        >
-          <span className="rv-rank">{i + 1}</span>
-          <span className="rv-main">
-            <span className="rv-title">
-              {gap.studies.map((s) => s.name).join(", ")}
-              <span className={`rv-dot ${gap.color}`} />
+      <div className="rv-rows">
+        {gaps.map((gap, i) => (
+          <button
+            key={gap.position_key}
+            type="button"
+            className={[
+              "rv-row",
+              gap.position_key === selectedKey && "active",
+              gap.status === "closed" && "closed",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => onSelect(gap.position_key)}
+          >
+            <span className="rv-rank">{i + 1}</span>
+            <span className="rv-main">
+              <span className="rv-title">
+                {gap.studies.map((s) => s.name).join(", ")}
+                <span className={`rv-dot ${gap.color}`} />
+              </span>
+              <span className="rv-line">{formatLine(gap.path)}</span>
+              <span className="rv-moves">
+                you: {gap.wrong_moves.map((m) => `${m.san}×${m.count}`).join(", ")}{" "}
+                · book: {gap.book_moves.join(" / ")}
+              </span>
             </span>
-            <span className="rv-line">{formatLine(gap.path)}</span>
-            <span className="rv-moves">
-              you: {gap.wrong_moves.map((m) => `${m.san}×${m.count}`).join(", ")}{" "}
-              · book: {gap.book_moves.join(" / ")}
+            <span className="rv-count">
+              <b>{gap.occurrences}×</b>
+              <span className="rv-muted">{formatDate(gap.last_seen)}</span>
+              <span className="rv-muted">{formatStatus(gap)}</span>
             </span>
-          </span>
-          <span className="rv-count">
-            <b>{gap.occurrences}×</b>
-            <span className="rv-muted">{formatDate(gap.last_seen)}</span>
-            <span className="rv-muted">{formatStatus(gap)}</span>
-          </span>
-        </button>
-      ))}
+          </button>
+        ))}
+      </div>
     </>
   );
 }
