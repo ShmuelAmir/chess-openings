@@ -2,7 +2,7 @@
 Opening Distribution - how often the user plays each opening and how they score in it.
 
 Pure: takes the user's games and its Game Filters, and returns the Opening
-Distribution. No I/O. See Opening Distribution in CONTEXT.md.
+Distribution. No I/O. See Opening Distribution in GLOSSARY.md.
 """
 from collections import Counter, defaultdict
 from dataclasses import dataclass

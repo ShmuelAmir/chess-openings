@@ -29,7 +29,7 @@ class PositionInfo(NamedTuple):
 
 
 class DeviationType(str, Enum):
-    """Why a game left the book. See Deviation in CONTEXT.md."""
+    """Why a game left the book. See Deviation in GLOSSARY.md."""
     PLAYER_ERROR = "player_error"
     OPPONENT_LEFT_BOOK = "opponent_left_book"
     BOOK_COMPLETED = "book_completed"

@@ -26,7 +26,7 @@ function monthName(month) {
 /**
  * The Progress panel: the monthly Miss Rate and Miss Depth over the last 12
  * months, under every Game Filter but the date range. See Miss Depth in
- * CONTEXT.md.
+ * GLOSSARY.md.
  */
 export default function ProgressPanel({ trend, studyNames, onClose }) {
   return (

@@ -2,7 +2,7 @@
 Recall Gap aggregator - groups player-error Deviations into ranked Recall Gaps.
 
 Pure: takes walk records with their games' metadata and returns the recall
-view. No I/O. See Recall Gap in CONTEXT.md.
+view. No I/O. See Recall Gap in GLOSSARY.md.
 """
 from collections import Counter
 from dataclasses import dataclass, field, replace

@@ -1,6 +1,6 @@
 """
 Sync service - brings both data sources up to date: Chess.com games into the
-local cache, and the user's Lichess Repertoire. See Sync in CONTEXT.md.
+local cache, and the user's Lichess Repertoire. See Sync in GLOSSARY.md.
 
 Each source succeeds or fails on its own; the analysis is re-run only if
 something changed.

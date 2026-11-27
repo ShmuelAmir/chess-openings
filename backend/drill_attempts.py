@@ -1,6 +1,6 @@
 """
 Drill Attempt store - every practice run of a Recall Gap by a Lichess
-account, stored in SQLite next to the game cache. See Drill Attempt in CONTEXT.md.
+account, stored in SQLite next to the game cache. See Drill Attempt in GLOSSARY.md.
 """
 import sqlite3
 from pathlib import Path
