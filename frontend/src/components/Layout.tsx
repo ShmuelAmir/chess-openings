@@ -24,8 +24,10 @@ function LayoutContent() {
 
   // Close profile menu when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (showProfileMenu && !e.target.closest(".profile-menu-container")) {
+    const handleClickOutside = (e: MouseEvent) => {
+      // A click's target is always the element clicked
+      const target = e.target as Element;
+      if (showProfileMenu && !target.closest(".profile-menu-container")) {
         setShowProfileMenu(false);
       }
     };
@@ -33,8 +35,9 @@ function LayoutContent() {
     return () => document.removeEventListener("click", handleClickOutside);
   }, [showProfileMenu]);
 
-  // Welcome screen when not fully connected
-  if (!isConnected) {
+  // Welcome screen when not fully connected. Connected means signed in, so
+  // `lichessUser` is set too; checking it tells the type checker as much
+  if (!isConnected || !lichessUser) {
     return (
       <div className="app">
         <h1>♟️ Chess Opening Analyzer</h1>
@@ -109,7 +112,11 @@ function LayoutContent() {
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        const input = e.target.elements.username.value.trim();
+                        // The form holds one input, named "username"
+                        const field = e.currentTarget.elements.namedItem(
+                          "username",
+                        ) as HTMLInputElement;
+                        const input = field.value.trim();
                         if (input) handleChessComSave(input);
                       }}
                     >

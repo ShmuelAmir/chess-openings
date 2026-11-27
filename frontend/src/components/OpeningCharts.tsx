@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -26,7 +26,52 @@ const COLORS = [
   "#95a5a6",
 ];
 
-export default function OpeningCharts({ data }) {
+/** One opening in the Opening Distribution, most played first. */
+export interface OpeningDistributionRow {
+  opening: string;
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  /** Wins as a percentage of won, drawn and lost games, to 0.1; 0 with none */
+  win_rate: number;
+}
+
+/** How many games fall in one opening category. */
+export interface OpeningCategory {
+  category: string;
+  count: number;
+}
+
+/**
+ * One month (UTC, "YYYY-MM") of the most played openings: each name in
+ * `top_opening_names` is a key holding that month's game count.
+ */
+export interface OpeningTrendMonth {
+  month: string;
+  [opening: string]: string | number;
+}
+
+/** The Opening Distribution, as `/api/opening-stats` returns it. */
+export interface OpeningDistribution {
+  total_games: number;
+  unique_openings: number;
+  top_openings: OpeningDistributionRow[];
+  categories: OpeningCategory[];
+  trends: OpeningTrendMonth[];
+  top_opening_names: string[];
+}
+
+// Recharts types `dataKey` as any string, so `satisfies` checks each key
+// against the series the chart reads
+type RowKey = keyof OpeningDistributionRow;
+type CategoryKey = keyof OpeningCategory;
+
+export default function OpeningCharts({
+  data,
+}: {
+  data: OpeningDistribution | null;
+}) {
   const [showAllOpenings, setShowAllOpenings] = useState(false);
 
   if (!data) return null;
@@ -73,7 +118,7 @@ export default function OpeningCharts({ data }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
             <XAxis type="number" stroke="#888" />
             <YAxis
-              dataKey="opening"
+              dataKey={"opening" satisfies RowKey}
               type="category"
               stroke="#888"
               width={140}
@@ -89,7 +134,11 @@ export default function OpeningCharts({ data }) {
                 name === "games" ? "Games" : name,
               ]}
             />
-            <Bar dataKey="games" fill="#81b64c" name="Games" />
+            <Bar
+              dataKey={"games" satisfies RowKey}
+              fill="#81b64c"
+              name="Games"
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -101,13 +150,14 @@ export default function OpeningCharts({ data }) {
           <PieChart>
             <Pie
               data={categories}
-              dataKey="count"
-              nameKey="category"
+              dataKey={"count" satisfies CategoryKey}
+              nameKey={"category" satisfies CategoryKey}
               cx="50%"
               cy="50%"
               outerRadius={100}
-              label={({ category, percent }) =>
-                `${category}: ${(percent * 100).toFixed(0)}%`
+              // `name` is each entry's category, which nameKey picks out
+              label={({ name, percent }) =>
+                `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`
               }
               labelLine={{ stroke: "#666" }}
             >
@@ -144,7 +194,7 @@ export default function OpeningCharts({ data }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
             <XAxis type="number" stroke="#888" />
             <YAxis
-              dataKey="opening"
+              dataKey={"opening" satisfies RowKey}
               type="category"
               stroke="#888"
               width={140}
@@ -157,14 +207,25 @@ export default function OpeningCharts({ data }) {
               }}
               formatter={(value, name) => {
                 if (name === "win_rate") return [`${value}%`, "Win Rate"];
-                return [value, name.charAt(0).toUpperCase() + name.slice(1)];
+                const label = String(name);
+                return [value, label.charAt(0).toUpperCase() + label.slice(1)];
               }}
             />
             <Legend />
-            <Bar dataKey="wins" stackId="result" fill="#81b64c" name="Wins" />
-            <Bar dataKey="draws" stackId="result" fill="#f39c12" name="Draws" />
             <Bar
-              dataKey="losses"
+              dataKey={"wins" satisfies RowKey}
+              stackId="result"
+              fill="#81b64c"
+              name="Wins"
+            />
+            <Bar
+              dataKey={"draws" satisfies RowKey}
+              stackId="result"
+              fill="#f39c12"
+              name="Draws"
+            />
+            <Bar
+              dataKey={"losses" satisfies RowKey}
               stackId="result"
               fill="#e74c3c"
               name="Losses"
@@ -183,7 +244,10 @@ export default function OpeningCharts({ data }) {
               margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-              <XAxis dataKey="month" stroke="#888" />
+              <XAxis
+                dataKey={"month" satisfies keyof OpeningTrendMonth}
+                stroke="#888"
+              />
               <YAxis stroke="#888" />
               <Tooltip
                 contentStyle={{

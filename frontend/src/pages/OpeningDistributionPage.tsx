@@ -1,20 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSync } from "../context/SyncContext";
-import GameFilters from "../components/GameFilters";
-import OpeningCharts from "../components/OpeningCharts";
+import GameFilters, {
+  type OpeningDistributionFilters,
+} from "../components/GameFilters";
+import OpeningCharts, {
+  type OpeningDistribution,
+} from "../components/OpeningCharts";
 
 export default function OpeningDistributionPage() {
   const { chessComUsername } = useAuth();
   const { cachedGames } = useSync();
 
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<OpeningDistribution | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [activeFilters, setActiveFilters] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeFilters, setActiveFilters] =
+    useState<OpeningDistributionFilters | null>(null);
 
   const loadStats = useCallback(
-    async (filters = null) => {
+    async (filters: OpeningDistributionFilters | null = null) => {
       if (!chessComUsername) return;
 
       setLoading(true);
@@ -25,7 +30,7 @@ export default function OpeningDistributionPage() {
         const nowTs = Math.floor(Date.now() / 1000);
         const weekAgoTs = nowTs - 7 * 24 * 60 * 60;
         const weekAgoDate = new Date(weekAgoTs * 1000);
-        const defaultFilters = filters ||
+        const defaultFilters: OpeningDistributionFilters = filters ||
           activeFilters || {
             fromYear: weekAgoDate.getFullYear(),
             fromMonth: weekAgoDate.getMonth() + 1,
@@ -40,17 +45,17 @@ export default function OpeningDistributionPage() {
 
         const params = new URLSearchParams({
           chess_com_username: chessComUsername,
-          from_year: defaultFilters.fromYear,
-          from_month: defaultFilters.fromMonth,
-          to_year: defaultFilters.toYear,
-          to_month: defaultFilters.toMonth,
+          from_year: String(defaultFilters.fromYear),
+          from_month: String(defaultFilters.fromMonth),
+          to_year: String(defaultFilters.toYear),
+          to_month: String(defaultFilters.toMonth),
         });
 
         if (defaultFilters.fromTimestamp) {
-          params.append("from_ts", defaultFilters.fromTimestamp);
+          params.append("from_ts", String(defaultFilters.fromTimestamp));
         }
         if (defaultFilters.toTimestamp) {
-          params.append("to_ts", defaultFilters.toTimestamp);
+          params.append("to_ts", String(defaultFilters.toTimestamp));
         }
 
         if (
@@ -79,11 +84,12 @@ export default function OpeningDistributionPage() {
           throw new Error("Failed to fetch opening statistics");
         }
 
-        const result = await response.json();
+        const result: OpeningDistribution = await response.json();
         setData(result);
         setActiveFilters(defaultFilters);
       } catch (err) {
-        setError(err.message);
+        // fetch and response.json throw only Errors, and so does this block
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }
@@ -93,12 +99,13 @@ export default function OpeningDistributionPage() {
 
   // Auto-load on mount when there are cached games
   useEffect(() => {
-    if (cachedGames > 0 && !data && !loading) {
+    // cachedGames is null before the first Sync state arrives
+    if (cachedGames !== null && cachedGames > 0 && !data && !loading) {
       loadStats();
     }
   }, [cachedGames]);
 
-  const handleApplyFilters = (filters) => {
+  const handleApplyFilters = (filters: OpeningDistributionFilters) => {
     loadStats(filters);
   };
 

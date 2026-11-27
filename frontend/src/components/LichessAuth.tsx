@@ -1,6 +1,27 @@
 import { useState, useEffect } from "react";
+import type { LichessUser } from "../context/AuthContext";
 
-function LichessAuth({ user, onLogin, onLogout }) {
+/** Where to send the user to sign in, as `/api/auth/lichess` returns it. */
+interface LichessAuthStart {
+  auth_url: string;
+  state: string;
+}
+
+/**
+ * Lichess's OAuth token JSON, which `/api/auth/callback` passes on. Only the
+ * field the app reads is listed; Lichess sends more.
+ */
+interface LichessToken {
+  access_token: string;
+}
+
+interface LichessAuthProps {
+  user: LichessUser | null;
+  onLogin: (token: string) => void;
+  onLogout: () => void;
+}
+
+function LichessAuth({ user, onLogin, onLogout }: LichessAuthProps) {
   const [loading, setLoading] = useState(false);
 
   // Handle OAuth callback
@@ -18,7 +39,7 @@ function LichessAuth({ user, onLogin, onLogout }) {
     setLoading(true);
     try {
       const response = await fetch("/api/auth/lichess");
-      const data = await response.json();
+      const data: LichessAuthStart = await response.json();
 
       // Store state for verification
       sessionStorage.setItem("lichess_oauth_state", data.state);
@@ -31,7 +52,7 @@ function LichessAuth({ user, onLogin, onLogout }) {
     }
   };
 
-  const exchangeToken = async (code, state) => {
+  const exchangeToken = async (code: string, state: string) => {
     const storedState = sessionStorage.getItem("lichess_oauth_state");
 
     if (state !== storedState) {
@@ -48,7 +69,7 @@ function LichessAuth({ user, onLogin, onLogout }) {
       );
 
       if (response.ok) {
-        const data = await response.json();
+        const data: LichessToken = await response.json();
         onLogin(data.access_token);
 
         // Clean URL
