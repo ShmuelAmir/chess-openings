@@ -63,10 +63,15 @@ lint:
 lint-backend:
 	cd backend && venv/bin/ruff check .; s=$$?; venv/bin/ruff format --check . && exit $$s
 
-# Prettier, then the TypeScript type check; fails if either does.
+# Prettier, the TypeScript type check, then a check that src/ holds no JavaScript;
+# fails if any does. tsc skips .js files, so without the last check a stray one
+# would pass unchecked (docs/adr/0002-frontend-typescript.md).
 lint-frontend:
 	$(link-node-modules)
-	cd frontend && npm run lint; s=$$?; npm run typecheck && exit $$s
+	cd frontend && npm run lint; s=$$?; npm run typecheck || s=1; \
+	js=$$(find src -name '*.js' -o -name '*.jsx'); \
+	if [ -n "$$js" ]; then echo "JavaScript in frontend/src; the frontend is TypeScript only:" >&2; echo "$$js" >&2; s=1; fi; \
+	exit $$s
 
 lint-docs:
 	python3 scripts/check_md_links.py

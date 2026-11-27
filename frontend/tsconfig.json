@@ -1,6 +1,6 @@
 {
-  // The frontend is moving to TypeScript one module at a time (issue #82).
-  // Until it's done, JavaScript files sit alongside and aren't checked.
+  // The frontend is TypeScript only (docs/adr/0002-frontend-typescript.md):
+  // tsc skips any .js file, so `make lint` refuses them under src/.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -8,13 +8,11 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
-    "allowJs": true,
-    "checkJs": false,
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
     // `import.meta.env` and CSS imports, as Vite provides them
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.js"]
+  "include": ["src", "vite.config.ts"]
 }
