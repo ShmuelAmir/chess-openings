@@ -4,6 +4,7 @@ Opening Distribution - how often the user plays each opening and how they score 
 Pure: takes the user's games and its Game Filters, and returns the Opening
 Distribution. No I/O. See Opening Distribution in GLOSSARY.md.
 """
+
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -18,13 +19,46 @@ TREND_OPENINGS = 5
 
 # Opening name keywords of each first-move family, checked in this order
 _CATEGORY_KEYWORDS = {
-    "e4 Openings": ["sicilian", "italian", "spanish", "ruy lopez", "french", "caro-kann",
-                    "scandinavian", "alekhine", "pirc", "modern", "king's pawn", "scotch",
-                    "petroff", "petrov", "vienna", "bishop's opening", "center game",
-                    "king's gambit", "philidor", "two knights"],
-    "d4 Openings": ["queen's gambit", "king's indian", "slav", "gruenfeld", "grunfeld",
-                    "nimzo", "queen's indian", "dutch", "london", "trompowsky", "torre",
-                    "colle", "catalan", "bogo", "benoni", "semi-slav"],
+    "e4 Openings": [
+        "sicilian",
+        "italian",
+        "spanish",
+        "ruy lopez",
+        "french",
+        "caro-kann",
+        "scandinavian",
+        "alekhine",
+        "pirc",
+        "modern",
+        "king's pawn",
+        "scotch",
+        "petroff",
+        "petrov",
+        "vienna",
+        "bishop's opening",
+        "center game",
+        "king's gambit",
+        "philidor",
+        "two knights",
+    ],
+    "d4 Openings": [
+        "queen's gambit",
+        "king's indian",
+        "slav",
+        "gruenfeld",
+        "grunfeld",
+        "nimzo",
+        "queen's indian",
+        "dutch",
+        "london",
+        "trompowsky",
+        "torre",
+        "colle",
+        "catalan",
+        "bogo",
+        "benoni",
+        "semi-slav",
+    ],
     "c4 Openings": ["english"],
     "Nf3 Openings": ["reti", "réti"],
 }
@@ -33,10 +67,13 @@ _CATEGORY_KEYWORDS = {
 @dataclass(frozen=True)
 class DistributionFilters:
     """The Game Filters of the Opening Distribution. None means no bound."""
+
     time_classes: Optional[list[str]] = None  # None or empty means every time control
     rated: Optional[bool] = None  # True: rated games only; False: casual games only
     color: Optional[chess.Color] = None  # the user's color
-    from_month: Optional[tuple[int, int]] = None  # (year, month) of the Chess.com archive
+    from_month: Optional[tuple[int, int]] = (
+        None  # (year, month) of the Chess.com archive
+    )
     to_month: Optional[tuple[int, int]] = None
     from_ts: Optional[int] = None  # Unix timestamps the game ended between
     to_ts: Optional[int] = None
@@ -72,7 +109,9 @@ def categorize_opening(opening_name: str) -> str:
     return "Other"
 
 
-def opening_distribution(games: list[Game], filters: DistributionFilters = DistributionFilters()) -> dict:
+def opening_distribution(
+    games: list[Game], filters: DistributionFilters = DistributionFilters()
+) -> dict:
     """
     The Opening Distribution of the user's games that the filters show.
 
@@ -107,16 +146,20 @@ def opening_distribution(games: list[Game], filters: DistributionFilters = Distr
 
     top_openings = []
     for name, count in opening_counts.most_common():
-        wins, draws, losses = (results[name][result] for result in ("win", "draw", "loss"))
+        wins, draws, losses = (
+            results[name][result] for result in ("win", "draw", "loss")
+        )
         total = wins + draws + losses
-        top_openings.append({
-            "opening": name,
-            "games": count,
-            "wins": wins,
-            "draws": draws,
-            "losses": losses,
-            "win_rate": round(wins / total * 100, 1) if total else 0,
-        })
+        top_openings.append(
+            {
+                "opening": name,
+                "games": count,
+                "wins": wins,
+                "draws": draws,
+                "losses": losses,
+                "win_rate": round(wins / total * 100, 1) if total else 0,
+            }
+        )
 
     top_names = [name for name, _ in opening_counts.most_common(TREND_OPENINGS)]
 
@@ -129,7 +172,10 @@ def opening_distribution(games: list[Game], filters: DistributionFilters = Distr
             for category, count in category_counts.most_common()
         ],
         "trends": [
-            {"month": month, **{name: monthly_counts[month][name] for name in top_names}}
+            {
+                "month": month,
+                **{name: monthly_counts[month][name] for name in top_names},
+            }
             for month in sorted(monthly_counts)
         ],
         "top_opening_names": top_names,

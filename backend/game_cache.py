@@ -1,8 +1,9 @@
 """
 Game Cache - SQLite storage for Chess.com games
 """
-import sqlite3
+
 import json
+import sqlite3
 import time
 from pathlib import Path
 from typing import Optional
@@ -10,13 +11,13 @@ from typing import Optional
 
 class GameCache:
     """SQLite-based cache for Chess.com games."""
-    
+
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
             db_path = Path(__file__).parent / "chess_games.db"
         self.db_path = str(db_path)
         self._init_db()
-    
+
     def _init_db(self):
         """Initialize the database schema."""
         with sqlite3.connect(self.db_path) as conn:
@@ -70,17 +71,17 @@ class GameCache:
                 )
             """)
             conn.commit()
-    
+
     def get_cached_games(self, username: str) -> list[dict]:
         """Every cached game of the user's, newest first."""
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM games WHERE username = ? ORDER BY date DESC",
-                (username.lower(),)
+                (username.lower(),),
             )
             rows = cursor.fetchall()
-        
+
         games = []
         for row in rows:
             game = dict(row)
@@ -88,58 +89,60 @@ class GameCache:
             game["headers"] = json.loads(game["headers"]) if game["headers"] else {}
             game["rated"] = bool(game["rated"])
             games.append(game)
-        
+
         return games
-    
+
     def save_games(self, username: str, games: list[dict], year: int, month: int):
         """Save games to the cache."""
         username_lower = username.lower()
         now = int(time.time())
-        
+
         with sqlite3.connect(self.db_path) as conn:
             for game in games:
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT OR REPLACE INTO games (
                         url, username, year, month, date, time_class, time_control,
                         rated, white, black, white_rating, black_rating, result,
                         eco_url, opening_name, pgn, moves, headers, fetched_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    game["url"],
-                    username_lower,
-                    year,
-                    month,
-                    game.get("date"),
-                    game.get("time_class"),
-                    game.get("time_control"),
-                    1 if game.get("rated") else 0,
-                    game.get("white"),
-                    game.get("black"),
-                    game.get("white_rating"),
-                    game.get("black_rating"),
-                    game.get("result"),
-                    game.get("eco_url"),
-                    game.get("opening_name"),
-                    game.get("pgn"),
-                    json.dumps(game.get("moves", [])),
-                    json.dumps(game.get("headers", {})),
-                    now,
-                ))
+                """,
+                    (
+                        game["url"],
+                        username_lower,
+                        year,
+                        month,
+                        game.get("date"),
+                        game.get("time_class"),
+                        game.get("time_control"),
+                        1 if game.get("rated") else 0,
+                        game.get("white"),
+                        game.get("black"),
+                        game.get("white_rating"),
+                        game.get("black_rating"),
+                        game.get("result"),
+                        game.get("eco_url"),
+                        game.get("opening_name"),
+                        game.get("pgn"),
+                        json.dumps(game.get("moves", [])),
+                        json.dumps(game.get("headers", {})),
+                        now,
+                    ),
+                )
             conn.commit()
-    
+
     def get_sync_status(self, username: str) -> Optional[dict]:
         """Get the last sync status for a user."""
         username_lower = username.lower()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
-                "SELECT * FROM sync_status WHERE username = ?",
-                (username_lower,)
+                "SELECT * FROM sync_status WHERE username = ?", (username_lower,)
             )
             row = cursor.fetchone()
             return dict(row) if row else None
-    
+
     def record_sync(
         self,
         username: str,
@@ -157,7 +160,8 @@ class GameCache:
         now = int(time.time())
 
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+            conn.execute(
+                """
                 INSERT INTO sync_status (
                     username, last_sync_at, last_synced_year, last_synced_month
                 ) VALUES (?, ?, ?, ?)
@@ -165,8 +169,12 @@ class GameCache:
                     last_sync_at = COALESCE(excluded.last_sync_at, last_sync_at),
                     last_synced_year = excluded.last_synced_year,
                     last_synced_month = excluded.last_synced_month
-            """, (username_lower, None if failed_months else now, year, month))
-            conn.execute("DELETE FROM failed_months WHERE username = ?", (username_lower,))
+            """,
+                (username_lower, None if failed_months else now, year, month),
+            )
+            conn.execute(
+                "DELETE FROM failed_months WHERE username = ?", (username_lower,)
+            )
             conn.executemany(
                 "INSERT INTO failed_months (username, year, month) VALUES (?, ?, ?)",
                 [(username_lower, y, m) for y, m in failed_months],
@@ -180,59 +188,62 @@ class GameCache:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT year, month FROM failed_months WHERE username = ?",
-                (username_lower,)
+                (username_lower,),
             )
             return {(row[0], row[1]) for row in cursor.fetchall()}
 
     def get_cached_months(self, username: str) -> set[tuple[int, int]]:
         """Get set of (year, month) tuples that have cached games."""
         username_lower = username.lower()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT DISTINCT year, month FROM games WHERE username = ?",
-                (username_lower,)
+                (username_lower,),
             )
             return {(row[0], row[1]) for row in cursor.fetchall()}
-    
+
     def count_games(self, username: str) -> int:
         """Count total cached games for a user."""
         username_lower = username.lower()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
-                "SELECT COUNT(*) FROM games WHERE username = ?",
-                (username_lower,)
+                "SELECT COUNT(*) FROM games WHERE username = ?", (username_lower,)
             )
             return cursor.fetchone()[0]
-    
+
     def get_first_game_date(self, username: str) -> Optional[tuple[int, int]]:
         """Get the earliest (year, month) with games for a user."""
         username_lower = username.lower()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT MIN(year), month FROM games WHERE username = ? GROUP BY year ORDER BY year LIMIT 1",
-                (username_lower,)
+                (username_lower,),
             )
             row = cursor.fetchone()
             if row and row[0]:
                 cursor = conn.execute(
                     "SELECT MIN(month) FROM games WHERE username = ? AND year = ?",
-                    (username_lower, row[0])
+                    (username_lower, row[0]),
                 )
                 month_row = cursor.fetchone()
                 return (row[0], month_row[0]) if month_row else None
             return None
-    
+
     def clear_user_cache(self, username: str):
         """Clear all cached games for a user."""
         username_lower = username.lower()
-        
+
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM games WHERE username = ?", (username_lower,))
-            conn.execute("DELETE FROM sync_status WHERE username = ?", (username_lower,))
-            conn.execute("DELETE FROM failed_months WHERE username = ?", (username_lower,))
+            conn.execute(
+                "DELETE FROM sync_status WHERE username = ?", (username_lower,)
+            )
+            conn.execute(
+                "DELETE FROM failed_months WHERE username = ?", (username_lower,)
+            )
             conn.commit()
 
 

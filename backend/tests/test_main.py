@@ -26,7 +26,9 @@ class ItalianSource(RepertoireSource):
         builder = RepertoireBuilder()
         builder.add_study(
             '[ChapterURL "https://lichess.org/study/abc/ch1"]\n\n1. e4 e5 2. Nf3 *\n',
-            "Italian Game", study_name="Italian-Game", study_id="abc",
+            "Italian Game",
+            study_name="Italian-Game",
+            study_id="abc",
         )
         return builder.build()
 
@@ -37,15 +39,27 @@ class RefusedSource(RepertoireSource):
     async def fetch_repertoire(self):
         request = httpx.Request("GET", "https://lichess.org/api/account")
         raise httpx.HTTPStatusError(
-            "401 Unauthorized", request=request, response=httpx.Response(401, request=request)
+            "401 Unauthorized",
+            request=request,
+            response=httpx.Response(401, request=request),
         )
 
 
 class OneMiss(GameSource):
     async def games(self, username):
-        return [Game(url="g1", date=100, month=(2026, 3), time_class="blitz", rated=True,
-                     opening_name="Italian Game", moves=("e4", "e5", "Bc4"),
-                     color=chess.WHITE, result="loss")]
+        return [
+            Game(
+                url="g1",
+                date=100,
+                month=(2026, 3),
+                time_class="blitz",
+                rated=True,
+                opening_name="Italian Game",
+                moves=("e4", "e5", "Bc4"),
+                color=chess.WHITE,
+                result="loss",
+            )
+        ]
 
 
 def sign_in(token, source, tmp_path, account="me"):
@@ -55,7 +69,9 @@ def sign_in(token, source, tmp_path, account="me"):
     users._users[users.token_key(token)] = users.User(
         users.token_key(token),
         account,
-        RepertoireAnalysisPipeline(source, OneMiss(), drill_attempts=drill_attempts.attempts),
+        RepertoireAnalysisPipeline(
+            source, OneMiss(), drill_attempts=drill_attempts.attempts
+        ),
         ChessComSync(GameCache(tmp_path / "games.db"), client=None),
         exclusions,
         drill_attempts,
@@ -81,13 +97,30 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
     view = response.json()
     assert set(view) == {"studies", "gaps", "totals"}
     assert view["studies"] == [
-        {"id": "abc", "name": "Italian-Game", "opening_name": "Italian Game", "color": "white", "gaps": 1}
+        {
+            "id": "abc",
+            "name": "Italian-Game",
+            "opening_name": "Italian Game",
+            "color": "white",
+            "gaps": 1,
+        }
     ]
     assert view["totals"] == {
-        "analysed": 1, "opponent_left_book": 0, "book_completed": 0, "miss_rate": 1.0,
-        "trend": view["totals"]["trend"], "open_gaps": 1, "closed_in_range": 0,
+        "analysed": 1,
+        "opponent_left_book": 0,
+        "book_completed": 0,
+        "miss_rate": 1.0,
+        "trend": view["totals"]["trend"],
+        "open_gaps": 1,
+        "closed_in_range": 0,
     }
-    assert set(view["totals"]["trend"][0]) == {"month", "games", "miss_rate", "miss_depths", "median_miss_depth"}
+    assert set(view["totals"]["trend"][0]) == {
+        "month",
+        "games",
+        "miss_rate",
+        "miss_depths",
+        "median_miss_depth",
+    }
     (gap,) = view["gaps"]
     assert gap == {
         "position_key": gap["position_key"],
@@ -95,7 +128,13 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
         "path": ["e4", "e5"],
         "wrong_moves": [{"san": "Bc4", "count": 1}],
         "book_moves": ["Nf3"],
-        "studies": [{"id": "abc", "name": "Italian-Game", "url": "https://lichess.org/study/abc/ch1#2"}],
+        "studies": [
+            {
+                "id": "abc",
+                "name": "Italian-Game",
+                "url": "https://lichess.org/study/abc/ch1#2",
+            }
+        ],
         "occurrences": 1,
         "last_seen": 100,
         "status": "open",
@@ -103,7 +142,15 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
         "games_to_close": 2,
         "closed_at": None,
         "drill_turns": gap["drill_turns"],
-        "games": [{"url": "g1", "date": 100, "time_class": "blitz", "move_played": "Bc4", "result": "loss"}],
+        "games": [
+            {
+                "url": "g1",
+                "date": 100,
+                "time_class": "blitz",
+                "move_played": "Bc4",
+                "result": "loss",
+            }
+        ],
     }
     assert set(gap["drill_turns"][0]) == {"ply", "position_key", "book_moves"}
 
@@ -113,7 +160,9 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
     assert refused.json() == {"detail": "Invalid Lichess token"}
 
 
-def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(monkeypatch, tmp_path):
+def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(users, "_users", {})
 
     async def owned_studies(token):
@@ -127,7 +176,8 @@ def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(mo
     get_recall_view("their-token")
 
     response = TestClient(main.app).put(
-        "/api/not-repertoire", json={"excluded": ["abc"]},
+        "/api/not-repertoire",
+        json={"excluded": ["abc"]},
         headers={"Authorization": "Bearer my-token"},
     )
     get_recall_view("my-token")
@@ -135,30 +185,78 @@ def test_changing_the_not_repertoire_list_rebuilds_only_that_users_repertoire(mo
 
     assert response.json()["studies"][0]["excluded"] is True
     assert (mine.fetches, theirs.fetches) == (2, 1)
-    their_list = TestClient(main.app).get("/api/not-repertoire", headers={"Authorization": "Bearer their-token"})
+    their_list = TestClient(main.app).get(
+        "/api/not-repertoire", headers={"Authorization": "Bearer their-token"}
+    )
     assert their_list.json()["studies"][0]["excluded"] is False
 
 
-def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(monkeypatch, tmp_path):
+def test_the_opening_distribution_is_of_the_cached_games_under_the_filters(
+    monkeypatch, tmp_path
+):
     cache = GameCache(tmp_path / "games.db")
-    cache.save_games("me", [
-        {"url": "g1", "white": "me", "black": "x", "result": "win", "opening_name": "Italian Game", "date": 100},
-        {"url": "g2", "white": "x", "black": "me", "result": "win", "opening_name": "Sicilian Defense", "date": 100},
-    ], 2026, 2)
-    cache.save_games("me", [
-        {"url": "g3", "white": "me", "black": "x", "result": "win", "opening_name": "London System", "date": 100},
-    ], 2026, 4)
+    cache.save_games(
+        "me",
+        [
+            {
+                "url": "g1",
+                "white": "me",
+                "black": "x",
+                "result": "win",
+                "opening_name": "Italian Game",
+                "date": 100,
+            },
+            {
+                "url": "g2",
+                "white": "x",
+                "black": "me",
+                "result": "win",
+                "opening_name": "Sicilian Defense",
+                "date": 100,
+            },
+        ],
+        2026,
+        2,
+    )
+    cache.save_games(
+        "me",
+        [
+            {
+                "url": "g3",
+                "white": "me",
+                "black": "x",
+                "result": "win",
+                "opening_name": "London System",
+                "date": 100,
+            },
+        ],
+        2026,
+        4,
+    )
     monkeypatch.setattr(main, "get_game_cache", lambda: cache)
 
     response = TestClient(main.app).post(
         "/api/opening-stats",
-        params={"chess_com_username": "me", "from_year": 2026, "from_month": 1,
-                "to_year": 2026, "to_month": 3, "color": "white"},
+        params={
+            "chess_com_username": "me",
+            "from_year": 2026,
+            "from_month": 1,
+            "to_year": 2026,
+            "to_month": 3,
+            "color": "white",
+        },
     )
 
     assert response.status_code == 200
     assert response.json()["top_openings"] == [
-        {"opening": "Italian Game", "games": 1, "wins": 1, "draws": 0, "losses": 0, "win_rate": 100.0}
+        {
+            "opening": "Italian Game",
+            "games": 1,
+            "wins": 1,
+            "draws": 0,
+            "losses": 0,
+            "win_rate": 100.0,
+        }
     ]
 
 
@@ -187,16 +285,24 @@ def test_validating_an_unknown_chess_com_account_is_a_404(monkeypatch):
 
 
 def get_sync(token, chess_com_username):
-    return TestClient(main.app).get(
-        "/api/sync",
-        params={"chess_com_username": chess_com_username},
-        headers={"Authorization": f"Bearer {token}"},
-    ).json()
+    return (
+        TestClient(main.app)
+        .get(
+            "/api/sync",
+            params={"chess_com_username": chess_com_username},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        .json()
+    )
 
 
 def test_each_linked_account_is_reported_by_the_users_one_sync(monkeypatch, tmp_path):
     monkeypatch.setattr(users, "_users", {})
-    monkeypatch.setattr(users, "RepertoireSyncLog", lambda user: RepertoireSyncLog(tmp_path / "app.db", user))
+    monkeypatch.setattr(
+        users,
+        "RepertoireSyncLog",
+        lambda user: RepertoireSyncLog(tmp_path / "app.db", user),
+    )
     sign_in("my-token", ItalianSource(), tmp_path)
     sync = asyncio.run(users.user_for("my-token")).sync
 
@@ -230,7 +336,9 @@ class LichessAccounts:
         if self.token not in self.accounts:
             request = httpx.Request("GET", "https://lichess.org/api/account")
             raise httpx.HTTPStatusError(
-                "401 Unauthorized", request=request, response=httpx.Response(401, request=request)
+                "401 Unauthorized",
+                request=request,
+                response=httpx.Response(401, request=request),
             )
         return {"username": self.accounts[self.token]}
 
@@ -240,21 +348,38 @@ def lichess_accounts(monkeypatch, tmp_path):
     """Users made by users.user_for over these Lichess accounts and a temporary database."""
     monkeypatch.setattr(users, "_users", {})
     monkeypatch.setattr(users, "_accounts", {})
-    monkeypatch.setattr(users, "ExclusionStore", lambda account: ExclusionStore(account, tmp_path / "app.db"))
-    monkeypatch.setattr(users, "DrillAttemptStore", lambda account: DrillAttemptStore(account, tmp_path / "app.db"))
-    monkeypatch.setattr(users, "get_game_cache", lambda: GameCache(tmp_path / "games.db"))
-    lichess = LichessAccounts({"my-token": "Me", "my-new-token": "me", "their-token": "Them"})
+    monkeypatch.setattr(
+        users,
+        "ExclusionStore",
+        lambda account: ExclusionStore(account, tmp_path / "app.db"),
+    )
+    monkeypatch.setattr(
+        users,
+        "DrillAttemptStore",
+        lambda account: DrillAttemptStore(account, tmp_path / "app.db"),
+    )
+    monkeypatch.setattr(
+        users, "get_game_cache", lambda: GameCache(tmp_path / "games.db")
+    )
+    lichess = LichessAccounts(
+        {"my-token": "Me", "my-new-token": "me", "their-token": "Them"}
+    )
     monkeypatch.setattr(users, "LichessClient", lichess)
     return lichess
 
 
-def test_a_users_exclusions_and_drill_attempts_are_their_lichess_accounts(lichess_accounts):
+def test_a_users_exclusions_and_drill_attempts_are_their_lichess_accounts(
+    lichess_accounts,
+):
     async def run():
         mine, mine_again, theirs = [
-            await users.user_for(token) for token in ("my-token", "my-new-token", "their-token")
+            await users.user_for(token)
+            for token in ("my-token", "my-new-token", "their-token")
         ]
         mine.exclusions.set_excluded_studies({"scratch"})
-        mine.drill_attempts.record("gap", passed=True, first_miss_position_key=None, at=100)
+        mine.drill_attempts.record(
+            "gap", passed=True, first_miss_position_key=None, at=100
+        )
         return mine, mine_again, theirs
 
     mine, mine_again, theirs = asyncio.run(run())
@@ -291,7 +416,10 @@ def test_a_drill_attempt_is_recorded_for_the_tokens_account(lichess_accounts, tm
     response = post_drill_attempt("my-token")
 
     assert response.status_code == 201
-    assert [a.gap_position_key for a in DrillAttemptStore("me", tmp_path / "app.db").attempts()] == ["gap"]
+    assert [
+        a.gap_position_key
+        for a in DrillAttemptStore("me", tmp_path / "app.db").attempts()
+    ] == ["gap"]
     assert DrillAttemptStore("them", tmp_path / "app.db").attempts() == []
 
 

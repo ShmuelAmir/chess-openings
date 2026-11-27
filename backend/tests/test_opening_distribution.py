@@ -4,20 +4,35 @@ import chess
 import pytest
 
 from games import Game
-from opening_distribution import DistributionFilters, categorize_opening, opening_distribution
+from opening_distribution import (
+    DistributionFilters,
+    categorize_opening,
+    opening_distribution,
+)
 
 
 def timestamp(year, month, day=15, hour=12, minute=0):
-    return int(datetime(year, month, day, hour, minute, tzinfo=timezone.utc).timestamp())
+    return int(
+        datetime(year, month, day, hour, minute, tzinfo=timezone.utc).timestamp()
+    )
 
 
 def game(opening="Italian Game", result="win", year=2026, month=3, **fields):
     """One of the user's games; `result` is the user's."""
-    return Game(**{
-        "url": "g", "date": timestamp(year, month), "month": (year, month),
-        "time_class": "rapid", "rated": True, "opening_name": opening, "moves": (),
-        "color": chess.WHITE, "result": result, **fields,
-    })
+    return Game(
+        **{
+            "url": "g",
+            "date": timestamp(year, month),
+            "month": (year, month),
+            "time_class": "rapid",
+            "rated": True,
+            "opening_name": opening,
+            "moves": (),
+            "color": chess.WHITE,
+            "result": result,
+            **fields,
+        }
+    )
 
 
 def opening(distribution, name):
@@ -49,7 +64,12 @@ def test_openings_are_counted_and_listed_most_played_first():
 
 
 def test_results_are_the_users():
-    games = [game(result="win"), game(result="win"), game(result="loss"), game(result="draw")]
+    games = [
+        game(result="win"),
+        game(result="win"),
+        game(result="loss"),
+        game(result="draw"),
+    ]
 
     italian = opening(opening_distribution(games), "Italian Game")
 
@@ -82,16 +102,19 @@ def test_a_game_without_an_opening_label_is_the_unknown_opening():
     assert distribution["categories"] == [{"category": "Other", "count": 1}]
 
 
-@pytest.mark.parametrize("name, category", [
-    ("Sicilian Defense", "e4 Openings"),
-    ("Ruy Lopez", "e4 Openings"),
-    ("Queen's Gambit Declined", "d4 Openings"),
-    ("London System", "d4 Openings"),
-    ("English Opening", "c4 Openings"),
-    ("Réti Opening", "Nf3 Openings"),
-    ("Bird's Opening", "Other"),
-    ("Unknown", "Other"),
-])
+@pytest.mark.parametrize(
+    "name, category",
+    [
+        ("Sicilian Defense", "e4 Openings"),
+        ("Ruy Lopez", "e4 Openings"),
+        ("Queen's Gambit Declined", "d4 Openings"),
+        ("London System", "d4 Openings"),
+        ("English Opening", "c4 Openings"),
+        ("Réti Opening", "Nf3 Openings"),
+        ("Bird's Opening", "Other"),
+        ("Unknown", "Other"),
+    ],
+)
 def test_an_opening_is_categorized_by_its_first_move_family(name, category):
     assert categorize_opening(name) == category
 
@@ -131,10 +154,13 @@ def test_the_trend_counts_the_top_five_openings_month_by_month():
     ]
 
 
-@pytest.mark.parametrize("date, month", [
-    (timestamp(2026, 3, 31, 23, 30), "2026-03"),
-    (timestamp(2026, 4, 1, 0, 30), "2026-04"),
-])
+@pytest.mark.parametrize(
+    "date, month",
+    [
+        (timestamp(2026, 3, 31, 23, 30), "2026-03"),
+        (timestamp(2026, 4, 1, 0, 30), "2026-04"),
+    ],
+)
 def test_a_game_is_counted_in_the_utc_month_it_ended(date, month):
     distribution = opening_distribution([game(date=date)])
 
@@ -151,7 +177,10 @@ def test_a_game_without_a_date_is_left_out_of_the_trend():
 
 
 def test_no_filters_show_every_game():
-    games = [game(time_class="bullet", rated=False, color=chess.BLACK, date=None), game()]
+    games = [
+        game(time_class="bullet", rated=False, color=chess.BLACK, date=None),
+        game(),
+    ]
 
     assert opening_distribution(games, DistributionFilters())["total_games"] == 2
 
@@ -163,8 +192,11 @@ def counted(games, **filters):
 
 
 def test_the_time_control_filter_shows_the_games_of_the_selected_time_controls():
-    games = [game("Bullet", time_class="bullet"), game("Blitz", time_class="blitz"),
-             game("Rapid", time_class="rapid")]
+    games = [
+        game("Bullet", time_class="bullet"),
+        game("Blitz", time_class="blitz"),
+        game("Rapid", time_class="rapid"),
+    ]
 
     assert counted(games, time_classes=["blitz", "rapid"]) == ["Blitz", "Rapid"]
 
@@ -176,21 +208,32 @@ def test_the_rated_filter_shows_rated_or_casual_games(rated, expected):
     assert counted(games, rated=rated) == expected
 
 
-@pytest.mark.parametrize("color, expected", [(chess.WHITE, ["As White"]), (chess.BLACK, ["As Black"])])
-def test_the_color_filter_shows_the_games_the_user_played_as_that_color(color, expected):
+@pytest.mark.parametrize(
+    "color, expected", [(chess.WHITE, ["As White"]), (chess.BLACK, ["As Black"])]
+)
+def test_the_color_filter_shows_the_games_the_user_played_as_that_color(
+    color, expected
+):
     games = [game("As White", color=chess.WHITE), game("As Black", color=chess.BLACK)]
 
     assert counted(games, color=color) == expected
 
 
 def test_the_month_bounds_show_the_games_of_the_archive_months_between_them():
-    games = [game(f"{month}", month=month) for month in (1, 2, 3, 4)] + [game("2025-12", year=2025, month=12)]
+    games = [game(f"{month}", month=month) for month in (1, 2, 3, 4)] + [
+        game("2025-12", year=2025, month=12)
+    ]
 
     assert counted(games, from_month=(2026, 2), to_month=(2026, 3)) == ["2", "3"]
 
 
 def test_the_timestamp_bounds_show_the_games_that_ended_between_them():
-    games = [game("Before", date=99), game("From", date=100), game("To", date=200), game("After", date=201)]
+    games = [
+        game("Before", date=99),
+        game("From", date=100),
+        game("To", date=200),
+        game("After", date=201),
+    ]
 
     assert counted(games, from_ts=100, to_ts=200) == ["From", "To"]
 
@@ -203,7 +246,10 @@ def test_a_game_without_a_date_is_outside_any_timestamp_bound():
 
 
 def test_the_counts_are_of_the_games_the_filters_show():
-    games = [game("Italian Game", result="win"), game("Italian Game", result="loss", rated=False)]
+    games = [
+        game("Italian Game", result="win"),
+        game("Italian Game", result="loss", rated=False),
+    ]
 
     distribution = opening_distribution(games, DistributionFilters(rated=True))
 

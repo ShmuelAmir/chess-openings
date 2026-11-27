@@ -2,6 +2,7 @@
 Drill Attempt store - every practice run of a Recall Gap by a Lichess
 account, stored in SQLite next to the game cache. See Drill Attempt in GLOSSARY.md.
 """
+
 import sqlite3
 from pathlib import Path
 from typing import NamedTuple, Optional
@@ -11,7 +12,9 @@ class DrillAttempt(NamedTuple):
     gap_position_key: str
     at: int  # Unix timestamp
     passed: bool
-    first_miss_position_key: Optional[str]  # where a failed attempt's first wrong move was played
+    first_miss_position_key: Optional[
+        str
+    ]  # where a failed attempt's first wrong move was played
 
 
 class DrillAttemptStore:
@@ -39,10 +42,15 @@ class DrillAttemptStore:
                     account TEXT
                 )
             """)
-            columns = [row[1] for row in conn.execute("PRAGMA table_info(drill_attempts)")]
+            columns = [
+                row[1] for row in conn.execute("PRAGMA table_info(drill_attempts)")
+            ]
             if "account" not in columns:
                 conn.execute("ALTER TABLE drill_attempts ADD COLUMN account TEXT")
-            conn.execute("UPDATE drill_attempts SET account = ? WHERE account IS NULL", (account,))
+            conn.execute(
+                "UPDATE drill_attempts SET account = ? WHERE account IS NULL",
+                (account,),
+            )
             conn.commit()
 
     def record(
@@ -54,12 +62,20 @@ class DrillAttemptStore:
     ):
         """Record one of the account's Drill Attempts: a pass, or a fail with its first miss."""
         if passed != (first_miss_position_key is None):
-            raise ValueError("A failed Drill Attempt needs its first miss, and a pass has none")
+            raise ValueError(
+                "A failed Drill Attempt needs its first miss, and a pass has none"
+            )
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO drill_attempts (account, gap_position_key, at, passed, first_miss_position_key)"
                 " VALUES (?, ?, ?, ?, ?)",
-                (self.account, gap_position_key, at, int(passed), first_miss_position_key),
+                (
+                    self.account,
+                    gap_position_key,
+                    at,
+                    int(passed),
+                    first_miss_position_key,
+                ),
             )
             conn.commit()
 
@@ -71,5 +87,6 @@ class DrillAttemptStore:
                 " FROM drill_attempts WHERE account = ? ORDER BY at, id",
                 (self.account,),
             ).fetchall()
-        return [DrillAttempt(key, at, bool(passed), miss) for key, at, passed, miss in rows]
-
+        return [
+            DrillAttempt(key, at, bool(passed), miss) for key, at, passed, miss in rows
+        ]

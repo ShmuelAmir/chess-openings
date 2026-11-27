@@ -52,7 +52,11 @@ export function createSyncClient(backend) {
     schedulePoll(status.running);
     // Announce only a Sync that changed something
     const result = status.result;
-    if (finished && result && (result.games_changed || result.repertoire_changed)) {
+    if (
+      finished &&
+      result &&
+      (result.games_changed || result.repertoire_changed)
+    ) {
       changeListeners.forEach((listener) => listener());
     }
   }

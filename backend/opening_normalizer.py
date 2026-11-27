@@ -1,13 +1,14 @@
 """
 Opening Name Normalizer - Centralized rules for cleaning and standardizing opening names.
 """
+
 import re
 
 
 class OpeningNormalizer:
     """
     Normalizes opening names from various sources into a canonical format.
-    
+
     Handles transformations:
     - Hyphen to space conversion (Chess.com ECO URLs)
     - Removal of move numbers at the end
@@ -18,16 +19,16 @@ class OpeningNormalizer:
     def normalize(name: str) -> str:
         """
         Normalize an opening name to canonical form.
-        
+
         Applies all normalization rules in order:
         1. Remove redundant prefix before colon
         2. Replace hyphens with spaces
         3. Remove move numbers at the end
         4. Strip whitespace
-        
+
         Args:
             name: Raw opening name from any source
-        
+
         Returns:
             Normalized opening name
         """
@@ -52,21 +53,21 @@ class OpeningNormalizer:
     def _remove_redundant_prefix(name: str) -> str:
         """
         Remove redundant prefix before colon.
-        
+
         In Lichess studies, chapter names often have format:
         "Vienna: Accepted" or "Sicilian: Main Line"
-        
+
         We want to keep just the part after the colon (more specific).
         This is because the opening name is often already in the study name.
-        
+
         Example:
             Study name: "Vienna Game"
             Chapter name: "Vienna: Accepted"
             After normalization: "Accepted" (avoids duplication)
-        
+
         Args:
             name: Opening/chapter name possibly with prefix
-        
+
         Returns:
             Name with prefix removed (or original if no colon)
         """
@@ -79,14 +80,14 @@ class OpeningNormalizer:
     def from_eco_url(eco_url: str) -> str:
         """
         Extract and normalize opening name from Chess.com ECO URL.
-        
+
         Example:
             Input: "https://www.chess.com/openings/Italian-Game-Two-Knights-Defense"
             Output: "Italian Game Two Knights Defense"
-        
+
         Args:
             eco_url: Full Chess.com ECO URL or slug
-        
+
         Returns:
             Normalized opening name
         """
@@ -108,17 +109,17 @@ class OpeningNormalizer:
     ) -> tuple[str, str]:
         """
         Normalize a study name and chapter name pair.
-        
+
         In Lichess studies:
         - Study name is the opening (e.g., "Vienna Game")
         - Chapter name is often specific variation (e.g., "Vienna: Accepted")
-        
+
         We normalize both and avoid redundancy.
-        
+
         Args:
             study_name: Study name from Lichess
             chapter_name: Chapter name from PGN header
-        
+
         Returns:
             Tuple of (normalized_opening_name, normalized_chapter_name)
         """

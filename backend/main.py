@@ -1,26 +1,26 @@
 """
 Chess Opening Deviation Analyzer - FastAPI Backend
 """
-import os
-import time
-import secrets
-import hashlib
+
 import base64
+import hashlib
+import os
+import secrets
+import time
+from contextlib import contextmanager
 from urllib.parse import urlencode
 
 import chess
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Header, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from contextlib import contextmanager
-
-from lichess import LichessClient, LichessRateLimitError
 from chess_com import ChessComAccountNotFoundError, ChessComClient
 from game_cache import get_game_cache
+from lichess import LichessClient, LichessRateLimitError
 from opening_distribution import DistributionFilters, opening_distribution
 from opening_normalizer import OpeningNormalizer
 from recall_gaps import RecallFilters
@@ -44,6 +44,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI", "http://localhost:5173/callback")
 
 # In-memory PKCE store (for demo; in production use Redis or similar)
 pkce_store: dict[str, str] = {}
+
 
 @app.exception_handler(LichessRateLimitError)
 async def lichess_rate_limit_handler(request: Request, exc: LichessRateLimitError):
@@ -73,9 +74,11 @@ async def upstream_error_handler(request: Request, exc: httpx.HTTPStatusError):
 def generate_pkce():
     """Generate PKCE code verifier and challenge."""
     code_verifier = secrets.token_urlsafe(64)
-    code_challenge = base64.urlsafe_b64encode(
-        hashlib.sha256(code_verifier.encode()).digest()
-    ).decode().rstrip("=")
+    code_challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+        .decode()
+        .rstrip("=")
+    )
     return code_verifier, code_challenge
 
 
@@ -84,9 +87,9 @@ async def lichess_auth():
     """Start Lichess OAuth flow - returns URL for frontend to redirect to."""
     code_verifier, code_challenge = generate_pkce()
     state = secrets.token_urlsafe(32)
-    
+
     pkce_store[state] = code_verifier
-    
+
     params = {
         "response_type": "code",
         "client_id": LICHESS_CLIENT_ID,
@@ -96,7 +99,7 @@ async def lichess_auth():
         "code_challenge": code_challenge,
         "state": state,
     }
-    
+
     auth_url = f"https://lichess.org/oauth?{urlencode(params)}"
     return {"auth_url": auth_url, "state": state}
 
@@ -107,7 +110,7 @@ async def lichess_callback(code: str = Query(...), state: str = Query(...)):
     code_verifier = pkce_store.pop(state, None)
     if not code_verifier:
         raise HTTPException(status_code=400, detail="Invalid state parameter")
-    
+
     async with LichessClient() as client:
         token_data = await client.exchange_token(
             code=code,
@@ -115,7 +118,7 @@ async def lichess_callback(code: str = Query(...), state: str = Query(...)):
             redirect_uri=REDIRECT_URI,
             client_id=LICHESS_CLIENT_ID,
         )
-    
+
     return token_data
 
 
@@ -277,7 +280,11 @@ async def practice_session(
 
     with invalid_token_is_401():
         user = await user_for(token)
-        return {"gaps": await user.pipeline.practice_queue(chess_com_username, filters, now=now)}
+        return {
+            "gaps": await user.pipeline.practice_queue(
+                chess_com_username, filters, now=now
+            )
+        }
 
 
 class DrillAttemptIn(BaseModel):
@@ -287,7 +294,9 @@ class DrillAttemptIn(BaseModel):
 
 
 @app.post("/api/drill-attempts", status_code=201)
-async def record_drill_attempt(attempt: DrillAttemptIn, authorization: str = Header(...)):
+async def record_drill_attempt(
+    attempt: DrillAttemptIn, authorization: str = Header(...)
+):
     """
     Record one of the user's finished Drill Attempts: a pass, or a fail with
     the position of its first miss. Drill Attempts never change Recall Gaps.
@@ -320,18 +329,22 @@ async def opening_stats(
 ):
     """The Opening Distribution of the user's cached Chess.com games."""
     games = await CacheGameSource(get_game_cache()).games(chess_com_username)
-    return opening_distribution(games, DistributionFilters(
-        time_classes=time_classes,
-        rated=rated,
-        color={"white": chess.WHITE, "black": chess.BLACK}.get(color),
-        from_month=(from_year, from_month),
-        to_month=(to_year, to_month),
-        from_ts=from_ts,
-        to_ts=to_ts,
-    ))
+    return opening_distribution(
+        games,
+        DistributionFilters(
+            time_classes=time_classes,
+            rated=rated,
+            color={"white": chess.WHITE, "black": chess.BLACK}.get(color),
+            from_month=(from_year, from_month),
+            to_month=(to_year, to_month),
+            from_ts=from_ts,
+            to_ts=to_ts,
+        ),
+    )
 
 
 # ================== Game Cache Endpoints ==================
+
 
 @app.get("/api/sync")
 async def get_sync(
@@ -375,4 +388,5 @@ if os.path.exists("static"):
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

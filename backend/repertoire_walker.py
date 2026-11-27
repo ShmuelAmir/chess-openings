@@ -4,14 +4,18 @@ RepertoireWalker - Traverses repertoire trees to find positions and deviations.
 This module encapsulates the logic for walking through a repertoire tree
 (matching moves, tracking position state, detecting when moves leave the book).
 """
-import chess
+
 from enum import Enum
-from typing import Optional, NamedTuple
+from typing import NamedTuple, Optional
+
+import chess
+
 from repertoire import Repertoire, RepertoireNode, position_key
 
 
 class WalkerPosition(NamedTuple):
     """Current position state while walking the repertoire tree."""
+
     node: RepertoireNode
     board: chess.Board
     move_number: int
@@ -20,6 +24,7 @@ class WalkerPosition(NamedTuple):
 
 class PositionInfo(NamedTuple):
     """Information about a repertoire position."""
+
     opening_name: Optional[str]
     study_name: Optional[str]
     study_id: Optional[str]
@@ -30,6 +35,7 @@ class PositionInfo(NamedTuple):
 
 class DeviationType(str, Enum):
     """Why a game left the book. See Deviation in GLOSSARY.md."""
+
     PLAYER_ERROR = "player_error"
     OPPONENT_LEFT_BOOK = "opponent_left_book"
     BOOK_COMPLETED = "book_completed"
@@ -37,6 +43,7 @@ class DeviationType(str, Enum):
 
 class Deviation(NamedTuple):
     """The first move of a game that was not in the repertoire (or the end of book)."""
+
     type: DeviationType
     position_key: str
     move_played: Optional[str]  # None when the book was completed
@@ -49,6 +56,7 @@ class Deviation(NamedTuple):
 
 class InBookMove(NamedTuple):
     """A position reached on the user's move while still in book, and the move played."""
+
     position_key: str
     move: str
     book_moves: list[str]  # every repertoire move at the position
@@ -57,6 +65,7 @@ class InBookMove(NamedTuple):
 
 class WalkRecord(NamedTuple):
     """The outcome of walking one game through the repertoire."""
+
     analysed: bool
     deviation: Optional[Deviation]
     reached_in_book: list[InBookMove]
@@ -68,14 +77,14 @@ def not_analysed() -> WalkRecord:
 
 class RepertoireWalker:
     """Walks through repertoire trees to analyze game moves against the book."""
-    
+
     def __init__(self, repertoire: Repertoire):
         self.repertoire = repertoire
-    
+
     def get_tree_for_color(self, color: chess.Color) -> RepertoireNode:
         """Get the repertoire tree for a specific color."""
         return self.repertoire.get_tree(color)
-    
+
     def walk_to_move(
         self,
         node: RepertoireNode,
@@ -84,48 +93,52 @@ class RepertoireWalker:
     ) -> Optional[WalkerPosition]:
         """
         Walk from current node to the next position via a move.
-        
+
         Args:
             node: Current repertoire node
             move_san: Move in algebraic notation
             board: Current chess board position
-        
+
         Returns:
             WalkerPosition if move is in repertoire, None if move leaves the book
         """
         if move_san not in node.children:
             return None
-        
+
         next_node = node.children[move_san]
         next_board = board.copy()
-        
+
         try:
             next_board.push_san(move_san)
         except ValueError:
             return None
-        
+
         next_is_your_turn = not node.is_your_turn
-        
+
         return WalkerPosition(
             node=next_node,
             board=next_board,
-            move_number=(board.fullmove_number if board.turn == chess.BLACK else board.fullmove_number + 1),
+            move_number=(
+                board.fullmove_number
+                if board.turn == chess.BLACK
+                else board.fullmove_number + 1
+            ),
             is_your_move=next_is_your_turn,
         )
-    
+
     def get_position_info(self, node: RepertoireNode) -> PositionInfo:
         """
         Get metadata about a repertoire position.
-        
+
         Args:
             node: Repertoire node to analyze
-        
+
         Returns:
             PositionInfo with opening, study, and available moves
         """
         available_moves = list(node.children.keys())
         variation_count = len(available_moves)
-        
+
         return PositionInfo(
             opening_name=node.opening_name,
             study_name=node.study_name,
@@ -134,7 +147,7 @@ class RepertoireWalker:
             available_moves=available_moves,
             variation_count=variation_count,
         )
-    
+
     def walk_game(
         self,
         user_color: chess.Color,
@@ -165,7 +178,9 @@ class RepertoireWalker:
                 return WalkRecord(
                     analysed=True,
                     deviation=self._deviation(
-                        DeviationType.PLAYER_ERROR if is_your_move else DeviationType.OPPONENT_LEFT_BOOK,
+                        DeviationType.PLAYER_ERROR
+                        if is_your_move
+                        else DeviationType.OPPONENT_LEFT_BOOK,
                         current_node,
                         board,
                         move_san,
@@ -175,12 +190,14 @@ class RepertoireWalker:
                 )
 
             if is_your_move:
-                reached_in_book.append(InBookMove(
-                    position_key(board),
-                    move_san,
-                    list(current_node.children),
-                    board.ply(),
-                ))
+                reached_in_book.append(
+                    InBookMove(
+                        position_key(board),
+                        move_san,
+                        list(current_node.children),
+                        board.ply(),
+                    )
+                )
 
             current_node = current_node.children[move_san]
             try:

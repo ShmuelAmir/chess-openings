@@ -88,12 +88,16 @@ export function createRecallView({ backend, syncClient }) {
       // empty list says nothing about them, so keep the selection then)
       const known = new Set(view.studies.map((study) => study.id));
       if (known.size > 0 && filters.studies.some((id) => !known.has(id))) {
-        changeFilters({ ...filters, studies: filters.studies.filter((id) => known.has(id)) });
+        changeFilters({
+          ...filters,
+          studies: filters.studies.filter((id) => known.has(id)),
+        });
         return;
       }
       setState({ view, loading: false });
     } catch (err) {
-      if (request === latestLoad) setState({ error: err.message, loading: false });
+      if (request === latestLoad)
+        setState({ error: err.message, loading: false });
     }
   }
 
@@ -118,7 +122,8 @@ export function createRecallView({ backend, syncClient }) {
   async function saveAttempt() {
     const { drillNumber } = state.practice;
     // The answer is for this drill only: not the next one, nor after practice
-    const current = () => !disposed && state.practice?.drillNumber === drillNumber;
+    const current = () =>
+      !disposed && state.practice?.drillNumber === drillNumber;
     setPractice({ saveState: "saving" });
     try {
       await backend.recordDrillAttempt(attempt);
@@ -146,7 +151,10 @@ export function createRecallView({ backend, syncClient }) {
   // under way is dropped
   function startPractice(practice) {
     latestQueueLoad++;
-    const changes = { practice: { ...practice, ...newDrill() }, progressOpen: false };
+    const changes = {
+      practice: { ...practice, ...newDrill() },
+      progressOpen: false,
+    };
     if (state.loading) {
       latestLoad++;
       loadOwed = true;
@@ -174,7 +182,8 @@ export function createRecallView({ backend, syncClient }) {
     }),
     syncClient.subscribe(() => {
       const { result } = syncClient.getSnapshot();
-      if (!state.practice && result !== state.syncResult) setState({ syncResult: result });
+      if (!state.practice && result !== state.syncResult)
+        setState({ syncResult: result });
     }),
   ];
 
@@ -198,7 +207,11 @@ export function createRecallView({ backend, syncClient }) {
     selectGap(positionKey) {
       if (disposed) return;
       const { practice } = state;
-      if (practice?.kind === "drill" && positionKey !== practice.gap.position_key) endPractice();
+      if (
+        practice?.kind === "drill" &&
+        positionKey !== practice.gap.position_key
+      )
+        endPractice();
       setState({ selectedKey: positionKey, progressOpen: false });
     },
     /** Open the Progress panel in place of the selected gap; not during practice. */
@@ -253,7 +266,12 @@ export function createRecallView({ backend, syncClient }) {
     },
     /** Load the practice session's queue again after it failed to load. */
     retryQueue() {
-      if (disposed || state.practice?.kind !== "session" || !state.practice.error) return;
+      if (
+        disposed ||
+        state.practice?.kind !== "session" ||
+        !state.practice.error
+      )
+        return;
       loadQueue();
     },
     /**
@@ -291,7 +309,9 @@ export function createRecallView({ backend, syncClient }) {
 // What the page renders from: the state, and what follows from it
 function derive({ selectedKey, practice, ...state }) {
   const gaps = state.view?.gaps ?? [];
-  const shownGaps = gaps.filter((gap) => state.showClosed || gap.status === "open");
+  const shownGaps = gaps.filter(
+    (gap) => state.showClosed || gap.status === "open",
+  );
   return {
     ...state,
     // A practice session's `gap` is the one to drill now; none while the
@@ -303,6 +323,7 @@ function derive({ selectedKey, practice, ...state }) {
     shownGaps,
     closedCount: gaps.filter((gap) => gap.status === "closed").length,
     // The selected gap if it is still shown, else the first
-    selected: shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0],
+    selected:
+      shownGaps.find((gap) => gap.position_key === selectedKey) ?? shownGaps[0],
   };
 }

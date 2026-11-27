@@ -4,6 +4,7 @@ Recall Gap aggregator - groups player-error Deviations into ranked Recall Gaps.
 Pure: takes walk records with their games' metadata and returns the recall
 view. No I/O. See Recall Gap in GLOSSARY.md.
 """
+
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -34,6 +35,7 @@ DAY = 24 * 60 * 60
 @dataclass(frozen=True)
 class WalkedGame:
     """One game and the outcome of walking it through the Repertoire."""
+
     url: str
     date: int  # Unix timestamp
     time_class: str
@@ -47,10 +49,13 @@ class WalkedGame:
 @dataclass(frozen=True)
 class RecallFilters:
     """The Game Filters of the recall view."""
+
     time_classes: Optional[list[str]] = None  # None means every time control
     rated_only: bool = False
     since: Optional[int] = None  # Unix timestamp; None means all time
-    studies: Optional[frozenset[str]] = None  # Study filter: study ids; None or empty means all
+    studies: Optional[frozenset[str]] = (
+        None  # Study filter: study ids; None or empty means all
+    )
 
     @classmethod
     def for_date_range(
@@ -96,6 +101,7 @@ class WrongMove:
 @dataclass(frozen=True)
 class GapGame:
     """A game in which a Recall Gap occurred."""
+
     url: str
     date: int
     time_class: str
@@ -106,6 +112,7 @@ class GapGame:
 @dataclass(frozen=True)
 class GapStudy:
     """A study containing a Recall Gap's position, and the link to it in that study."""
+
     id: str
     name: str
     url: str  # opens the study at the position, or at its chapter when off the mainline
@@ -114,6 +121,7 @@ class GapStudy:
 @dataclass(frozen=True)
 class DrillTurn:
     """One of the user's turns in a Recall Gap's drill, and the moves it accepts."""
+
     ply: int  # half-moves played before it
     position_key: str
     book_moves: list[str]
@@ -122,6 +130,7 @@ class DrillTurn:
 @dataclass
 class RecallGap:
     """One Recall Gap as the recall view and practice sessions return it."""
+
     position_key: str
     color: str  # "white" or "black": the user's color, i.e. the side to move
     path: list[str]  # SAN moves leading to the position in the most recent occurrence
@@ -173,6 +182,7 @@ class Totals:
 @dataclass(frozen=True)
 class StudyView:
     """A study of the Repertoire, as the Study filter lists it."""
+
     id: str
     name: str
     opening_name: str
@@ -186,6 +196,7 @@ class RecallView:
     The recall view. These dataclasses are the wire contract: the HTTP layer
     serialises them as they are.
     """
+
     studies: list[StudyView] = field(default_factory=list)  # sorted by opening name
     gaps: list[RecallGap] = field(default_factory=list)
     totals: Totals = field(default_factory=Totals)
@@ -228,7 +239,9 @@ def aggregate(
     def left_book_in_selected_study(g: WalkedGame) -> bool:
         if not filters.studies:
             return True
-        return not filters.studies.isdisjoint(studies_of(g.record.deviation.position_key, g.color))
+        return not filters.studies.isdisjoint(
+            studies_of(g.record.deviation.position_key, g.color)
+        )
 
     analysed = sorted(
         (g for g in games if g.record.analysed),
@@ -239,7 +252,9 @@ def aggregate(
     in_window = [g for g in analysed if filters.allows(g)]
     shown = [g for g in in_window if left_book_in_selected_study(g)]
     any_date = replace(filters, since=None)
-    shown_any_date = [g for g in analysed if any_date.allows(g) and left_book_in_selected_study(g)]
+    shown_any_date = [
+        g for g in analysed if any_date.allows(g) and left_book_in_selected_study(g)
+    ]
 
     by_type = Counter(g.record.deviation.type for g in shown if g.record.deviation)
     gaps_by_study = Counter(
@@ -297,18 +312,23 @@ def _studies(repertoire: Repertoire, gaps_by_study: Counter) -> list[StudyView]:
     studies = []
     for study_id, color in repertoire.study_colors.items():
         name = repertoire.study_names.get(study_id, study_id)
-        studies.append(StudyView(
-            id=study_id,
-            name=name,
-            opening_name=OpeningNormalizer.normalize(name),
-            color=_color_name(color),
-            gaps=gaps_by_study[study_id],
-        ))
+        studies.append(
+            StudyView(
+                id=study_id,
+                name=name,
+                opening_name=OpeningNormalizer.normalize(name),
+                color=_color_name(color),
+                gaps=gaps_by_study[study_id],
+            )
+        )
     return sorted(studies, key=lambda study: study.opening_name.lower())
 
 
 def _is_miss(g: WalkedGame) -> bool:
-    return g.record.deviation is not None and g.record.deviation.type == DeviationType.PLAYER_ERROR
+    return (
+        g.record.deviation is not None
+        and g.record.deviation.type == DeviationType.PLAYER_ERROR
+    )
 
 
 def _miss_rate(games: list[WalkedGame]) -> Optional[float]:
@@ -356,13 +376,17 @@ def _trend(games: list[WalkedGame], now: int) -> list[TrendMonth]:
     for month in months:
         games_in = by_month.get(month, [])
         depths = _miss_moves(games_in)
-        trend.append(TrendMonth(
-            month=month,
-            games=len(games_in),
-            miss_rate=_miss_rate(games_in) if len(games_in) >= MIN_TREND_GAMES else None,
-            miss_depths=_miss_depths(depths),
-            median_miss_depth=_median_miss_depth(depths),
-        ))
+        trend.append(
+            TrendMonth(
+                month=month,
+                games=len(games_in),
+                miss_rate=_miss_rate(games_in)
+                if len(games_in) >= MIN_TREND_GAMES
+                else None,
+                miss_depths=_miss_depths(depths),
+                median_miss_depth=_median_miss_depth(depths),
+            )
+        )
     return trend
 
 
@@ -384,7 +408,9 @@ def _closings(games: list[WalkedGame]) -> dict[str, Closing]:
     last one, and every in-book game met before it came after it.
     """
     closings: dict[str, Closing] = {}
-    in_book_since: dict[str, list[int]] = {}  # the in-book games' dates, most recent first
+    in_book_since: dict[
+        str, list[int]
+    ] = {}  # the in-book games' dates, most recent first
     for g in games:
         deviation = g.record.deviation
         if deviation and deviation.type == DeviationType.PLAYER_ERROR:
@@ -394,7 +420,9 @@ def _closings(games: list[WalkedGame]) -> dict[str, Closing]:
                 closings[key] = Closing(
                     progress=min(len(dates), GAMES_TO_CLOSE),
                     # The gap closed with the GAMES_TO_CLOSE-th in-book game after it
-                    closed_at=dates[-GAMES_TO_CLOSE] if len(dates) >= GAMES_TO_CLOSE else None,
+                    closed_at=dates[-GAMES_TO_CLOSE]
+                    if len(dates) >= GAMES_TO_CLOSE
+                    else None,
                 )
         # A game counts once however often it reached the position
         for key in dict.fromkeys(m.position_key for m in g.record.reached_in_book):
@@ -413,13 +441,18 @@ def _gap(
     latest = games_at[0]
     played = Counter(g.record.deviation.move_played for g in games_at)
     # A position reached by different book paths can allow different moves on each
-    book_moves = list(dict.fromkeys(m for g in games_at for m in g.record.deviation.book_moves))
+    book_moves = list(
+        dict.fromkeys(m for g in games_at for m in g.record.deviation.book_moves)
+    )
 
     return RecallGap(
         position_key=key,
         color=_color_name(side_to_move(key)),
         path=latest.moves[: latest.record.deviation.ply],
-        wrong_moves=[WrongMove(san, n) for san, n in sorted(played.items(), key=lambda m: (-m[1], m[0]))],
+        wrong_moves=[
+            WrongMove(san, n)
+            for san, n in sorted(played.items(), key=lambda m: (-m[1], m[0]))
+        ],
         book_moves=book_moves,
         studies=[
             GapStudy(
@@ -427,12 +460,16 @@ def _gap(
                 name=repertoire.study_names.get(study_id, study_id),
                 url=study_url(study_id, location.chapter_id, location.mainline_ply),
             )
-            for study_id, location in sorted(repertoire.study_locations(key, latest.color).items())
+            for study_id, location in sorted(
+                repertoire.study_locations(key, latest.color).items()
+            )
         ],
         occurrences=len(games_at),
         last_seen=latest.date or 0,
         games=[
-            GapGame(g.url, g.date, g.time_class, g.record.deviation.move_played, g.result)
+            GapGame(
+                g.url, g.date, g.time_class, g.record.deviation.move_played, g.result
+            )
             for g in games_at
         ],
         status="open" if closing.closed_at is None else "closed",

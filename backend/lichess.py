@@ -1,9 +1,12 @@
 """
 Lichess API Client
 """
+
 import asyncio
-import httpx
 from typing import Optional
+
+import httpx
+
 from opening_normalizer import OpeningNormalizer
 
 
@@ -12,9 +15,7 @@ class LichessRateLimitError(Exception):
 
     def __init__(self, retry_after: int = 60):
         self.retry_after = retry_after
-        super().__init__(
-            f"Lichess rate limit reached. Retry in {retry_after} seconds."
-        )
+        super().__init__(f"Lichess rate limit reached. Retry in {retry_after} seconds.")
 
 
 def _retry_after_seconds(response: httpx.Response, default: int = 60) -> int:
@@ -40,7 +41,7 @@ class LichessClient:
     def __init__(self, token: Optional[str] = None):
         self.token = token
         self._client: Optional[httpx.AsyncClient] = None
-    
+
     async def __aenter__(self):
         headers = {"Accept": "application/json"}
         if self.token:
@@ -51,11 +52,11 @@ class LichessClient:
             timeout=30.0,
         )
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self._client:
             await self._client.aclose()
-    
+
     async def exchange_token(
         self,
         code: str,
@@ -76,7 +77,7 @@ class LichessClient:
         )
         response.raise_for_status()
         return response.json()
-    
+
     async def _get(self, url: str, **kwargs) -> httpx.Response:
         """GET with a single short retry when Lichess rate-limits us."""
         response = await self._client.get(url, **kwargs)
@@ -139,17 +140,17 @@ class LichessClient:
     ) -> tuple[str, str]:
         """
         Fetch study PGN and return with normalized opening name.
-        
+
         Deepens the client by handling opening name normalization internally
         instead of delegating to callers.
-        
+
         Args:
             study_id: Lichess study ID
             study_name: Study name (e.g., "Sicilian Defense" or "Vienna: Accepted")
-        
+
         Returns:
             Tuple of (pgn_content, normalized_opening_name)
-            
+
         Example:
             pgn, opening_name = await client.get_study_pgn_with_normalized_name(
                 study_id="ABC12345",
