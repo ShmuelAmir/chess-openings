@@ -83,6 +83,8 @@ make lint     # check only; fails on lint errors, unsorted imports or unformatte
 make format   # rewrite files to fix what lint reports
 ```
 
+`make lint` also runs `scripts/check_md_links.py`, which fails when a comment, docstring or doc names a `*.md` file that exists neither next to it nor at the repo root, and prints the file and line. Paths inside fenced code blocks and URLs are skipped; a doc mentioned on purpose without existing goes in `OPTIONAL_DOCS` in that script.
+
 ### CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs `make test` and `make lint` on every pull request and every push to `main`, after a fresh install of both halves. A PR is green only when both pass, so running those two targets locally checks the same things.
