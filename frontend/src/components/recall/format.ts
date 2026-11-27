@@ -1,18 +1,4 @@
-// The parameter shapes below name only the fields each helper reads. They give
-// way to the shared domain types (RecallGap, SyncState) once those exist (#82).
-
-/** What a Sync changed, as the backend reports it in its result. */
-interface SyncChanges {
-  new_games: number;
-  new_gaps: number;
-  closed_gaps: number;
-  reopened_gaps: number;
-}
-
-/** A Recall Gap's status fields: when it closed, or its progress toward it. */
-type GapStatusFields =
-  | { status: "closed"; closed_at: number }
-  | { status: "open"; progress: number; games_to_close: number };
+import type { RecallGapStatus, SyncResult } from "../../backend/backend";
 
 /** SAN moves as a numbered line: ["e4", "c5", "Nf3"] -> "1.e4 c5 2.Nf3". */
 export function formatLine(moves: readonly string[]): string {
@@ -40,7 +26,7 @@ export function formatAgo(ts: number): string {
  * "+4 games · 1 new gap · 1 closed · 1 reopened", or null if nothing did.
  */
 export function formatSyncChanges(
-  result: SyncChanges | null | undefined,
+  result: SyncResult | null | undefined,
 ): string | null {
   if (!result) return null;
   const plural = (n: number, word: string) =>
@@ -81,7 +67,7 @@ export function missRateRuns<P extends { y: number | null }>(
 }
 
 /** A Recall Gap's status: its progress toward closing, or when it closed. */
-export function formatStatus(gap: GapStatusFields): string {
+export function formatStatus(gap: RecallGapStatus): string {
   return gap.status === "closed"
     ? `Closed ${formatDate(gap.closed_at)}`
     : `${gap.progress}/${gap.games_to_close} since last miss`;
