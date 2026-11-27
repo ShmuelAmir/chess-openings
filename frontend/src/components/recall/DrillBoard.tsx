@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { ComponentProps } from "react";
 import { Chessboard } from "react-chessboard";
 import type { PieceSymbol, Square } from "chess.js";
-import type { DrillAttempt, RecallGap } from "../../backend/backend";
+import type { DrillAttempt, DrillTurn, RecallGap } from "../../backend/backend";
 import type { SaveState } from "../../recall/recallView";
 import {
   startDrill,
@@ -29,6 +29,13 @@ const TARGET_STYLE = {
 type BoardPiece = Parameters<
   NonNullable<ComponentProps<typeof Chessboard>["onPieceDrop"]>
 >[2];
+
+/** The book moves to play instead of the wrong move just played. */
+function bookMovesAfterWrongMove(turn: DrillTurn | null): string {
+  // A wrong move waits at the user's turn, so there is always one here
+  if (!turn) throw new Error("A wrong move was shown off the user's turn");
+  return turn.book_moves.join(", ");
+}
 
 interface DrillBoardProps {
   gap: RecallGap;
@@ -151,8 +158,7 @@ export default function DrillBoard({
       ) : drill.wrongMove ? (
         <div className="rv-drill-msg bad">
           {drill.wrongMove} is not book, so this attempt failed. Play one of:{" "}
-          {/* A wrong move waits at the user's turn, so `turn` is set here */}
-          <b>{turn?.book_moves.join(", ")}</b>
+          <b>{bookMovesAfterWrongMove(turn)}</b>
         </div>
       ) : drill.alsoBook ? (
         <div className="rv-drill-msg good">

@@ -1,4 +1,5 @@
 import type { Backend, SyncResult, SyncState } from "../backend/backend";
+import { errorMessage } from "../errorMessage";
 
 // Sync on open when the older source's last Sync is older than this
 const SYNC_STALE_SECONDS = 10 * 60;
@@ -108,8 +109,7 @@ export function createSyncClient(backend: Backend): SyncClient {
       applyStatus(status);
       return status;
     } catch (err) {
-      // A Backend call rejects with an Error fit to show the user
-      if (!disposed) setSnapshot({ error: (err as Error).message });
+      if (!disposed) setSnapshot({ error: errorMessage(err) });
       return null;
     }
   }

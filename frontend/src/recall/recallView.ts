@@ -7,6 +7,7 @@ import type {
   SyncResult,
 } from "../backend/backend";
 import type { SyncClient } from "../sync/syncClient";
+import { errorMessage } from "../errorMessage";
 import { loadFilters, saveFilters } from "./storedFilters";
 
 /** Where the Drill Attempt of a finished drill is in being saved. */
@@ -44,11 +45,15 @@ export interface PracticeSession extends DrillProgress {
 export type Practice = SingleDrill | PracticeSession;
 
 /**
- * The practice as components see it: a practice session's `gap` is the one
- * to drill now; none while the queue loads, or once nothing is due.
+ * A practice session as components see it: `gap` is the one to drill now, so
+ * the queue has loaded; none while the queue loads, or once nothing is due.
  */
-export type ShownPractice =
-  SingleDrill | (PracticeSession & { gap: RecallGap | undefined });
+export type ShownSession =
+  | (PracticeSession & { queue: RecallGap[]; gap: RecallGap })
+  | (PracticeSession & { gap: undefined });
+
+/** The practice as components see it. */
+export type ShownPractice = SingleDrill | ShownSession;
 
 interface RecallViewState {
   filters: GameFilters;
@@ -127,9 +132,6 @@ export interface RecallViewStore {
   dispose(): void;
 }
 
-// A Backend call rejects with an Error fit to show the user
-const reason = (err: unknown) => (err as Error).message;
-
 /**
  * The recall view, for as long as the recall page is open: the ranked Recall
  * Gaps and totals under the Game Filters, which gap is selected, and the
@@ -200,7 +202,7 @@ export function createRecallView({
       setState({ view, loading: false });
     } catch (err) {
       if (request === latestLoad)
-        setState({ error: reason(err), loading: false });
+        setState({ error: errorMessage(err), loading: false });
     }
   }
 
@@ -256,7 +258,7 @@ export function createRecallView({
       const queue = await backend.loadPracticeQueue(state.filters);
       if (request === latestQueueLoad) setSession({ queue, ...newDrill() });
     } catch (err) {
-      if (request === latestQueueLoad) setSession({ error: reason(err) });
+      if (request === latestQueueLoad) setSession({ error: errorMessage(err) });
     }
   }
 
@@ -401,6 +403,13 @@ export function createRecallView({
   };
 }
 
+function shownSession(session: PracticeSession): ShownSession {
+  const gap = session.queue?.[session.index];
+  return session.queue && gap
+    ? { ...session, queue: session.queue, gap }
+    : { ...session, gap: undefined };
+}
+
 function derive({
   selectedKey,
   practice,
@@ -412,10 +421,7 @@ function derive({
   );
   return {
     ...state,
-    practice:
-      practice?.kind === "session"
-        ? { ...practice, gap: practice.queue?.[practice.index] }
-        : practice,
+    practice: practice?.kind === "session" ? shownSession(practice) : practice,
     shownGaps,
     closedCount: gaps.filter((gap) => gap.status === "closed").length,
     selected:

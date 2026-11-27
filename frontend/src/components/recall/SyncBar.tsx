@@ -1,4 +1,5 @@
-import type { SyncSourceStatus, SyncState } from "../../backend/backend";
+import type { SyncState } from "../../backend/backend";
+import { entries } from "../../entries";
 import { formatAgo } from "./format";
 
 type SourceKey = keyof SyncState["sources"];
@@ -23,10 +24,7 @@ export default function SyncBar({
   onSync,
 }: SyncBarProps) {
   const failed = status
-    ? // Object.entries widens the keys to string
-      (
-        Object.entries(status.sources) as [SourceKey, SyncSourceStatus][]
-      ).filter(([, source]) => source.status === "failed")
+    ? entries(status.sources).filter(([, source]) => source.status === "failed")
     : [];
 
   return (

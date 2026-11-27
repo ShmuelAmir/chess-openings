@@ -1,4 +1,5 @@
 import type {
+  ApiErrorBody,
   Backend,
   DrillAttempt,
   DrillAttemptRecorded,
@@ -44,7 +45,7 @@ export function createHttpBackend({
       body: body && JSON.stringify(body),
     });
     if (!response.ok) {
-      const data: { detail?: string } = await response.json().catch(() => ({}));
+      const data: ApiErrorBody = await response.json().catch(() => ({}));
       throw new Error(
         (response.status === 429 && rateLimit) || data.detail || failure,
       );
@@ -67,20 +68,16 @@ export function createHttpBackend({
   }
 
   return {
-    /** The Sync state, as GET /api/sync reports it. */
     readSyncState: () =>
       request<SyncState>(syncPath, { failure: "Sync failed" }),
-    /** Start a Sync; resolves with the Sync state. */
     startSync: () =>
       request<SyncState>(syncPath, { method: "POST", failure: "Sync failed" }),
-    /** The recall view under the Game Filters, as GET /api/recall-view reports it. */
     loadRecallView: (filters) =>
       request<RecallView>(`/api/recall-view?${filterParams(filters)}`, {
         failure: "Could not load Recall Gaps",
         rateLimit:
           "Lichess rate limit reached. Please wait a minute and try again.",
       }),
-    /** The practice-session queue under the Game Filters: the due Open Recall Gaps, in ranking order. */
     loadPracticeQueue: async (filters) =>
       (
         await request<{ gaps: RecallGap[] }>(
@@ -88,7 +85,6 @@ export function createHttpBackend({
           { failure: "Could not load the practice session" },
         )
       ).gaps,
-    /** Record a finished Drill Attempt. */
     recordDrillAttempt: (attempt) =>
       request<DrillAttemptRecorded>("/api/drill-attempts", {
         method: "POST",

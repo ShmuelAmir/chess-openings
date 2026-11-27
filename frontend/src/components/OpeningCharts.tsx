@@ -260,6 +260,8 @@ export default function OpeningCharts({
                 <Line
                   key={name}
                   type="monotone"
+                  // The trend's keys are the top openings' names, known only
+                  // at runtime, so `satisfies` can't check this one
                   dataKey={name}
                   stroke={COLORS[index % COLORS.length]}
                   strokeWidth={2}

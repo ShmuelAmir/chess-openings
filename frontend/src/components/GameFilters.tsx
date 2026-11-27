@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { TimeClass } from "../backend/backend";
+import { entries } from "../entries";
 
 /** Which color's games the Opening Distribution shows. */
 export type ColorFilter = "white" | "black" | "both";
@@ -15,7 +16,6 @@ export interface OpeningDistributionFilters {
   toMonth: number;
   fromTimestamp: number | null;
   toTimestamp: number | null;
-  /** null when none is picked */
   timeClasses: TimeClass[] | null;
   colorFilter: ColorFilter;
   ratedOnly: boolean;
@@ -82,10 +82,9 @@ function GameFilters({
     if (showUsernameField && !username.trim()) return;
 
     // Get selected time classes as array
-    const selectedTimeClasses = Object.entries(timeClasses)
+    const selectedTimeClasses = entries(timeClasses)
       .filter(([_, selected]) => selected)
-      // Object.entries types keys as string; these are the TimeClass keys
-      .map(([tc, _]) => tc as TimeClass);
+      .map(([tc, _]) => tc);
 
     onAnalyze({
       username: username.trim(),

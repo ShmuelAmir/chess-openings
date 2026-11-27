@@ -23,6 +23,7 @@ const isStringList = (value: unknown): value is string[] =>
 
 const isTimeClassList = (value: unknown): value is TimeClass[] =>
   isStringList(value) &&
+  // Widened so `includes` takes any string: finding it is what makes it a TimeClass
   value.every((tc) => (TIME_CLASSES as string[]).includes(tc));
 
 const isDateRange = (value: unknown): value is DateRange =>

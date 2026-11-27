@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import type { ApiErrorBody } from "../backend/backend";
 import { useAuth } from "../context/AuthContext";
+import { errorMessage } from "../errorMessage";
 import "../components/recall/recall.css";
 
 /**
@@ -19,14 +21,9 @@ interface NotRepertoireView {
   studies: OwnedStudy[];
 }
 
-/** A FastAPI error body; empty when the body wasn't JSON. */
-interface ErrorBody {
-  detail?: string;
-}
-
 async function readStudies(response: Response): Promise<OwnedStudy[]> {
   if (!response.ok) {
-    const data: ErrorBody = await response.json().catch(() => ({}));
+    const data: ApiErrorBody = await response.json().catch(() => ({}));
     throw new Error(
       response.status === 429
         ? "Lichess rate limit reached. Please wait a minute and try again."
@@ -79,8 +76,7 @@ export default function SettingsPage() {
       });
       setStudies(await readStudies(response));
     } catch (err) {
-      // fetch and readStudies throw only Errors
-      setError(err instanceof Error ? err.message : String(err));
+      setError(errorMessage(err));
     } finally {
       setSaving(false);
     }

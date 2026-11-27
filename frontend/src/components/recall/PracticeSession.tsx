@@ -1,5 +1,5 @@
 import type { DrillAttempt } from "../../backend/backend";
-import type { ShownPractice } from "../../recall/recallView";
+import type { ShownSession } from "../../recall/recallView";
 import DrillBoard from "./DrillBoard";
 
 const BOARD_WIDTH = 306;
@@ -10,7 +10,7 @@ const BOARD_WIDTH = 306;
  * recall view's practice session.
  */
 interface PracticeSessionProps {
-  session: Extract<ShownPractice, { kind: "session" }>;
+  session: ShownSession;
   onFinished: (attempt: DrillAttempt) => void;
   onRetrySave: () => void;
   onNext: () => void;
@@ -32,11 +32,10 @@ export default function PracticeSession({
     <section className="rv-detail">
       <div className="rv-session-head">
         <strong>Practice session</strong>
-        {/* A gap to drill means the queue has loaded */}
-        {gap && (
+        {session.gap && (
           <span className="rv-muted">
             {" "}
-            · {index + 1} of {queue?.length} due
+            · {index + 1} of {session.queue.length} due
           </span>
         )}
       </div>

@@ -80,9 +80,17 @@ function study(id: string): Study {
   return { id, name: id, opening_name: id, color: "white", gaps: 1 };
 }
 
-// Only `analysed`: the recall view hands the totals on untouched, and the
-// tests compare them to exactly this
-const TOTALS = { analysed: 40 } as RecallTotals;
+// The recall view hands the totals on untouched, and the tests compare them
+// to exactly this
+const TOTALS: RecallTotals = {
+  analysed: 40,
+  opponent_left_book: 10,
+  book_completed: 30,
+  miss_rate: 0.25,
+  trend: [],
+  open_gaps: 2,
+  closed_in_range: 1,
+};
 
 /** A recall view as the backend reports it. */
 function recallView({
@@ -135,6 +143,27 @@ describe("recall view", () => {
   const shownKeys = () =>
     view.getSnapshot().shownGaps.map((gap) => gap.position_key);
 
+  /** The loaded recall view; throws before it has loaded. */
+  function loaded() {
+    const { view: loadedView } = view.getSnapshot();
+    if (!loadedView) throw new Error("The recall view has not loaded");
+    return loadedView;
+  }
+
+  /** The practice in progress, a single drill or a session; throws when there is none. */
+  function practice() {
+    const { practice } = view.getSnapshot();
+    if (!practice) throw new Error("No practice");
+    return practice;
+  }
+
+  /** The selected Recall Gap; throws when none is. */
+  function selected() {
+    const { selected } = view.getSnapshot();
+    if (!selected) throw new Error("No Recall Gap is selected");
+    return selected;
+  }
+
   async function open() {
     view = createRecallView({ backend, syncClient });
     await settle();
@@ -164,7 +193,7 @@ describe("recall view", () => {
 
       expect(backend.calls("loadRecallView")).toEqual([[DEFAULTS]]);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(view.getSnapshot().view?.totals).toEqual({ analysed: 40 });
+      expect(loaded().totals).toEqual(TOTALS);
       expect(shownKeys()).toEqual(["a", "b"]);
     });
   });
@@ -379,9 +408,9 @@ describe("recall view", () => {
       ]);
       expect(backend.count("loadRecallView")).toBe(3);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(JSON.parse(remembered.get(STORAGE_KEY) ?? "").studies).toEqual([
-        "italian",
-      ]);
+      const stored = remembered.get(STORAGE_KEY);
+      if (stored === undefined) throw new Error("No Game Filters remembered");
+      expect(JSON.parse(stored).studies).toEqual(["italian"]);
     });
 
     it("are kept when the returned study list is empty", async () => {
@@ -395,7 +424,7 @@ describe("recall view", () => {
 
       expect(view.getSnapshot().filters.studies).toEqual(["italian"]);
       expect(backend.count("loadRecallView")).toBe(2);
-      expect(view.getSnapshot().view?.studies).toEqual([]);
+      expect(loaded().studies).toEqual([]);
     });
   });
 
@@ -457,7 +486,9 @@ describe("recall view", () => {
   /** Run a Sync to its end, with the given result. */
   async function finishSync(result: SyncResult) {
     // The Sync state has arrived: every test answers readSyncState
-    const runs = syncClient.getSnapshot().status?.runs ?? 0;
+    const { status } = syncClient.getSnapshot();
+    if (!status) throw new Error("No Sync state yet");
+    const { runs } = status;
     backend.on("startSync").answer(syncState({ running: true, runs }));
     await syncClient.startSync();
     backend.on("readSyncState").answer(syncState({ runs: runs + 1, result }));
@@ -560,7 +591,7 @@ describe("recall view", () => {
       view.endPractice();
       await settle();
 
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
     });
 
     it("keeps the first shown gap selected across the held analysis when none was picked", async () => {
@@ -577,7 +608,7 @@ describe("recall view", () => {
       view.endPractice();
       await settle();
 
-      expect(view.getSnapshot().selected?.position_key).toBe("a");
+      expect(selected().position_key).toBe("a");
     });
   });
 
@@ -625,7 +656,7 @@ describe("recall view", () => {
 
       view.startDrill();
 
-      expect(view.getSnapshot().practice?.gap?.position_key).toBe("b");
+      expect(practice().gap?.position_key).toBe("b");
     });
 
     it("keeps its Recall Gap when the gap is no longer the selected one", async () => {
@@ -639,8 +670,8 @@ describe("recall view", () => {
 
       view.toggleClosed();
 
-      expect(view.getSnapshot().selected?.position_key).toBe("a");
-      expect(view.getSnapshot().practice?.gap?.position_key).toBe("b");
+      expect(selected().position_key).toBe("a");
+      expect(practice().gap?.position_key).toBe("b");
     });
 
     it("does not start when no Recall Gap is shown", async () => {
@@ -662,7 +693,7 @@ describe("recall view", () => {
       view.selectGap("b");
 
       expect(view.getSnapshot().practice).toBeNull();
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
     });
 
     it("goes on when its own Recall Gap is selected again", async () => {
@@ -674,7 +705,7 @@ describe("recall view", () => {
 
       view.selectGap("a");
 
-      expect(view.getSnapshot().practice?.kind).toBe("drill");
+      expect(practice().kind).toBe("drill");
     });
   });
 
@@ -700,13 +731,13 @@ describe("recall view", () => {
 
     it("records its Drill Attempt, showing saving and then saved", async () => {
       backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
-      expect(view.getSnapshot().practice?.saveState).toBeNull();
+      expect(practice().saveState).toBeNull();
 
       view.finishDrill(FAIL);
-      expect(view.getSnapshot().practice?.saveState).toBe("saving");
+      expect(practice().saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice?.saveState).toBe("saved");
+      expect(practice().saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL]]);
     });
 
@@ -720,21 +751,21 @@ describe("recall view", () => {
       await settle();
 
       expect(backend.count("recordDrillAttempt")).toBe(1);
-      expect(view.getSnapshot().practice?.saveState).toBe("saved");
+      expect(practice().saveState).toBe("saved");
     });
 
     it("shows a failed save as failed, and saves the same Drill Attempt on retry", async () => {
       backend.on("recordDrillAttempt").fail("Server error");
       view.finishDrill(FAIL);
       await settle();
-      expect(view.getSnapshot().practice?.saveState).toBe("failed");
+      expect(practice().saveState).toBe("failed");
 
       backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
       view.retrySave();
-      expect(view.getSnapshot().practice?.saveState).toBe("saving");
+      expect(practice().saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice?.saveState).toBe("saved");
+      expect(practice().saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [FAIL]]);
     });
 
@@ -753,21 +784,21 @@ describe("recall view", () => {
       backend.on("recordDrillAttempt").answer({ recorded: true });
       view.finishDrill(FAIL);
       await settle();
-      const first = view.getSnapshot().practice;
+      const first = practice();
 
       view.drillAgain();
-      const again = view.getSnapshot().practice;
+      const again = practice();
       expect(again).toMatchObject({
         kind: "drill",
-        gap: first?.gap,
+        gap: first.gap,
         saveState: null,
       });
-      expect(again?.drillNumber).not.toBe(first?.drillNumber);
+      expect(again.drillNumber).not.toBe(first.drillNumber);
 
       view.finishDrill(PASS);
       await settle();
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [PASS]]);
-      expect(view.getSnapshot().practice?.saveState).toBe("saved");
+      expect(practice().saveState).toBe("saved");
     });
 
     it('leaves the next drill alone when its save answers after "Drill again"', async () => {
@@ -777,7 +808,7 @@ describe("recall view", () => {
       view.drillAgain();
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice?.saveState).toBeNull();
+      expect(practice().saveState).toBeNull();
     });
 
     it("leaves the view alone when its save answers after practice ended", async () => {
@@ -830,7 +861,7 @@ describe("recall view", () => {
         error: null,
         drilled: 0,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
       await vi.advanceTimersByTimeAsync(300);
 
       expect(view.getSnapshot().practice).toMatchObject({
@@ -860,7 +891,7 @@ describe("recall view", () => {
       backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
       view.startSession();
       await settle();
-      const first = view.getSnapshot().practice?.drillNumber;
+      const first = practice().drillNumber;
 
       view.nextDrill();
       expect(session().index).toBe(0);
@@ -876,7 +907,7 @@ describe("recall view", () => {
         drilled: 1,
         saveState: null,
       });
-      expect(view.getSnapshot().practice?.drillNumber).not.toBe(first);
+      expect(practice().drillNumber).not.toBe(first);
       expect(backend.count("loadPracticeQueue")).toBe(1);
     });
 
@@ -920,7 +951,7 @@ describe("recall view", () => {
       await finishAndSave();
       view.nextDrill();
       await finishAndSave();
-      const last = view.getSnapshot().practice?.drillNumber;
+      const last = practice().drillNumber;
 
       backend.on("loadPracticeQueue").answer([gap("b")]);
       view.nextDrill();
@@ -934,7 +965,7 @@ describe("recall view", () => {
         drilled: 2,
         saveState: null,
       });
-      expect(view.getSnapshot().practice?.drillNumber).not.toBe(last);
+      expect(practice().drillNumber).not.toBe(last);
     });
 
     it("reports nothing due, and how many gaps were drilled, when the queue comes back empty", async () => {
@@ -952,7 +983,7 @@ describe("recall view", () => {
         drilled: 1,
         error: null,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
     });
 
     it("reports nothing due at once when nothing is due at its start", async () => {
@@ -965,7 +996,7 @@ describe("recall view", () => {
         queue: [],
         drilled: 0,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
     });
 
     it("shows why its queue failed to load, and loads it on retry", async () => {
@@ -1027,7 +1058,7 @@ describe("recall view", () => {
         error: null,
         drilled: 1,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
     });
 
     it("has no Recall Gap to drill after its queue failed to load again, nor during the retry", async () => {
@@ -1045,7 +1076,7 @@ describe("recall view", () => {
         error: "Could not load the practice session",
         queue: null,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
 
       backend
         .on("loadPracticeQueue")
@@ -1056,7 +1087,7 @@ describe("recall view", () => {
         error: null,
         queue: null,
       });
-      expect(view.getSnapshot().practice?.gap).toBeUndefined();
+      expect(practice().gap).toBeUndefined();
       await vi.advanceTimersByTimeAsync(300);
 
       expect(view.getSnapshot().practice).toMatchObject({
@@ -1197,7 +1228,7 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a", "closed"), gap("b"), gap("c")] }));
       await open();
 
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
     });
 
     it("is none when no gap is shown", async () => {
@@ -1213,14 +1244,14 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a"), gap("b")] }));
       await open();
       view.selectGap("b");
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
 
       backend
         .on("loadRecallView")
         .answer(recallView({ gaps: [gap("new"), gap("a"), gap("b")] }));
       await finishSync(CHANGED);
 
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
     });
 
     it("falls back to the first shown gap when a reload no longer lists it", async () => {
@@ -1235,7 +1266,7 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a"), gap("c")] }));
       await finishSync(CHANGED);
 
-      expect(view.getSnapshot().selected?.position_key).toBe("a");
+      expect(selected().position_key).toBe("a");
     });
 
     it("falls back to the first shown gap when it is Closed and Closed gaps are hidden again", async () => {
@@ -1245,11 +1276,11 @@ describe("recall view", () => {
       await open();
       view.toggleClosed();
       view.selectGap("b");
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
 
       view.toggleClosed();
 
-      expect(view.getSnapshot().selected?.position_key).toBe("a");
+      expect(selected().position_key).toBe("a");
     });
   });
 
@@ -1276,7 +1307,7 @@ describe("recall view", () => {
       view.selectGap("b");
 
       expect(view.getSnapshot().progressOpen).toBe(false);
-      expect(view.getSnapshot().selected?.position_key).toBe("b");
+      expect(selected().position_key).toBe("b");
     });
 
     it("closes when practice starts", async () => {
