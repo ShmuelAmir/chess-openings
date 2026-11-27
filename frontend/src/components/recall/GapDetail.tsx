@@ -1,10 +1,16 @@
 import { Chessboard } from "react-chessboard";
+import type { RecallGap } from "../../backend/backend";
 import { formatLine, formatDate, formatStatus } from "./format";
 
 const BOARD_WIDTH = 306;
 
 /** The sticky detail pane of the selected Recall Gap. */
-export default function GapDetail({ gap, onDrill }) {
+interface GapDetailProps {
+  gap: RecallGap | undefined;
+  onDrill: () => void;
+}
+
+export default function GapDetail({ gap, onDrill }: GapDetailProps) {
   return (
     <section className="rv-detail">
       {gap ? (

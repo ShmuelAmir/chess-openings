@@ -1,13 +1,32 @@
+import type { SyncSourceStatus, SyncState } from "../../backend/backend";
 import { formatAgo } from "./format";
 
-const SOURCE_NAMES = { chess_com: "Chess.com", lichess: "Lichess" };
+type SourceKey = keyof SyncState["sources"];
+
+const SOURCE_NAMES: Record<SourceKey, string> = {
+  chess_com: "Chess.com",
+  lichess: "Lichess",
+};
 
 /** The Sync state above the list: last synced, the Sync button, failed sources. */
-export default function SyncBar({ status, syncing, error, onSync }) {
+interface SyncBarProps {
+  status: SyncState | null;
+  syncing: boolean;
+  error: string | null;
+  onSync: () => void;
+}
+
+export default function SyncBar({
+  status,
+  syncing,
+  error,
+  onSync,
+}: SyncBarProps) {
   const failed = status
-    ? Object.entries(status.sources).filter(
-        ([, source]) => source.status === "failed",
-      )
+    ? // Object.entries widens the keys to string
+      (
+        Object.entries(status.sources) as [SourceKey, SyncSourceStatus][]
+      ).filter(([, source]) => source.status === "failed")
     : [];
 
   return (

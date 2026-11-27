@@ -5,7 +5,29 @@ import {
   formatStatus,
   formatSyncChanges,
 } from "./format";
+import type {
+  RecallGap,
+  RecallTotals,
+  SyncResult,
+} from "../../backend/backend";
 import Sparkline from "./Sparkline";
+
+interface GapListProps {
+  gaps: RecallGap[];
+  closedCount: number;
+  showClosed: boolean;
+  onToggleClosed: () => void;
+  totals: RecallTotals;
+  selectedKey: string | undefined;
+  onSelect: (positionKey: string) => void;
+  loading: boolean;
+  syncing: boolean;
+  syncResult: SyncResult | null;
+  practicing: boolean;
+  onPractice: () => void;
+  /** Opens the Progress panel; null while it can't be opened. */
+  onOpenProgress: (() => void) | null;
+}
 
 /** The ranked Recall Gaps, with the list header and totals strip. */
 export default function GapList({
@@ -22,7 +44,7 @@ export default function GapList({
   practicing,
   onPractice,
   onOpenProgress,
-}) {
+}: GapListProps) {
   const openCount = gaps.filter((gap) => gap.status === "open").length;
   const changes = syncing ? null : formatSyncChanges(syncResult);
   return (
@@ -62,7 +84,7 @@ export default function GapList({
           </span>
           <button
             className="rv-missrate-open"
-            onClick={onOpenProgress}
+            onClick={onOpenProgress ?? undefined}
             disabled={!onOpenProgress}
             title="Show progress: Miss Rate and Miss Depth by month"
           >

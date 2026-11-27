@@ -1,3 +1,4 @@
+import type { TrendMonth } from "../../backend/backend";
 import { missRateRuns } from "./format";
 
 const WIDTH = 96;
@@ -8,7 +9,7 @@ const PAD = 2;
  * The monthly Miss Rate trend as a sparkline, oldest month on the left.
  * Months without a Miss Rate (too few games) are gaps in the line.
  */
-export default function Sparkline({ trend }) {
+export default function Sparkline({ trend }: { trend: TrendMonth[] }) {
   if (trend.length === 0) return null;
   const step = trend.length > 1 ? (WIDTH - 2 * PAD) / (trend.length - 1) : 0;
   const points = trend.map((m, i) => ({
