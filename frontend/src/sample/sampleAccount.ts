@@ -14,6 +14,7 @@ import type {
   TrendMonth,
 } from "../backend/backend";
 import { createMemoryBackend } from "../backend/memoryBackend";
+import type { LichessUser } from "../context/AuthContext";
 
 /*
  * The sample account: made-up Studies, Recall Gaps and a year of games,
@@ -23,14 +24,14 @@ import { createMemoryBackend } from "../backend/memoryBackend";
  * trend, the practice queue) without being the backend: Open / Closed and
  * when a gap is Due are fixed here, not worked out.
  *
- * Only `main.jsx` imports it, and only in the sample mode, so it never
+ * Only `main.tsx` imports it, and only in the sample mode, so it never
  * reaches the production bundle. Importing its types elsewhere is fine:
  * `import type` is dropped from the build.
  */
 
 /** The sample account: who it is signed in as, and the backend answering for it. */
 export interface SampleAccount {
-  lichessUser: { id: string; username: string };
+  lichessUser: LichessUser;
   chessComUsername: string;
   backend: Backend;
 }

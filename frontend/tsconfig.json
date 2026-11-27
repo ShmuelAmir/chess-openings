@@ -12,7 +12,9 @@
     "checkJs": false,
     "noEmit": true,
     "isolatedModules": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    // `import.meta.env` and CSS imports, as Vite provides them
+    "types": ["vite/client"]
   },
   "include": ["src", "vite.config.js"]
 }

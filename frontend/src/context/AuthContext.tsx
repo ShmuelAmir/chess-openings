@@ -1,16 +1,47 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
 import { useSampleAccount } from "./SampleAccountContext";
 
-const AuthContext = createContext(null);
+/**
+ * The signed-in Lichess account, as `/api/lichess/me` passes on Lichess's
+ * account JSON. Only the fields the app reads are listed; Lichess sends more.
+ */
+export interface LichessUser {
+  id: string;
+  username: string;
+}
 
-export function AuthProvider({ children }) {
+/** Who the app is signed in as, and the ways to change that. */
+export interface Auth {
+  lichessToken: string | null;
+  lichessUser: LichessUser | null;
+  chessComUsername: string;
+  /** Signed in to Lichess, with a Chess.com username saved */
+  isConnected: boolean;
+  handleLogin: (token: string) => void;
+  handleLogout: () => void;
+  /** Resolves true once the username is verified on Chess.com and saved */
+  handleChessComSave: (username: string) => Promise<boolean>;
+  handleChessComClear: () => void;
+  chessComError: string | null;
+  validatingChessCom: boolean;
+}
+
+const AuthContext = createContext<Auth | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
   // The sample mode is signed in as the sample account for good. Its token
   // is never sent: SyncProvider uses the sample account's own backend
   const sampleAccount = useSampleAccount();
-  const [lichessToken, setLichessToken] = useState(
+  const [lichessToken, setLichessToken] = useState<string | null>(
     sampleAccount ? "sample" : localStorage.getItem("lichess_token"),
   );
-  const [lichessUser, setLichessUser] = useState(
+  const [lichessUser, setLichessUser] = useState<LichessUser | null>(
     sampleAccount?.lichessUser ?? null,
   );
   const [chessComUsername, setChessComUsername] = useState(
@@ -18,7 +49,7 @@ export function AuthProvider({ children }) {
       (localStorage.getItem("chess_com_username") || ""),
   );
 
-  const [chessComError, setChessComError] = useState(null);
+  const [chessComError, setChessComError] = useState<string | null>(null);
   const [validatingChessCom, setValidatingChessCom] = useState(false);
 
   // Fetch Lichess user info when token is available
@@ -34,7 +65,7 @@ export function AuthProvider({ children }) {
         headers: { Authorization: `Bearer ${lichessToken}` },
       });
       if (response.ok) {
-        const user = await response.json();
+        const user: LichessUser = await response.json();
         setLichessUser(user);
       } else {
         // Token invalid, clear it
@@ -45,7 +76,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const handleLogin = (token) => {
+  const handleLogin = (token: string) => {
     localStorage.setItem("lichess_token", token);
     setLichessToken(token);
   };
@@ -60,7 +91,7 @@ export function AuthProvider({ children }) {
 
   // Verify the account exists before storing it, so a typo (or an email
   // address) doesn't silently turn into an unsyncable account.
-  const handleChessComSave = async (username) => {
+  const handleChessComSave = async (username: string) => {
     setChessComError(null);
     setValidatingChessCom(true);
     try {
@@ -78,7 +109,8 @@ export function AuthProvider({ children }) {
       setChessComUsername(username);
       return true;
     } catch (err) {
-      setChessComError(err.message);
+      // fetch throws only Errors (a TypeError when the network fails)
+      setChessComError(err instanceof Error ? err.message : String(err));
       return false;
     } finally {
       setValidatingChessCom(false);
@@ -92,9 +124,9 @@ export function AuthProvider({ children }) {
     setChessComError(null);
   };
 
-  const isConnected = lichessToken && lichessUser && chessComUsername;
+  const isConnected = Boolean(lichessToken && lichessUser && chessComUsername);
 
-  const value = {
+  const value: Auth = {
     lichessToken,
     lichessUser,
     chessComUsername,
@@ -110,7 +142,7 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
+export function useAuth(): Auth {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
