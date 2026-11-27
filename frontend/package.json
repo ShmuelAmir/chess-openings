@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.161.3",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^18.2.18",
     "@vitejs/plugin-react": "^4.2.1",
     "prettier": "3.9.10",
+    "typescript": "~7.0.2",
     "vite": "^5.0.12",
     "vitest": "^3.2.7"
   }

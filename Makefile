@@ -44,12 +44,16 @@ build:
 # Outside the main checkout, link ./node_modules to the main checkout's copy:
 # Node finds it by walking up from frontend/, and a later `npm install` in
 # frontend/ makes its own folder instead of writing through the link.
-test-frontend:
+define link-node-modules
 	@test -n "$(NODE_MODULES)" || { echo "No node_modules in frontend/ here or in the main checkout ($(MAIN_ROOT)). Run 'make install-all'." >&2; exit 1; }
 	@if [ "$(NODE_MODULES)" != "$(CURDIR)/frontend/node_modules" ] && { [ -L node_modules ] || [ ! -e node_modules ]; }; then ln -sfn "$(NODE_MODULES)" node_modules; fi
+endef
+
+test-frontend:
+	$(link-node-modules)
 	cd frontend && npm test
 
-# Lint and format (ruff for the backend, Prettier for the frontend, and a check
+# Lint and format (ruff for the backend, Prettier and tsc for the frontend, and a check
 # that every Markdown doc named in code or docs exists).
 # `lint` only checks; `format` rewrites files. Both report every half and every
 # check before failing, so one problem doesn't hide another.
@@ -59,8 +63,15 @@ lint:
 lint-backend:
 	cd backend && venv/bin/ruff check .; s=$$?; venv/bin/ruff format --check . && exit $$s
 
+# Prettier, the TypeScript type check, then a check that src/ holds no JavaScript;
+# fails if any does. tsc skips .js files, so without the last check a stray one
+# would pass unchecked (docs/adr/0002-frontend-typescript.md).
 lint-frontend:
-	cd frontend && npm run lint
+	$(link-node-modules)
+	cd frontend && npm run lint; s=$$?; npm run typecheck || s=1; \
+	js=$$(find src -name '*.js' -o -name '*.jsx'); \
+	if [ -n "$$js" ]; then echo "JavaScript in frontend/src; the frontend is TypeScript only:" >&2; echo "$$js" >&2; s=1; fi; \
+	exit $$s
 
 lint-docs:
 	python3 scripts/check_md_links.py
