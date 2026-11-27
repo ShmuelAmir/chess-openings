@@ -1,4 +1,18 @@
 import { Chess } from "chess.js";
+import type {
+  Backend,
+  DateRange,
+  GameFilters,
+  GapGame,
+  RecallGap,
+  RecallGapStatus,
+  RecallView,
+  Study,
+  SyncSourceStatus,
+  SyncState,
+  TimeClass,
+  TrendMonth,
+} from "../backend/backend";
 import { createMemoryBackend } from "../backend/memoryBackend";
 
 /*
@@ -10,12 +24,25 @@ import { createMemoryBackend } from "../backend/memoryBackend";
  * when a gap is Due are fixed here, not worked out.
  *
  * Only `main.jsx` imports it, and only in the sample mode, so it never
- * reaches the production bundle.
+ * reaches the production bundle. Importing its types elsewhere is fine:
+ * `import type` is dropped from the build.
  */
+
+/** The sample account: who it is signed in as, and the backend answering for it. */
+export interface SampleAccount {
+  lichessUser: { id: string; username: string };
+  chessComUsername: string;
+  backend: Backend;
+}
 
 const DAY = 24 * 60 * 60;
 // The backend's date range presets, in days back from now
-const DATE_RANGE_DAYS = { month: 30, "3months": 90, year: 365, all: null };
+const DATE_RANGE_DAYS: Record<DateRange, number | null> = {
+  month: 30,
+  "3months": 90,
+  year: 365,
+  all: null,
+};
 // The backend's rules for the totals and the trend
 const GAMES_TO_CLOSE = 2;
 const MIN_TREND_GAMES = 5;
@@ -23,13 +50,20 @@ const MIN_MEDIAN_MISSES = 3;
 const FIRST_MISS_DEPTH = 2;
 const LAST_MISS_DEPTH = 10;
 const TREND_MONTHS = 12;
-const TIME_CLASSES = ["blitz", "rapid", "blitz", "bullet", "rapid", "daily"];
+const TIME_CLASSES: TimeClass[] = [
+  "blitz",
+  "rapid",
+  "blitz",
+  "bullet",
+  "rapid",
+  "daily",
+];
 // How far back the sample games go: the trend's 12 months and a little more
 const HISTORY_DAYS = 395;
 // The latest move a sample miss comes on; the trend counts all from the 10th as one
 const LATEST_MISS_DEPTH = 14;
 
-const STUDIES = [
+const STUDIES: Omit<Study, "gaps">[] = [
   {
     id: "sItalian",
     name: "Italian Game - Giuoco Piano",
@@ -62,7 +96,19 @@ const STUDIES = [
  * `seen` how many days ago each occurrence was. A closed gap
  * closed `closedDaysAgo`; `due` says whether a practice session drills it.
  */
-const GAPS = [
+type GapSpec = {
+  studies: string[];
+  line: string;
+  bookMoves: string[];
+  wrong: string[];
+  seen: number[];
+  due: boolean;
+} & (
+  | { status?: undefined; progress?: number }
+  | { status: "closed"; closedDaysAgo: number }
+);
+
+const GAPS: GapSpec[] = [
   {
     studies: ["sItalian"],
     line: "e4 e5 Nf3 Nc6 Bc4 Bc5",
@@ -152,8 +198,46 @@ const GAPS = [
   },
 ];
 
+/** An occurrence of a gap: a game as the recall view lists it, and whether it was rated. */
+type Occurrence = Omit<GapGame, "time_class"> & {
+  time_class: TimeClass;
+  rated: boolean;
+};
+
+/** `Omit` for each member of a union, so a Recall Gap keeps its status union. */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+/**
+ * A Recall Gap as the backend would hold it: every occurrence, and whether it
+ * is Due, but nothing worked out under the Game Filters yet.
+ */
+type SampleGap = DistributiveOmit<
+  RecallGap,
+  "wrong_moves" | "occurrences" | "last_seen" | "games"
+> & { allGames: Occurrence[]; due: boolean };
+
+/** How an analysed game left the book, and on which move if it was a miss. */
+type Outcome =
+  | { outcome: "miss"; depth: number }
+  | {
+      outcome: "in_book" | "opponent_left_book" | "book_completed";
+      depth: null;
+    };
+
+/** An analysed game, with the Study its Deviation is in. */
+type AnalysedGame = {
+  date: number;
+  time_class: TimeClass;
+  rated: boolean;
+  study: string;
+} & Outcome;
+
+type Miss = AnalysedGame & { outcome: "miss" };
+
 /** A seeded random number generator, so the sample data is the same every time. */
-function seededRandom(seed) {
+function seededRandom(seed: number): () => number {
   let a = seed;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -164,31 +248,34 @@ function seededRandom(seed) {
 }
 
 /** A position's key: the FEN without its move counters, as the backend keys positions. */
-const positionKey = (chess) => chess.fen().split(" ").slice(0, 4).join(" ");
+const positionKey = (chess: Chess) =>
+  chess.fen().split(" ").slice(0, 4).join(" ");
 
 /** A date's UTC month, as "YYYY-MM". */
-const isoMonth = (date) => date.toISOString().slice(0, 7);
+const isoMonth = (date: Date) => date.toISOString().slice(0, 7);
 
 /** The UTC month of a Unix timestamp. */
-const monthOf = (timestamp) => isoMonth(new Date(timestamp * 1000));
+const monthOf = (timestamp: number) => isoMonth(new Date(timestamp * 1000));
 
 /** The month `back` months before the UTC month of `now`. */
-function monthBefore(now, back) {
+function monthBefore(now: number, back: number) {
   const date = new Date(now * 1000);
   return isoMonth(
     new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - back, 1)),
   );
 }
 
-const studyUrl = (id) => `https://lichess.org/study/${id}`;
+const RESULTS: GapGame["result"][] = ["loss", "win", "loss", "draw"];
+
+const studyUrl = (id: string) => `https://lichess.org/study/${id}`;
 
 /** Every Recall Gap with all its occurrences, as the backend would hold it. */
-function buildGaps(now) {
+function buildGaps(now: number): SampleGap[] {
   return GAPS.map((spec, gapIndex) => {
     const path = spec.line.split(" ");
     const color = path.length % 2 === 0 ? "white" : "black";
     const chess = new Chess();
-    const drillTurns = [];
+    const drillTurns: SampleGap["drill_turns"] = [];
     path.forEach((san, ply) => {
       if (ply % 2 === path.length % 2) {
         drillTurns.push({
@@ -206,16 +293,29 @@ function buildGaps(now) {
       book_moves: spec.bookMoves,
     });
 
-    const games = spec.seen.map((daysAgo, i) => ({
+    const games = spec.seen.map((daysAgo, i): Occurrence => ({
       url: `https://www.chess.com/game/live/${1000 + gapIndex * 20 + i}`,
       date: now - daysAgo * DAY - (gapIndex + 1) * 3600,
       time_class: TIME_CLASSES[(gapIndex + i) % TIME_CLASSES.length],
       rated: i % 5 !== 4,
       move_played: spec.wrong[i],
-      result: ["loss", "win", "loss", "draw"][(gapIndex + i) % 4],
+      result: RESULTS[(gapIndex + i) % RESULTS.length],
     }));
 
-    const closed = spec.status === "closed";
+    const status: RecallGapStatus =
+      spec.status === "closed"
+        ? {
+            status: "closed",
+            progress: GAMES_TO_CLOSE,
+            games_to_close: GAMES_TO_CLOSE,
+            closed_at: now - spec.closedDaysAgo * DAY,
+          }
+        : {
+            status: "open",
+            progress: spec.progress ?? 0,
+            games_to_close: GAMES_TO_CLOSE,
+            closed_at: null,
+          };
     return {
       position_key: gapKey,
       color,
@@ -223,12 +323,10 @@ function buildGaps(now) {
       book_moves: spec.bookMoves,
       studies: spec.studies.map((id) => {
         const study = STUDIES.find((s) => s.id === id);
+        if (!study) throw new Error(`No sample Study ${id}`);
         return { id, name: study.name, url: studyUrl(id) };
       }),
-      status: closed ? "closed" : "open",
-      progress: closed ? GAMES_TO_CLOSE : (spec.progress ?? 0),
-      games_to_close: GAMES_TO_CLOSE,
-      closed_at: closed ? now - spec.closedDaysAgo * DAY : null,
+      ...status,
       drill_turns: drillTurns,
       allGames: games,
       due: spec.due,
@@ -241,34 +339,34 @@ function buildGaps(now) {
  * Deviation is in. The Miss Rate falls and the misses come later in the line
  * over the year, so the Progress panel shows progress.
  */
-function buildGames(now) {
+function buildGames(now: number): AnalysedGame[] {
   const random = seededRandom(79);
-  const games = [];
+  const games: AnalysedGame[] = [];
   for (let day = HISTORY_DAYS; day >= 0; day--) {
     const progress = 1 - day / HISTORY_DAYS; // 0 at the start, 1 today
     const perDay = random() < 0.5 ? 1 : 2;
     for (let i = 0; i < perDay; i++) {
       const roll = random();
       const missRate = 0.5 - 0.3 * progress;
-      let outcome = "in_book";
-      let depth = null;
+      let outcome: Outcome = { outcome: "in_book", depth: null };
       if (roll < missRate) {
-        outcome = "miss";
         const spread = 2 + Math.floor(random() * 5);
-        depth = Math.round(2 + 4 * progress + spread * (random() - 0.3));
-        depth = Math.min(Math.max(depth, FIRST_MISS_DEPTH), LATEST_MISS_DEPTH);
+        const depth = Math.round(2 + 4 * progress + spread * (random() - 0.3));
+        outcome = {
+          outcome: "miss",
+          depth: Math.min(Math.max(depth, FIRST_MISS_DEPTH), LATEST_MISS_DEPTH),
+        };
       } else if (roll < missRate + 0.25) {
-        outcome = "opponent_left_book";
+        outcome = { outcome: "opponent_left_book", depth: null };
       } else if (roll < missRate + 0.35) {
-        outcome = "book_completed";
+        outcome = { outcome: "book_completed", depth: null };
       }
       games.push({
         date: now - day * DAY - Math.floor(random() * DAY * 0.9),
         time_class: TIME_CLASSES[Math.floor(random() * TIME_CLASSES.length)],
         rated: random() < 0.85,
         study: STUDIES[Math.floor(random() * STUDIES.length)].id,
-        outcome,
-        depth,
+        ...outcome,
       });
     }
   }
@@ -276,7 +374,11 @@ function buildGames(now) {
 }
 
 /** Whether a game, or a gap's occurrence, is inside every Game Filter but the Study filter. */
-function inFilters(game, filters, since) {
+function inFilters(
+  game: { time_class: TimeClass; rated: boolean; date: number },
+  filters: GameFilters,
+  since: number | null,
+) {
   if (
     filters.timeClasses.length > 0 &&
     !filters.timeClasses.includes(game.time_class)
@@ -286,19 +388,19 @@ function inFilters(game, filters, since) {
   return since === null || game.date >= since;
 }
 
-const inStudies = (filters, ids) =>
+const inStudies = (filters: GameFilters, ids: string[]) =>
   filters.studies.length === 0 ||
   ids.some((id) => filters.studies.includes(id));
 
 /** The month's median Miss Depth: the earlier middle one of an even count. */
-function median(depths) {
+function median(depths: number[]) {
   const sorted = [...depths].sort((a, b) => a - b);
   return sorted[Math.floor((sorted.length - 1) / 2)];
 }
 
-function trendMonth(month, games) {
+function trendMonth(month: string, games: AnalysedGame[]): TrendMonth {
   const depths = games
-    .filter((game) => game.outcome === "miss")
+    .filter((game): game is Miss => game.outcome === "miss")
     .map((game) => game.depth);
   const missDepths = new Array(LAST_MISS_DEPTH - FIRST_MISS_DEPTH + 1).fill(0);
   depths.forEach(
@@ -317,12 +419,16 @@ function trendMonth(month, games) {
 }
 
 /** A gap as the recall view shows it under the Game Filters, or null if no occurrence is inside them. */
-function shownGap({ allGames, due, ...gap }, filters, since) {
+function shownGap(
+  { allGames, due, ...gap }: SampleGap,
+  filters: GameFilters,
+  since: number | null,
+): RecallGap | null {
   const games = allGames
     .filter((game) => inFilters(game, filters, since))
     .sort((a, b) => b.date - a.date);
   if (games.length === 0) return null;
-  const counts = new Map();
+  const counts = new Map<string, number>();
   games.forEach((game) =>
     counts.set(game.move_played, (counts.get(game.move_played) ?? 0) + 1),
   );
@@ -337,14 +443,14 @@ function shownGap({ allGames, due, ...gap }, filters, since) {
   };
 }
 
-const byRanking = (a, b) =>
+const byRanking = (a: RecallGap, b: RecallGap) =>
   b.occurrences - a.occurrences || b.last_seen - a.last_seen;
 
 /**
  * The sample account: a Lichess user and Chess.com username to show, and the
  * in-memory backend answering for them.
  */
-export function createSampleAccount() {
+export function createSampleAccount(): SampleAccount {
   const now = Math.floor(Date.now() / 1000);
   const gaps = buildGaps(now);
   const games = buildGames(now);
@@ -353,17 +459,17 @@ export function createSampleAccount() {
   );
   let runs = 0;
 
-  const sinceOf = (filters) => {
+  const sinceOf = (filters: GameFilters) => {
     const days = DATE_RANGE_DAYS[filters.dateRange];
     return days === undefined || days === null ? null : now - days * DAY;
   };
 
-  function recallView(filters) {
+  function recallView(filters: GameFilters): RecallView {
     const since = sinceOf(filters);
     // The gaps under every Game Filter but the Study filter, ranked
     const unfiltered = gaps
       .map((gap) => shownGap(gap, filters, since))
-      .filter(Boolean)
+      .filter((gap) => gap !== null)
       .sort(byRanking);
     const shown = unfiltered.filter((gap) =>
       inStudies(
@@ -375,7 +481,7 @@ export function createSampleAccount() {
     const counted = studyGames.filter((game) =>
       inFilters(game, filters, since),
     );
-    const count = (outcome) =>
+    const count = (outcome: AnalysedGame["outcome"]) =>
       counted.filter((game) => game.outcome === outcome).length;
     // The trend ignores the date range
     const trendGames = studyGames.filter((game) =>
@@ -415,8 +521,8 @@ export function createSampleAccount() {
     };
   }
 
-  const syncState = () => {
-    const lastSync = {
+  const syncState = (): SyncState => {
+    const lastSync: SyncSourceStatus = {
       status: "ok",
       error: null,
       last_success_at: now - 5 * 60,
