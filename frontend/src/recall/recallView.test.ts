@@ -1,56 +1,110 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemoryBackend } from "../backend/memoryBackend";
-import { createSyncClient } from "../sync/syncClient";
-import { createRecallView } from "./recallView";
+import type {
+  GameFilters,
+  RecallGap,
+  RecallTotals,
+  RecallView,
+  Study,
+  SyncResult,
+  SyncSourceStatus,
+  SyncState,
+} from "../backend/backend";
+import {
+  createMemoryBackend,
+  type MemoryBackend,
+} from "../backend/memoryBackend";
+import { createSyncClient, type SyncClient } from "../sync/syncClient";
+import { createRecallView, type RecallViewStore } from "./recallView";
 
 const NOW = new Date("2026-10-09T12:00:00Z");
 
+const SOURCE_OK: SyncSourceStatus = {
+  status: "ok",
+  error: null,
+  last_success_at: NOW.getTime() / 1000,
+};
+
 /** A Sync state as the backend reports it: idle and synced just now. */
-function syncState(overrides = {}) {
+function syncState(overrides: Partial<SyncState> = {}): SyncState {
   return {
     running: false,
     runs: 0,
     progress: null,
     last_synced_at: NOW.getTime() / 1000,
     cached_games: 120,
-    sources: {},
+    sources: { chess_com: SOURCE_OK, lichess: SOURCE_OK },
     result: null,
     ...overrides,
   };
 }
 
+/** What a Sync changed, as the backend reports it; nothing unless told otherwise. */
+function syncResult(overrides: Partial<SyncResult> = {}): SyncResult {
+  return {
+    games_changed: false,
+    repertoire_changed: false,
+    new_games: 0,
+    new_gaps: 0,
+    closed_gaps: 0,
+    reopened_gaps: 0,
+    ...overrides,
+  };
+}
+
 /** A Recall Gap as the backend reports it; Open unless told otherwise. */
-function gap(positionKey, status = "open") {
-  return { position_key: positionKey, status };
+function gap(
+  positionKey: string,
+  status: "open" | "closed" = "open",
+): RecallGap {
+  const fields = {
+    position_key: positionKey,
+    color: "white" as const,
+    path: ["e4", "e5"],
+    wrong_moves: [],
+    book_moves: ["Nf3"],
+    studies: [],
+    occurrences: 1,
+    last_seen: NOW.getTime() / 1000,
+    games: [],
+    drill_turns: [],
+    progress: 0,
+    games_to_close: 2,
+  };
+  return status === "open"
+    ? { ...fields, status, closed_at: null }
+    : { ...fields, status, closed_at: NOW.getTime() / 1000 };
 }
 
 /** A study of the Repertoire as the backend reports it. */
-function study(id) {
+function study(id: string): Study {
   return { id, name: id, opening_name: id, color: "white", gaps: 1 };
 }
 
+// Only `analysed`: the recall view hands the totals on untouched, and the
+// tests compare them to exactly this
+const TOTALS = { analysed: 40 } as RecallTotals;
+
 /** A recall view as the backend reports it. */
-function recallView({ gaps = [], studies = [study("italian")] } = {}) {
-  return { studies, gaps, totals: { analysed: 40 } };
+function recallView({
+  gaps = [],
+  studies = [study("italian")],
+}: { gaps?: RecallGap[]; studies?: Study[] } = {}): RecallView {
+  return { studies, gaps, totals: TOTALS };
 }
 
-const DEFAULTS = {
+const DEFAULTS: GameFilters = {
   timeClasses: ["blitz", "rapid"],
   dateRange: "3months",
   ratedOnly: true,
   studies: [],
 };
-const BULLET = {
+const BULLET: GameFilters = {
   timeClasses: ["bullet"],
   dateRange: "year",
   ratedOnly: false,
   studies: [],
 };
-const UNCHANGED = {
-  games_changed: false,
-  repertoire_changed: false,
-  new_games: 0,
-};
+const UNCHANGED = syncResult();
 // Where the browser remembers the Game Filters
 const STORAGE_KEY = "recall-view.game-filters";
 
@@ -58,9 +112,9 @@ const STORAGE_KEY = "recall-view.game-filters";
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 describe("recall view", () => {
-  let backend;
-  let syncClient;
-  let view;
+  let backend: MemoryBackend;
+  let syncClient: SyncClient;
+  let view: RecallViewStore;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -88,11 +142,11 @@ describe("recall view", () => {
   }
 
   /** Browser storage that remembers what it is given. */
-  function stubStorage(initial = {}) {
+  function stubStorage(initial: Record<string, string> = {}) {
     const items = new Map(Object.entries(initial));
     vi.stubGlobal("localStorage", {
-      getItem: (key) => items.get(key) ?? null,
-      setItem: (key, value) => items.set(key, value),
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
     });
     return items;
   }
@@ -110,7 +164,7 @@ describe("recall view", () => {
 
       expect(backend.calls("loadRecallView")).toEqual([[DEFAULTS]]);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(view.getSnapshot().view.totals).toEqual({ analysed: 40 });
+      expect(view.getSnapshot().view?.totals).toEqual({ analysed: 40 });
       expect(shownKeys()).toEqual(["a", "b"]);
     });
   });
@@ -297,7 +351,7 @@ describe("recall view", () => {
       await open();
       expect(view.getSnapshot().filters).toEqual(DEFAULTS);
 
-      const year = { ...DEFAULTS, dateRange: "year" };
+      const year: GameFilters = { ...DEFAULTS, dateRange: "year" };
       view.setFilters(year);
       await settle();
 
@@ -307,7 +361,7 @@ describe("recall view", () => {
   });
 
   describe("selected studies that left the Repertoire", () => {
-    const withStudies = (studies) => ({ ...DEFAULTS, studies });
+    const withStudies = (studies: string[]) => ({ ...DEFAULTS, studies });
 
     it("are forgotten, and the view reloads without them", async () => {
       const remembered = stubStorage();
@@ -325,7 +379,7 @@ describe("recall view", () => {
       ]);
       expect(backend.count("loadRecallView")).toBe(3);
       expect(view.getSnapshot().loading).toBe(false);
-      expect(JSON.parse(remembered.get(STORAGE_KEY)).studies).toEqual([
+      expect(JSON.parse(remembered.get(STORAGE_KEY) ?? "").studies).toEqual([
         "italian",
       ]);
     });
@@ -341,7 +395,7 @@ describe("recall view", () => {
 
       expect(view.getSnapshot().filters.studies).toEqual(["italian"]);
       expect(backend.count("loadRecallView")).toBe(2);
-      expect(view.getSnapshot().view.studies).toEqual([]);
+      expect(view.getSnapshot().view?.studies).toEqual([]);
     });
   });
 
@@ -401,19 +455,16 @@ describe("recall view", () => {
   });
 
   /** Run a Sync to its end, with the given result. */
-  async function finishSync(result) {
-    const runs = syncClient.getSnapshot().status.runs;
+  async function finishSync(result: SyncResult) {
+    // The Sync state has arrived: every test answers readSyncState
+    const runs = syncClient.getSnapshot().status?.runs ?? 0;
     backend.on("startSync").answer(syncState({ running: true, runs }));
     await syncClient.startSync();
     backend.on("readSyncState").answer(syncState({ runs: runs + 1, result }));
     await vi.advanceTimersByTimeAsync(1000);
   }
 
-  const CHANGED = {
-    games_changed: true,
-    repertoire_changed: false,
-    new_games: 4,
-  };
+  const CHANGED = syncResult({ games_changed: true, new_games: 4 });
 
   describe("a Sync", () => {
     it("reloads the view when it changed something", async () => {
@@ -440,11 +491,7 @@ describe("recall view", () => {
   });
 
   describe("a Sync during practice", () => {
-    const FIRST = {
-      games_changed: true,
-      repertoire_changed: false,
-      new_games: 2,
-    };
+    const FIRST = syncResult({ games_changed: true, new_games: 2 });
 
     it('does not reload the view, and the "what changed" line stays the one of the analysis on screen', async () => {
       backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
@@ -513,7 +560,7 @@ describe("recall view", () => {
       view.endPractice();
       await settle();
 
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
     });
 
     it("keeps the first shown gap selected across the held analysis when none was picked", async () => {
@@ -530,7 +577,7 @@ describe("recall view", () => {
       view.endPractice();
       await settle();
 
-      expect(view.getSnapshot().selected.position_key).toBe("a");
+      expect(view.getSnapshot().selected?.position_key).toBe("a");
     });
   });
 
@@ -578,7 +625,7 @@ describe("recall view", () => {
 
       view.startDrill();
 
-      expect(view.getSnapshot().practice.gap.position_key).toBe("b");
+      expect(view.getSnapshot().practice?.gap?.position_key).toBe("b");
     });
 
     it("keeps its Recall Gap when the gap is no longer the selected one", async () => {
@@ -592,8 +639,8 @@ describe("recall view", () => {
 
       view.toggleClosed();
 
-      expect(view.getSnapshot().selected.position_key).toBe("a");
-      expect(view.getSnapshot().practice.gap.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("a");
+      expect(view.getSnapshot().practice?.gap?.position_key).toBe("b");
     });
 
     it("does not start when no Recall Gap is shown", async () => {
@@ -615,7 +662,7 @@ describe("recall view", () => {
       view.selectGap("b");
 
       expect(view.getSnapshot().practice).toBeNull();
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
     });
 
     it("goes on when its own Recall Gap is selected again", async () => {
@@ -627,7 +674,7 @@ describe("recall view", () => {
 
       view.selectGap("a");
 
-      expect(view.getSnapshot().practice.kind).toBe("drill");
+      expect(view.getSnapshot().practice?.kind).toBe("drill");
     });
   });
 
@@ -652,19 +699,19 @@ describe("recall view", () => {
     });
 
     it("records its Drill Attempt, showing saving and then saved", async () => {
-      backend.on("recordDrillAttempt").delay(200).answer({});
-      expect(view.getSnapshot().practice.saveState).toBeNull();
+      backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
+      expect(view.getSnapshot().practice?.saveState).toBeNull();
 
       view.finishDrill(FAIL);
-      expect(view.getSnapshot().practice.saveState).toBe("saving");
+      expect(view.getSnapshot().practice?.saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.saveState).toBe("saved");
+      expect(view.getSnapshot().practice?.saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL]]);
     });
 
     it("records exactly one Drill Attempt, even if reported more than once", async () => {
-      backend.on("recordDrillAttempt").delay(200).answer({});
+      backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
 
       view.finishDrill(PASS);
       view.finishDrill(PASS);
@@ -673,26 +720,26 @@ describe("recall view", () => {
       await settle();
 
       expect(backend.count("recordDrillAttempt")).toBe(1);
-      expect(view.getSnapshot().practice.saveState).toBe("saved");
+      expect(view.getSnapshot().practice?.saveState).toBe("saved");
     });
 
     it("shows a failed save as failed, and saves the same Drill Attempt on retry", async () => {
       backend.on("recordDrillAttempt").fail("Server error");
       view.finishDrill(FAIL);
       await settle();
-      expect(view.getSnapshot().practice.saveState).toBe("failed");
+      expect(view.getSnapshot().practice?.saveState).toBe("failed");
 
-      backend.on("recordDrillAttempt").delay(200).answer({});
+      backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
       view.retrySave();
-      expect(view.getSnapshot().practice.saveState).toBe("saving");
+      expect(view.getSnapshot().practice?.saveState).toBe("saving");
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.saveState).toBe("saved");
+      expect(view.getSnapshot().practice?.saveState).toBe("saved");
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [FAIL]]);
     });
 
     it("is not saved again by a retry once it is saved", async () => {
-      backend.on("recordDrillAttempt").answer({});
+      backend.on("recordDrillAttempt").answer({ recorded: true });
       view.finishDrill(PASS);
       await settle();
 
@@ -703,7 +750,7 @@ describe("recall view", () => {
     });
 
     it("can be drilled again: a new drill of the same gap that records its own Drill Attempt", async () => {
-      backend.on("recordDrillAttempt").answer({});
+      backend.on("recordDrillAttempt").answer({ recorded: true });
       view.finishDrill(FAIL);
       await settle();
       const first = view.getSnapshot().practice;
@@ -712,15 +759,15 @@ describe("recall view", () => {
       const again = view.getSnapshot().practice;
       expect(again).toMatchObject({
         kind: "drill",
-        gap: first.gap,
+        gap: first?.gap,
         saveState: null,
       });
-      expect(again.drillNumber).not.toBe(first.drillNumber);
+      expect(again?.drillNumber).not.toBe(first?.drillNumber);
 
       view.finishDrill(PASS);
       await settle();
       expect(backend.calls("recordDrillAttempt")).toEqual([[FAIL], [PASS]]);
-      expect(view.getSnapshot().practice.saveState).toBe("saved");
+      expect(view.getSnapshot().practice?.saveState).toBe("saved");
     });
 
     it('leaves the next drill alone when its save answers after "Drill again"', async () => {
@@ -730,11 +777,11 @@ describe("recall view", () => {
       view.drillAgain();
       await vi.advanceTimersByTimeAsync(200);
 
-      expect(view.getSnapshot().practice.saveState).toBeNull();
+      expect(view.getSnapshot().practice?.saveState).toBeNull();
     });
 
     it("leaves the view alone when its save answers after practice ended", async () => {
-      backend.on("recordDrillAttempt").delay(200).answer({});
+      backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
       view.finishDrill(PASS);
 
       view.endPractice();
@@ -745,14 +792,20 @@ describe("recall view", () => {
   });
 
   describe("a practice session", () => {
-    const YEAR = { ...DEFAULTS, dateRange: "year" };
+    const YEAR: GameFilters = { ...DEFAULTS, dateRange: "year" };
+
+    /** The practice session in progress. */
+    function session() {
+      const { practice } = view.getSnapshot();
+      if (practice?.kind !== "session") throw new Error("No practice session");
+      return practice;
+    }
 
     /** Finish the drill on the board and let its Drill Attempt be saved. */
     async function finishAndSave() {
-      view.finishDrill({
-        ...PASS,
-        gap_position_key: view.getSnapshot().practice.gap.position_key,
-      });
+      const { gap } = session();
+      if (!gap) throw new Error("No Recall Gap to drill");
+      view.finishDrill({ ...PASS, gap_position_key: gap.position_key });
       await settle();
     }
 
@@ -760,7 +813,7 @@ describe("recall view", () => {
       backend
         .on("loadRecallView")
         .answer(recallView({ gaps: [gap("a"), gap("b"), gap("c")] }));
-      backend.on("recordDrillAttempt").answer({});
+      backend.on("recordDrillAttempt").answer({ recorded: true });
       await open();
     });
 
@@ -777,7 +830,7 @@ describe("recall view", () => {
         error: null,
         drilled: 0,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
       await vi.advanceTimersByTimeAsync(300);
 
       expect(view.getSnapshot().practice).toMatchObject({
@@ -804,16 +857,16 @@ describe("recall view", () => {
 
     it("advances to the next Recall Gap only after the Drill Attempt is saved", async () => {
       backend.on("loadPracticeQueue").answer([gap("a"), gap("b")]);
-      backend.on("recordDrillAttempt").delay(200).answer({});
+      backend.on("recordDrillAttempt").delay(200).answer({ recorded: true });
       view.startSession();
       await settle();
-      const first = view.getSnapshot().practice.drillNumber;
+      const first = view.getSnapshot().practice?.drillNumber;
 
       view.nextDrill();
-      expect(view.getSnapshot().practice.index).toBe(0);
+      expect(session().index).toBe(0);
       view.finishDrill(PASS);
       view.nextDrill();
-      expect(view.getSnapshot().practice.index).toBe(0);
+      expect(session().index).toBe(0);
 
       await vi.advanceTimersByTimeAsync(200);
       view.nextDrill();
@@ -823,7 +876,7 @@ describe("recall view", () => {
         drilled: 1,
         saveState: null,
       });
-      expect(view.getSnapshot().practice.drillNumber).not.toBe(first);
+      expect(view.getSnapshot().practice?.drillNumber).not.toBe(first);
       expect(backend.count("loadPracticeQueue")).toBe(1);
     });
 
@@ -867,7 +920,7 @@ describe("recall view", () => {
       await finishAndSave();
       view.nextDrill();
       await finishAndSave();
-      const last = view.getSnapshot().practice.drillNumber;
+      const last = view.getSnapshot().practice?.drillNumber;
 
       backend.on("loadPracticeQueue").answer([gap("b")]);
       view.nextDrill();
@@ -881,7 +934,7 @@ describe("recall view", () => {
         drilled: 2,
         saveState: null,
       });
-      expect(view.getSnapshot().practice.drillNumber).not.toBe(last);
+      expect(view.getSnapshot().practice?.drillNumber).not.toBe(last);
     });
 
     it("reports nothing due, and how many gaps were drilled, when the queue comes back empty", async () => {
@@ -899,7 +952,7 @@ describe("recall view", () => {
         drilled: 1,
         error: null,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
     });
 
     it("reports nothing due at once when nothing is due at its start", async () => {
@@ -912,7 +965,7 @@ describe("recall view", () => {
         queue: [],
         drilled: 0,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
     });
 
     it("shows why its queue failed to load, and loads it on retry", async () => {
@@ -931,7 +984,7 @@ describe("recall view", () => {
         .delay(300)
         .answer([gap("a")]);
       view.retryQueue();
-      expect(view.getSnapshot().practice.error).toBeNull();
+      expect(session().error).toBeNull();
       await vi.advanceTimersByTimeAsync(300);
 
       expect(view.getSnapshot().practice).toMatchObject({
@@ -953,7 +1006,7 @@ describe("recall view", () => {
       view.nextDrill();
       await vi.advanceTimersByTimeAsync(300);
 
-      expect(view.getSnapshot().practice.drilled).toBe(1);
+      expect(session().drilled).toBe(1);
       expect(backend.count("loadPracticeQueue")).toBe(2);
     });
 
@@ -974,7 +1027,7 @@ describe("recall view", () => {
         error: null,
         drilled: 1,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
     });
 
     it("has no Recall Gap to drill after its queue failed to load again, nor during the retry", async () => {
@@ -992,7 +1045,7 @@ describe("recall view", () => {
         error: "Could not load the practice session",
         queue: null,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
 
       backend
         .on("loadPracticeQueue")
@@ -1003,7 +1056,7 @@ describe("recall view", () => {
         error: null,
         queue: null,
       });
-      expect(view.getSnapshot().practice.gap).toBeUndefined();
+      expect(view.getSnapshot().practice?.gap).toBeUndefined();
       await vi.advanceTimersByTimeAsync(300);
 
       expect(view.getSnapshot().practice).toMatchObject({
@@ -1144,7 +1197,7 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a", "closed"), gap("b"), gap("c")] }));
       await open();
 
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
     });
 
     it("is none when no gap is shown", async () => {
@@ -1160,14 +1213,14 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a"), gap("b")] }));
       await open();
       view.selectGap("b");
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
 
       backend
         .on("loadRecallView")
         .answer(recallView({ gaps: [gap("new"), gap("a"), gap("b")] }));
       await finishSync(CHANGED);
 
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
     });
 
     it("falls back to the first shown gap when a reload no longer lists it", async () => {
@@ -1182,7 +1235,7 @@ describe("recall view", () => {
         .answer(recallView({ gaps: [gap("a"), gap("c")] }));
       await finishSync(CHANGED);
 
-      expect(view.getSnapshot().selected.position_key).toBe("a");
+      expect(view.getSnapshot().selected?.position_key).toBe("a");
     });
 
     it("falls back to the first shown gap when it is Closed and Closed gaps are hidden again", async () => {
@@ -1192,11 +1245,11 @@ describe("recall view", () => {
       await open();
       view.toggleClosed();
       view.selectGap("b");
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
 
       view.toggleClosed();
 
-      expect(view.getSnapshot().selected.position_key).toBe("a");
+      expect(view.getSnapshot().selected?.position_key).toBe("a");
     });
   });
 
@@ -1223,7 +1276,7 @@ describe("recall view", () => {
       view.selectGap("b");
 
       expect(view.getSnapshot().progressOpen).toBe(false);
-      expect(view.getSnapshot().selected.position_key).toBe("b");
+      expect(view.getSnapshot().selected?.position_key).toBe("b");
     });
 
     it("closes when practice starts", async () => {

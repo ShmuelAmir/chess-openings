@@ -1,9 +1,34 @@
+import type { Backend, SyncResult, SyncState } from "../backend/backend";
+
 // Sync on open when the older source's last Sync is older than this
 const SYNC_STALE_SECONDS = 10 * 60;
 const SYNC_POLL_MS = 1000;
 
-function isStale(lastSyncedAt) {
+function isStale(lastSyncedAt: number | null): boolean {
   return !lastSyncedAt || Date.now() / 1000 - lastSyncedAt > SYNC_STALE_SECONDS;
+}
+
+/** What the Sync client reports: the Sync state and what follows from it. */
+export interface SyncSnapshot {
+  /** The Sync state, as the backend reports it; null until it first arrives. */
+  status: SyncState | null;
+  syncing: boolean;
+  /** Why the last request failed, until the next Sync state arrives. */
+  error: string | null;
+  /** The result of the last Sync that finished since the app opened. */
+  result: SyncResult | null;
+}
+
+/** The Sync client for one account; see `createSyncClient`. */
+export interface SyncClient {
+  getSnapshot(): SyncSnapshot;
+  /** Hear of each new snapshot; returns the unsubscribe. */
+  subscribe(listener: () => void): () => void;
+  /** Hear of each finished Sync that changed the games or the Repertoire. */
+  onChanged(listener: () => void): () => void;
+  /** Start a Sync now (the Sync button, or Retry). */
+  startSync(): Promise<void>;
+  dispose(): void;
 }
 
 /**
@@ -16,30 +41,31 @@ function isStale(lastSyncedAt) {
  * announces a finished Sync that changed the games or the Repertoire.
  * `dispose()` when the account changes; a disposed client does nothing more.
  */
-export function createSyncClient(backend) {
-  let snapshot = {
-    // The Sync state, as the backend reports it
+export function createSyncClient(backend: Backend): SyncClient {
+  let snapshot: SyncSnapshot = {
     status: null,
     syncing: false,
-    // Why the last request failed, until the next Sync state arrives
     error: null,
-    // The result of the last Sync that finished since the app opened
     result: null,
   };
-  const listeners = new Set();
-  const changeListeners = new Set();
-  let pollTimer = null;
+  const listeners = new Set<() => void>();
+  const changeListeners = new Set<() => void>();
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
   // How many Syncs had finished when we last looked, to notice a new result
-  let seenRuns = null;
+  let seenRuns: number | null = null;
   let disposed = false;
 
-  function setSnapshot(changes) {
+  function setSnapshot(changes: Partial<SyncSnapshot>) {
     snapshot = { ...snapshot, ...changes };
     listeners.forEach((listener) => listener());
   }
 
-  function applyStatus(status) {
-    const changes = { status, syncing: Boolean(status.running), error: null };
+  function applyStatus(status: SyncState) {
+    const changes: Partial<SyncSnapshot> = {
+      status,
+      syncing: Boolean(status.running),
+      error: null,
+    };
     let finished = false;
     if (seenRuns === null) {
       seenRuns = status.runs;
@@ -61,7 +87,7 @@ export function createSyncClient(backend) {
     }
   }
 
-  function schedulePoll(running) {
+  function schedulePoll(running: boolean) {
     // Poll the Sync's progress while it runs
     if (running && pollTimer === null) {
       pollTimer = setInterval(poll, SYNC_POLL_MS);
@@ -73,14 +99,17 @@ export function createSyncClient(backend) {
 
   // Ask the backend for the Sync state and apply it, or surface the failure.
   // Resolves with the state, or null if it failed or the client was disposed.
-  async function request(call) {
+  async function request(
+    call: () => Promise<SyncState>,
+  ): Promise<SyncState | null> {
     try {
       const status = await call();
       if (disposed) return null;
       applyStatus(status);
       return status;
     } catch (err) {
-      if (!disposed) setSnapshot({ error: err.message });
+      // A Backend call rejects with an Error fit to show the user
+      if (!disposed) setSnapshot({ error: (err as Error).message });
       return null;
     }
   }
@@ -99,13 +128,16 @@ export function createSyncClient(backend) {
     getSnapshot: () => snapshot,
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     onChanged(listener) {
       changeListeners.add(listener);
-      return () => changeListeners.delete(listener);
+      return () => {
+        changeListeners.delete(listener);
+      };
     },
-    /** Start a Sync now (the Sync button, or Retry). */
     async startSync() {
       if (disposed) return;
       setSnapshot({ error: null });
