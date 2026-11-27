@@ -3,11 +3,14 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./router";
 import { SampleAccountContext } from "./context/SampleAccountContext";
+import type { SampleAccount } from "./sample/sampleAccount";
 import "./index.css";
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("index.html has no #root element");
+const root = ReactDOM.createRoot(rootElement);
 
-function render(sampleAccount) {
+function render(sampleAccount: SampleAccount | null) {
   root.render(
     <React.StrictMode>
       <SampleAccountContext.Provider value={sampleAccount}>

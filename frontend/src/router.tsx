@@ -2,7 +2,6 @@ import {
   createRouter,
   createRootRoute,
   createRoute,
-  Outlet,
 } from "@tanstack/react-router";
 import Layout from "./components/Layout";
 import RecallPage from "./pages/RecallPage";
@@ -44,3 +43,12 @@ const routeTree = rootRoute.addChildren([
 
 // Create and export the router
 export const router = createRouter({ routeTree });
+
+// Registers the routes with TanStack Router, so `Link`, `useNavigate`,
+// `useParams` and `useSearch` anywhere in the app know them: a link to a
+// route that doesn't exist, or a missing route param, is a type error
+declare module "@tanstack/react-router" {
+  interface Register {
+    router: typeof router;
+  }
+}
