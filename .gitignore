@@ -69,5 +69,6 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
-# Claude Code
-.claude/
+# Claude Code: only the committed project settings are tracked
+.claude/*
+!.claude/settings.json
