@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push -u origin *)"
+    ],
+    "ask": [
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push *:main)",
+      "Bash(git push *:main *)",
+      "Bash(git push *refs/heads/main)",
+      "Bash(git push *refs/heads/main *)",
+      "Bash(git push -u origin)",
+      "Bash(git push * HEAD)",
+      "Bash(git push * HEAD *)",
+      "Bash(git push * @)",
+      "Bash(git push * @ *)",
+      "Bash(git push *--force*)",
+      "Bash(git push * -f)",
+      "Bash(git push * -f *)",
+      "Bash(git push * +*)",
+      "Bash(git push *--delete*)",
+      "Bash(git push * -d)",
+      "Bash(git push * -d *)",
+      "Bash(git push * :*)",
+      "Bash(git push *--all*)",
+      "Bash(git push *--mirror*)"
+    ]
+  }
+}

@@ -136,7 +136,7 @@ Return {studies: [{id, name, opening_name, color, gaps}], gaps: [...],
 
 ## Seams & Adapters
 
-A **seam** is a boundary where behavior can be altered without editing the pipeline in place.
+A **seam** is a boundary where behavior can be altered without editing the code that depends on it in place.
 
 1. **Repertoire fetching seam:**
    - Abstract interface: `RepertoireSource`
@@ -149,7 +149,7 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)
 
 3. **Frontend backend seam:**
-   - Interface: the backend adapter the frontend calls (`readSyncState`, `startSync`, `loadRecallView`, `loadPracticeQueue`, `recordDrillAttempt`)
-   - Current adapter: `createHttpBackend` (`frontend/src/backend/httpBackend.js`), one per account
-   - In-memory adapter: `createMemoryBackend` (`frontend/src/backend/memoryBackend.js`), scripted call by call. The frontend tests use it, and so does the sample mode
+   - Abstract interface: the backend object the recall view store (`createRecallView` in `frontend/src/recall/recallView.js`) and the sync client call: `readSyncState`, `startSync`, `loadRecallView`, `loadPracticeQueue`, `recordDrillAttempt`
+   - Current adapter: `createHttpBackend` (`frontend/src/backend/httpBackend.js`, calls the API)
+   - Alternative adapters: `createMemoryBackend` (`frontend/src/backend/memoryBackend.js`, for testing and the sample mode), where each call is scripted to answer, reply from its arguments, fail or delay. Frontend behaviour is tested at this seam, not through components: the recall view store (`recallView.test.js`), the sync client (`syncClient.test.js`) and the sample account (`sampleAccount.test.js`), each over the in-memory backend
    - **Sample mode:** `npm run dev:sample` (`vite --mode sample`, port 5174) runs the real frontend on the sample account (`frontend/src/sample/sampleAccount.js`): the in-memory adapter answering from made-up Studies, Recall Gaps and a year of games. `main.jsx` imports it only in that mode, so other builds leave it out, and `AuthProvider` and `SyncProvider` use it in place of the Lichess sign-in and the HTTP adapter. The Opening Distribution and Settings pages still call the backend server directly, so they show errors there
