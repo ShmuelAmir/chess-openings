@@ -124,9 +124,8 @@ class RepertoireBuilder:
 
     def __init__(self):
         self.repertoire = Repertoire()
-        self._studies: list[
-            tuple[str, str, str, Optional[str]]
-        ] = []  # (pgn, opening_name, study_name, study_id)
+        # (pgn, opening_name, study_name, study_id)
+        self._studies: list[tuple[str, str, str, Optional[str]]] = []
 
     def add_study(
         self,

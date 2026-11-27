@@ -12,9 +12,8 @@ class DrillAttempt(NamedTuple):
     gap_position_key: str
     at: int  # Unix timestamp
     passed: bool
-    first_miss_position_key: Optional[
-        str
-    ]  # where a failed attempt's first wrong move was played
+    # where a failed attempt's first wrong move was played
+    first_miss_position_key: Optional[str]
 
 
 class DrillAttemptStore:

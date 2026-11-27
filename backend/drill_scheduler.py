@@ -17,9 +17,8 @@ INTERVAL_DAYS = (1, 3, 7)
 
 @dataclass(frozen=True)
 class Schedule:
-    due: list[str] = field(
-        default_factory=list
-    )  # position keys due now, in the given order
+    # position keys due now, in the given order
+    due: list[str] = field(default_factory=list)
     next_due: dict[str, int] = field(default_factory=dict)  # each gap's next due time
 
 
