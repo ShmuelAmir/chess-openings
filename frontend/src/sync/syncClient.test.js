@@ -20,7 +20,11 @@ function syncState(overrides = {}) {
   };
 }
 
-const UNCHANGED = { games_changed: false, repertoire_changed: false, new_games: 0 };
+const UNCHANGED = {
+  games_changed: false,
+  repertoire_changed: false,
+  new_games: 0,
+};
 
 /** Let the backend's answers that are already due reach the client. */
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -51,8 +55,12 @@ describe("Sync client", () => {
 
   describe("on open", () => {
     it("starts a Sync when the last Sync is older than ten minutes", async () => {
-      backend.on("readSyncState").answer(syncState({ last_synced_at: NOW_SECONDS - 11 * MINUTE }));
-      backend.on("startSync").answer(syncState({ running: true, progress: "Fetching games" }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ last_synced_at: NOW_SECONDS - 11 * MINUTE }));
+      backend
+        .on("startSync")
+        .answer(syncState({ running: true, progress: "Fetching games" }));
 
       await open();
 
@@ -71,7 +79,9 @@ describe("Sync client", () => {
     });
 
     it("does not start a Sync when the last Sync is recent", async () => {
-      backend.on("readSyncState").answer(syncState({ last_synced_at: NOW_SECONDS - 9 * MINUTE }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ last_synced_at: NOW_SECONDS - 9 * MINUTE }));
 
       await open();
 
@@ -81,9 +91,12 @@ describe("Sync client", () => {
     });
 
     it("does not start a second Sync when one is already running", async () => {
-      backend
-        .on("readSyncState")
-        .answer(syncState({ running: true, last_synced_at: NOW_SECONDS - 11 * MINUTE }));
+      backend.on("readSyncState").answer(
+        syncState({
+          running: true,
+          last_synced_at: NOW_SECONDS - 11 * MINUTE,
+        }),
+      );
 
       await open();
 
@@ -94,16 +107,22 @@ describe("Sync client", () => {
 
   describe("while a Sync runs", () => {
     it("polls the Sync state each second and stops once the Sync finishes", async () => {
-      backend.on("readSyncState").answer(syncState({ running: true, progress: "Month 1 of 3" }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ running: true, progress: "Month 1 of 3" }));
       await open();
       expect(backend.count("readSyncState")).toBe(1);
 
-      backend.on("readSyncState").answer(syncState({ running: true, progress: "Month 2 of 3" }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ running: true, progress: "Month 2 of 3" }));
       await second();
       expect(backend.count("readSyncState")).toBe(2);
       expect(client.getSnapshot().status.progress).toBe("Month 2 of 3");
 
-      backend.on("readSyncState").answer(syncState({ running: false, runs: 1, result: UNCHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ running: false, runs: 1, result: UNCHANGED }));
       await second();
       expect(backend.count("readSyncState")).toBe(3);
       expect(client.getSnapshot().syncing).toBe(false);
@@ -128,7 +147,9 @@ describe("Sync client", () => {
       client.subscribe(() => seen.push(client.getSnapshot().syncing));
 
       await settle();
-      backend.on("readSyncState").answer(syncState({ running: false, runs: 1, result: UNCHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ running: false, runs: 1, result: UNCHANGED }));
       await second();
 
       expect(seen).toEqual([true, false]);
@@ -136,10 +157,16 @@ describe("Sync client", () => {
   });
 
   describe("a finished Sync", () => {
-    const CHANGED = { games_changed: true, repertoire_changed: false, new_games: 4 };
+    const CHANGED = {
+      games_changed: true,
+      repertoire_changed: false,
+      new_games: 4,
+    };
 
     it("is not reported as new when it finished before the app opened", async () => {
-      backend.on("readSyncState").answer(syncState({ runs: 3, result: CHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ runs: 3, result: CHANGED }));
       const changes = vi.fn();
       client = createSyncClient(backend);
       client.onChanged(changes);
@@ -159,7 +186,9 @@ describe("Sync client", () => {
       expect(client.getSnapshot().syncing).toBe(true);
       expect(client.getSnapshot().result).toBeNull();
 
-      backend.on("readSyncState").answer(syncState({ runs: 4, result: CHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ runs: 4, result: CHANGED }));
       await second();
 
       expect(client.getSnapshot().result).toEqual(CHANGED);
@@ -172,12 +201,16 @@ describe("Sync client", () => {
       client.onChanged(changes);
       await settle();
 
-      backend.on("readSyncState").answer(syncState({ runs: 1, result: CHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ runs: 1, result: CHANGED }));
       await second();
       expect(changes).toHaveBeenCalledTimes(1);
 
       // The same finished Sync, read again while starting the next one
-      backend.on("startSync").answer(syncState({ running: false, runs: 1, result: CHANGED }));
+      backend
+        .on("startSync")
+        .answer(syncState({ running: false, runs: 1, result: CHANGED }));
       await client.startSync();
 
       expect(changes).toHaveBeenCalledTimes(1);
@@ -189,12 +222,20 @@ describe("Sync client", () => {
       client = createSyncClient(backend);
       client.onChanged(changes);
       await settle();
-      backend.on("readSyncState").answer(syncState({ runs: 1, result: CHANGED }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ runs: 1, result: CHANGED }));
       await second();
 
-      backend.on("startSync").answer(syncState({ running: true, runs: 1, result: CHANGED }));
+      backend
+        .on("startSync")
+        .answer(syncState({ running: true, runs: 1, result: CHANGED }));
       await client.startSync();
-      const later = { games_changed: false, repertoire_changed: true, new_games: 0 };
+      const later = {
+        games_changed: false,
+        repertoire_changed: true,
+        new_games: 0,
+      };
       backend.on("readSyncState").answer(syncState({ runs: 2, result: later }));
       await second();
 
@@ -216,12 +257,18 @@ describe("Sync client", () => {
     }
 
     it("happens when the Sync changed the games", async () => {
-      const changes = await finishSyncWith({ games_changed: true, repertoire_changed: false });
+      const changes = await finishSyncWith({
+        games_changed: true,
+        repertoire_changed: false,
+      });
       expect(changes).toHaveBeenCalledTimes(1);
     });
 
     it("happens when the Sync changed the Repertoire", async () => {
-      const changes = await finishSyncWith({ games_changed: false, repertoire_changed: true });
+      const changes = await finishSyncWith({
+        games_changed: false,
+        repertoire_changed: true,
+      });
       expect(changes).toHaveBeenCalledTimes(1);
     });
 
@@ -236,7 +283,9 @@ describe("Sync client", () => {
       backend.on("readSyncState").answer(syncState({ running: true, runs: 0 }));
       client = createSyncClient(backend);
       let resultWhenAnnounced;
-      client.onChanged(() => (resultWhenAnnounced = client.getSnapshot().result));
+      client.onChanged(
+        () => (resultWhenAnnounced = client.getSnapshot().result),
+      );
       await settle();
       const result = { games_changed: true, repertoire_changed: false };
       backend.on("readSyncState").answer(syncState({ runs: 1, result }));
@@ -252,9 +301,12 @@ describe("Sync client", () => {
       const unsubscribe = client.onChanged(changes);
       await settle();
       unsubscribe();
-      backend
-        .on("readSyncState")
-        .answer(syncState({ runs: 1, result: { games_changed: true, repertoire_changed: false } }));
+      backend.on("readSyncState").answer(
+        syncState({
+          runs: 1,
+          result: { games_changed: true, repertoire_changed: false },
+        }),
+      );
       await second();
 
       expect(changes).not.toHaveBeenCalled();
@@ -303,7 +355,10 @@ describe("Sync client", () => {
       backend.on("startSync").fail("Sync failed");
       await client.startSync();
 
-      backend.on("startSync").delay(500).answer(syncState({ running: true }));
+      backend
+        .on("startSync")
+        .delay(500)
+        .answer(syncState({ running: true }));
       client.startSync();
 
       expect(client.getSnapshot().error).toBeNull();
@@ -318,7 +373,9 @@ describe("Sync client", () => {
       expect(client.getSnapshot().error).toBe("Sync failed");
       expect(client.getSnapshot().syncing).toBe(true);
 
-      backend.on("readSyncState").answer(syncState({ running: true, progress: "Month 2 of 3" }));
+      backend
+        .on("readSyncState")
+        .answer(syncState({ running: true, progress: "Month 2 of 3" }));
       await second();
       expect(client.getSnapshot().error).toBeNull();
       expect(client.getSnapshot().status.progress).toBe("Month 2 of 3");
@@ -339,7 +396,10 @@ describe("Sync client", () => {
     });
 
     it("ignores an answer that was still on its way", async () => {
-      backend.on("readSyncState").delay(500).answer(syncState({ running: true }));
+      backend
+        .on("readSyncState")
+        .delay(500)
+        .answer(syncState({ running: true }));
       client = createSyncClient(backend);
       const heard = vi.fn();
       client.subscribe(heard);

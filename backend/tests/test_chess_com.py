@@ -8,7 +8,9 @@ from chess_com import ChessComAccountNotFoundError, ChessComClient
 
 def archives_when_answered(status, username="magnus"):
     """The archive listing of an account Chess.com answers with `status`."""
-    transport = httpx.MockTransport(lambda request: httpx.Response(status, json={"archives": []}))
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(status, json={"archives": []})
+    )
 
     async def run():
         async with ChessComClient(transport=transport) as client:

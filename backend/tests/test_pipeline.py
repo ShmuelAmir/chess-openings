@@ -32,8 +32,17 @@ class StudiesSource(RepertoireSource):
 
 def white_game(moves, url="g1", date=100, time_class="blitz", rated=True):
     """A game the user played as White, with no known result."""
-    return Game(url=url, date=date, month=(2026, 3), time_class=time_class, rated=rated,
-                opening_name="", moves=tuple(moves), color=chess.WHITE, result="")
+    return Game(
+        url=url,
+        date=date,
+        month=(2026, 3),
+        time_class=time_class,
+        rated=rated,
+        opening_name="",
+        moves=tuple(moves),
+        color=chess.WHITE,
+        result="",
+    )
 
 
 class NoGames(GameSource):
@@ -182,15 +191,22 @@ class ItalianSource(RepertoireSource):
 
 
 def test_gap_statuses_cover_every_game():
-    games = FixedGames([
-        white_game(["e4", "e5", "Bc4"], time_class="bullet", rated=False),
-    ])
+    games = FixedGames(
+        [
+            white_game(["e4", "e5", "Bc4"], time_class="bullet", rated=False),
+        ]
+    )
     pipeline = RepertoireAnalysisPipeline(ItalianSource(), games)
 
     async def run():
         before = pipeline.last_gap_statuses("me")
         statuses = await pipeline.gap_statuses("me")
-        return before, statuses, pipeline.last_gap_statuses("me"), pipeline.last_gap_statuses("other")
+        return (
+            before,
+            statuses,
+            pipeline.last_gap_statuses("me"),
+            pipeline.last_gap_statuses("other"),
+        )
 
     before, statuses, last, other = asyncio.run(run())
 
@@ -201,11 +217,15 @@ def test_gap_statuses_cover_every_game():
 
 
 def test_the_practice_queue_reads_the_drill_attempts():
-    games = FixedGames([
-        white_game(["e4", "e5", "Bc4"]),
-    ])
+    games = FixedGames(
+        [
+            white_game(["e4", "e5", "Bc4"]),
+        ]
+    )
     attempts = []
-    pipeline = RepertoireAnalysisPipeline(ItalianSource(), games, drill_attempts=lambda: attempts)
+    pipeline = RepertoireAnalysisPipeline(
+        ItalianSource(), games, drill_attempts=lambda: attempts
+    )
 
     async def queue():
         return await pipeline.practice_queue("me", RecallFilters(), now=200)
@@ -213,7 +233,9 @@ def test_the_practice_queue_reads_the_drill_attempts():
     view = asyncio.run(pipeline.recall_view("me", RecallFilters(), now=200))
     assert asyncio.run(queue()) == view.gaps  # never drilled: due, as the view shows it
     gap_key = view.gaps[0].position_key
-    attempts.append(DrillAttempt(gap_key, at=150, passed=True, first_miss_position_key=None))
+    attempts.append(
+        DrillAttempt(gap_key, at=150, passed=True, first_miss_position_key=None)
+    )
     assert asyncio.run(queue()) == []  # passed: held back a day
 
 
@@ -224,10 +246,15 @@ class NamedSource(RepertoireSource):
         builder = RepertoireBuilder()
         builder.add_study(
             '[ChapterURL "https://lichess.org/study/abc/ch1"]\n\n1. e4 e5 2. Nf3 *\n',
-            "Italian Game", study_name="White: Italian-Game", study_id="abc",
+            "Italian Game",
+            study_name="White: Italian-Game",
+            study_id="abc",
         )
         builder.add_study(
-            '[Orientation "black"]\n\n1. e4 c5 *\n', "Sicilian", study_name="alapin", study_id="xyz",
+            '[Orientation "black"]\n\n1. e4 c5 *\n',
+            "Sicilian",
+            study_name="alapin",
+            study_id="xyz",
         )
         return builder.build()
 
@@ -267,7 +294,9 @@ def test_a_renamed_study_shows_once_the_repertoire_is_rebuilt():
 
         async def fetch_repertoire(self):
             builder = RepertoireBuilder()
-            builder.add_study("1. e4 e5 *\n", "Italian", study_name=self.name, study_id="abc")
+            builder.add_study(
+                "1. e4 e5 *\n", "Italian", study_name=self.name, study_id="abc"
+            )
             return builder.build()
 
     source = Renamed()
@@ -278,6 +307,11 @@ def test_a_renamed_study_shows_once_the_repertoire_is_rebuilt():
         source.name = "Giuoco Piano"
         cached = (await pipeline.recall_view("me", RecallFilters())).studies[0].name
         changed = await pipeline.refresh_repertoire()
-        return before, cached, changed, (await pipeline.recall_view("me", RecallFilters())).studies[0].name
+        return (
+            before,
+            cached,
+            changed,
+            (await pipeline.recall_view("me", RecallFilters())).studies[0].name,
+        )
 
     assert asyncio.run(run()) == ("Italian", "Italian", True, "Giuoco Piano")

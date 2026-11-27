@@ -2,6 +2,7 @@
 "Not repertoire" exclusion list - the studies a Lichess account has marked as
 not part of their Repertoire, stored in SQLite next to the game cache.
 """
+
 import sqlite3
 from pathlib import Path
 from typing import Iterable, Optional
@@ -22,9 +23,14 @@ class ExclusionStore:
         self.db_path = str(db_path)
         self.account = account
         with sqlite3.connect(self.db_path) as conn:
-            columns = [row[1] for row in conn.execute("PRAGMA table_info(not_repertoire_studies)")]
+            columns = [
+                row[1]
+                for row in conn.execute("PRAGMA table_info(not_repertoire_studies)")
+            ]
             if columns and "account" not in columns:
-                conn.execute("ALTER TABLE not_repertoire_studies RENAME TO not_repertoire_studies_unowned")
+                conn.execute(
+                    "ALTER TABLE not_repertoire_studies RENAME TO not_repertoire_studies_unowned"
+                )
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS not_repertoire_studies (
                     account TEXT NOT NULL,
@@ -45,14 +51,17 @@ class ExclusionStore:
         """The ids of the studies the account marked "not repertoire"."""
         with sqlite3.connect(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT study_id FROM not_repertoire_studies WHERE account = ?", (self.account,)
+                "SELECT study_id FROM not_repertoire_studies WHERE account = ?",
+                (self.account,),
             ).fetchall()
         return {row[0] for row in rows}
 
     def set_excluded_studies(self, study_ids: Iterable[str]):
         """Replace the account's exclusion list."""
         with sqlite3.connect(self.db_path) as conn:
-            conn.execute("DELETE FROM not_repertoire_studies WHERE account = ?", (self.account,))
+            conn.execute(
+                "DELETE FROM not_repertoire_studies WHERE account = ?", (self.account,)
+            )
             conn.executemany(
                 "INSERT INTO not_repertoire_studies (account, study_id) VALUES (?, ?)",
                 [(self.account, study_id) for study_id in set(study_ids)],

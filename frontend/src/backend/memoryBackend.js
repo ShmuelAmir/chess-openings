@@ -38,7 +38,9 @@ export function createMemoryBackend() {
       calls[name].push(args);
       const { delayMs, settle } = scripts[name];
       if (!delayMs) return settle(args);
-      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() => settle(args));
+      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() =>
+        settle(args),
+      );
     };
   }
 
@@ -52,7 +54,8 @@ export function createMemoryBackend() {
       },
       // Answer with what `respond` returns for the call's arguments; a throw fails the call
       reply(respond) {
-        script.settle = (args) => Promise.resolve().then(() => respond(...args));
+        script.settle = (args) =>
+          Promise.resolve().then(() => respond(...args));
         return handle;
       },
       fail(message) {

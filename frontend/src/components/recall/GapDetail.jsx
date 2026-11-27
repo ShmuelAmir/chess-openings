@@ -54,7 +54,10 @@ export default function GapDetail({ gap, onDrill }) {
                   {g.result && (
                     <>
                       {" "}
-                      · <span className={`rv-result ${g.result}`}>{g.result}</span>
+                      ·{" "}
+                      <span className={`rv-result ${g.result}`}>
+                        {g.result}
+                      </span>
                     </>
                   )}
                 </span>

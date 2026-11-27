@@ -10,9 +10,12 @@ export function AuthProvider({ children }) {
   const [lichessToken, setLichessToken] = useState(
     sampleAccount ? "sample" : localStorage.getItem("lichess_token"),
   );
-  const [lichessUser, setLichessUser] = useState(sampleAccount?.lichessUser ?? null);
+  const [lichessUser, setLichessUser] = useState(
+    sampleAccount?.lichessUser ?? null,
+  );
   const [chessComUsername, setChessComUsername] = useState(
-    sampleAccount?.chessComUsername ?? (localStorage.getItem("chess_com_username") || ""),
+    sampleAccount?.chessComUsername ??
+      (localStorage.getItem("chess_com_username") || ""),
   );
 
   const [chessComError, setChessComError] = useState(null);
@@ -61,10 +64,14 @@ export function AuthProvider({ children }) {
     setChessComError(null);
     setValidatingChessCom(true);
     try {
-      const response = await fetch(`/api/chess-com/validate/${encodeURIComponent(username)}`);
+      const response = await fetch(
+        `/api/chess-com/validate/${encodeURIComponent(username)}`,
+      );
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setChessComError(data.detail || `Could not verify '${username}' on Chess.com`);
+        setChessComError(
+          data.detail || `Could not verify '${username}' on Chess.com`,
+        );
         return false;
       }
       localStorage.setItem("chess_com_username", username);

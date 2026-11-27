@@ -20,7 +20,9 @@ function render(sampleAccount) {
 // Only the sample mode loads the sample account; every other build drops
 // this import, so the sample data never reaches the production bundle
 if (import.meta.env.MODE === "sample") {
-  import("./sample/sampleAccount").then(({ createSampleAccount }) => render(createSampleAccount()));
+  import("./sample/sampleAccount").then(({ createSampleAccount }) =>
+    render(createSampleAccount()),
+  );
 } else {
   render(null);
 }

@@ -30,10 +30,30 @@ const HISTORY_DAYS = 395;
 const LATEST_MISS_DEPTH = 14;
 
 const STUDIES = [
-  { id: "sItalian", name: "Italian Game - Giuoco Piano", opening_name: "Italian Game Giuoco Piano", color: "white" },
-  { id: "sLondon", name: "London System", opening_name: "London System", color: "white" },
-  { id: "sCaroKann", name: "Caro-Kann Defense", opening_name: "Caro Kann Defense", color: "black" },
-  { id: "sNajdorf", name: "Sicilian Defense - Najdorf", opening_name: "Sicilian Defense Najdorf", color: "black" },
+  {
+    id: "sItalian",
+    name: "Italian Game - Giuoco Piano",
+    opening_name: "Italian Game Giuoco Piano",
+    color: "white",
+  },
+  {
+    id: "sLondon",
+    name: "London System",
+    opening_name: "London System",
+    color: "white",
+  },
+  {
+    id: "sCaroKann",
+    name: "Caro-Kann Defense",
+    opening_name: "Caro Kann Defense",
+    color: "black",
+  },
+  {
+    id: "sNajdorf",
+    name: "Sicilian Defense - Najdorf",
+    opening_name: "Sicilian Defense Najdorf",
+    color: "black",
+  },
 ];
 
 /*
@@ -43,16 +63,93 @@ const STUDIES = [
  * closed `closedDaysAgo`; `due` says whether a practice session drills it.
  */
 const GAPS = [
-  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Bc5", bookMoves: ["c3", "d3"], wrong: ["O-O", "O-O", "Nc3", "O-O", "O-O", "Nc3"], seen: [2, 9, 15, 40, 120, 210], due: true },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3", bookMoves: ["a6"], wrong: ["e6", "Nc6", "e6", "g6", "e6"], seen: [1, 6, 22, 70, 150], due: true },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 e5", bookMoves: ["Bf5"], wrong: ["c5", "c5", "e6", "c5"], seen: [4, 12, 33, 95], due: false },
-  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 c5", bookMoves: ["c3"], wrong: ["Nf3", "dxc5", "Nf3", "Nf3"], seen: [3, 18, 50, 180], due: true },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4", bookMoves: ["cxd4"], wrong: ["Nf6", "Nf6", "e5"], seen: [8, 27, 200], due: true },
-  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Nf6", bookMoves: ["d3"], wrong: ["Ng5", "Nc3", "Ng5"], seen: [55, 130, 240], status: "closed", closedDaysAgo: 20, due: false },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 Nc3 dxe4 Nxe4", bookMoves: ["Bf5"], wrong: ["Nf6", "Nd7"], seen: [10, 60], progress: 1, due: false },
-  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 e6", bookMoves: ["Nf3"], wrong: ["Bd3", "c4"], seen: [75, 160], status: "closed", closedDaysAgo: 45, due: false },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5", bookMoves: ["e6"], wrong: ["Nbd7", "e5"], seen: [100, 190], status: "closed", closedDaysAgo: 80, due: false },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 exd5", bookMoves: ["cxd5"], wrong: ["Qxd5"], seen: [14], due: true },
+  {
+    studies: ["sItalian"],
+    line: "e4 e5 Nf3 Nc6 Bc4 Bc5",
+    bookMoves: ["c3", "d3"],
+    wrong: ["O-O", "O-O", "Nc3", "O-O", "O-O", "Nc3"],
+    seen: [2, 9, 15, 40, 120, 210],
+    due: true,
+  },
+  {
+    studies: ["sNajdorf"],
+    line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3",
+    bookMoves: ["a6"],
+    wrong: ["e6", "Nc6", "e6", "g6", "e6"],
+    seen: [1, 6, 22, 70, 150],
+    due: true,
+  },
+  {
+    studies: ["sCaroKann"],
+    line: "e4 c6 d4 d5 e5",
+    bookMoves: ["Bf5"],
+    wrong: ["c5", "c5", "e6", "c5"],
+    seen: [4, 12, 33, 95],
+    due: false,
+  },
+  {
+    studies: ["sLondon"],
+    line: "d4 d5 Bf4 Nf6 e3 c5",
+    bookMoves: ["c3"],
+    wrong: ["Nf3", "dxc5", "Nf3", "Nf3"],
+    seen: [3, 18, 50, 180],
+    due: true,
+  },
+  {
+    studies: ["sNajdorf"],
+    line: "e4 c5 Nf3 d6 d4",
+    bookMoves: ["cxd4"],
+    wrong: ["Nf6", "Nf6", "e5"],
+    seen: [8, 27, 200],
+    due: true,
+  },
+  {
+    studies: ["sItalian"],
+    line: "e4 e5 Nf3 Nc6 Bc4 Nf6",
+    bookMoves: ["d3"],
+    wrong: ["Ng5", "Nc3", "Ng5"],
+    seen: [55, 130, 240],
+    status: "closed",
+    closedDaysAgo: 20,
+    due: false,
+  },
+  {
+    studies: ["sCaroKann"],
+    line: "e4 c6 d4 d5 Nc3 dxe4 Nxe4",
+    bookMoves: ["Bf5"],
+    wrong: ["Nf6", "Nd7"],
+    seen: [10, 60],
+    progress: 1,
+    due: false,
+  },
+  {
+    studies: ["sLondon"],
+    line: "d4 d5 Bf4 Nf6 e3 e6",
+    bookMoves: ["Nf3"],
+    wrong: ["Bd3", "c4"],
+    seen: [75, 160],
+    status: "closed",
+    closedDaysAgo: 45,
+    due: false,
+  },
+  {
+    studies: ["sNajdorf"],
+    line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5",
+    bookMoves: ["e6"],
+    wrong: ["Nbd7", "e5"],
+    seen: [100, 190],
+    status: "closed",
+    closedDaysAgo: 80,
+    due: false,
+  },
+  {
+    studies: ["sCaroKann"],
+    line: "e4 c6 d4 d5 exd5",
+    bookMoves: ["cxd5"],
+    wrong: ["Qxd5"],
+    seen: [14],
+    due: true,
+  },
 ];
 
 /** A seeded random number generator, so the sample data is the same every time. */
@@ -78,7 +175,9 @@ const monthOf = (timestamp) => isoMonth(new Date(timestamp * 1000));
 /** The month `back` months before the UTC month of `now`. */
 function monthBefore(now, back) {
   const date = new Date(now * 1000);
-  return isoMonth(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - back, 1)));
+  return isoMonth(
+    new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - back, 1)),
+  );
 }
 
 const studyUrl = (id) => `https://lichess.org/study/${id}`;
@@ -92,12 +191,20 @@ function buildGaps(now) {
     const drillTurns = [];
     path.forEach((san, ply) => {
       if (ply % 2 === path.length % 2) {
-        drillTurns.push({ ply, position_key: positionKey(chess), book_moves: [san] });
+        drillTurns.push({
+          ply,
+          position_key: positionKey(chess),
+          book_moves: [san],
+        });
       }
       chess.move(san);
     });
     const gapKey = positionKey(chess);
-    drillTurns.push({ ply: path.length, position_key: gapKey, book_moves: spec.bookMoves });
+    drillTurns.push({
+      ply: path.length,
+      position_key: gapKey,
+      book_moves: spec.bookMoves,
+    });
 
     const games = spec.seen.map((daysAgo, i) => ({
       url: `https://www.chess.com/game/live/${1000 + gapIndex * 20 + i}`,
@@ -170,12 +277,18 @@ function buildGames(now) {
 
 /** Whether a game, or a gap's occurrence, is inside every Game Filter but the Study filter. */
 function inFilters(game, filters, since) {
-  if (filters.timeClasses.length > 0 && !filters.timeClasses.includes(game.time_class)) return false;
+  if (
+    filters.timeClasses.length > 0 &&
+    !filters.timeClasses.includes(game.time_class)
+  )
+    return false;
   if (filters.ratedOnly && !game.rated) return false;
   return since === null || game.date >= since;
 }
 
-const inStudies = (filters, ids) => filters.studies.length === 0 || ids.some((id) => filters.studies.includes(id));
+const inStudies = (filters, ids) =>
+  filters.studies.length === 0 ||
+  ids.some((id) => filters.studies.includes(id));
 
 /** The month's median Miss Depth: the earlier middle one of an even count. */
 function median(depths) {
@@ -184,34 +297,48 @@ function median(depths) {
 }
 
 function trendMonth(month, games) {
-  const depths = games.filter((game) => game.outcome === "miss").map((game) => game.depth);
+  const depths = games
+    .filter((game) => game.outcome === "miss")
+    .map((game) => game.depth);
   const missDepths = new Array(LAST_MISS_DEPTH - FIRST_MISS_DEPTH + 1).fill(0);
-  depths.forEach((depth) => missDepths[Math.min(depth, LAST_MISS_DEPTH) - FIRST_MISS_DEPTH]++);
+  depths.forEach(
+    (depth) =>
+      missDepths[Math.min(depth, LAST_MISS_DEPTH) - FIRST_MISS_DEPTH]++,
+  );
   return {
     month,
     games: games.length,
-    miss_rate: games.length >= MIN_TREND_GAMES ? depths.length / games.length : null,
+    miss_rate:
+      games.length >= MIN_TREND_GAMES ? depths.length / games.length : null,
     miss_depths: missDepths,
-    median_miss_depth: depths.length >= MIN_MEDIAN_MISSES ? median(depths) : null,
+    median_miss_depth:
+      depths.length >= MIN_MEDIAN_MISSES ? median(depths) : null,
   };
 }
 
 /** A gap as the recall view shows it under the Game Filters, or null if no occurrence is inside them. */
 function shownGap({ allGames, due, ...gap }, filters, since) {
-  const games = allGames.filter((game) => inFilters(game, filters, since)).sort((a, b) => b.date - a.date);
+  const games = allGames
+    .filter((game) => inFilters(game, filters, since))
+    .sort((a, b) => b.date - a.date);
   if (games.length === 0) return null;
   const counts = new Map();
-  games.forEach((game) => counts.set(game.move_played, (counts.get(game.move_played) ?? 0) + 1));
+  games.forEach((game) =>
+    counts.set(game.move_played, (counts.get(game.move_played) ?? 0) + 1),
+  );
   return {
     ...gap,
-    wrong_moves: [...counts].map(([san, count]) => ({ san, count })).sort((a, b) => b.count - a.count),
+    wrong_moves: [...counts]
+      .map(([san, count]) => ({ san, count }))
+      .sort((a, b) => b.count - a.count),
     occurrences: games.length,
     last_seen: games[0].date,
     games: games.map(({ rated, ...game }) => game),
   };
 }
 
-const byRanking = (a, b) => b.occurrences - a.occurrences || b.last_seen - a.last_seen;
+const byRanking = (a, b) =>
+  b.occurrences - a.occurrences || b.last_seen - a.last_seen;
 
 /**
  * The sample account: a Lichess user and Chess.com username to show, and the
@@ -221,7 +348,9 @@ export function createSampleAccount() {
   const now = Math.floor(Date.now() / 1000);
   const gaps = buildGaps(now);
   const games = buildGames(now);
-  const due = new Set(gaps.filter((gap) => gap.due).map((gap) => gap.position_key));
+  const due = new Set(
+    gaps.filter((gap) => gap.due).map((gap) => gap.position_key),
+  );
   let runs = 0;
 
   const sinceOf = (filters) => {
@@ -236,15 +365,28 @@ export function createSampleAccount() {
       .map((gap) => shownGap(gap, filters, since))
       .filter(Boolean)
       .sort(byRanking);
-    const shown = unfiltered.filter((gap) => inStudies(filters, gap.studies.map((s) => s.id)));
+    const shown = unfiltered.filter((gap) =>
+      inStudies(
+        filters,
+        gap.studies.map((s) => s.id),
+      ),
+    );
     const studyGames = games.filter((game) => inStudies(filters, [game.study]));
-    const counted = studyGames.filter((game) => inFilters(game, filters, since));
-    const count = (outcome) => counted.filter((game) => game.outcome === outcome).length;
+    const counted = studyGames.filter((game) =>
+      inFilters(game, filters, since),
+    );
+    const count = (outcome) =>
+      counted.filter((game) => game.outcome === outcome).length;
     // The trend ignores the date range
-    const trendGames = studyGames.filter((game) => inFilters(game, filters, null));
+    const trendGames = studyGames.filter((game) =>
+      inFilters(game, filters, null),
+    );
     const trend = Array.from({ length: TREND_MONTHS }, (_, i) => {
       const month = monthBefore(now, TREND_MONTHS - 1 - i);
-      return trendMonth(month, trendGames.filter((game) => monthOf(game.date) === month));
+      return trendMonth(
+        month,
+        trendGames.filter((game) => monthOf(game.date) === month),
+      );
     });
 
     return {
@@ -252,7 +394,9 @@ export function createSampleAccount() {
         .sort((a, b) => a.opening_name.localeCompare(b.opening_name))
         .map((study) => ({
           ...study,
-          gaps: unfiltered.filter((gap) => gap.studies.some((s) => s.id === study.id)).length,
+          gaps: unfiltered.filter((gap) =>
+            gap.studies.some((s) => s.id === study.id),
+          ).length,
         })),
       gaps: shown,
       totals: {
@@ -263,14 +407,20 @@ export function createSampleAccount() {
         trend,
         open_gaps: shown.filter((gap) => gap.status === "open").length,
         closed_in_range: shown.filter(
-          (gap) => gap.status === "closed" && (since === null || gap.closed_at >= since),
+          (gap) =>
+            gap.status === "closed" &&
+            (since === null || gap.closed_at >= since),
         ).length,
       },
     };
   }
 
   const syncState = () => {
-    const lastSync = { status: "ok", error: null, last_success_at: now - 5 * 60 };
+    const lastSync = {
+      status: "ok",
+      error: null,
+      last_success_at: now - 5 * 60,
+    };
     return {
       running: false,
       progress: null,
@@ -301,7 +451,11 @@ export function createSampleAccount() {
   backend.on("loadRecallView").reply(recallView);
   backend
     .on("loadPracticeQueue")
-    .reply((filters) => recallView(filters).gaps.filter((gap) => gap.status === "open" && due.has(gap.position_key)));
+    .reply((filters) =>
+      recallView(filters).gaps.filter(
+        (gap) => gap.status === "open" && due.has(gap.position_key),
+      ),
+    );
   // A passed drill is not Due again in the sample; a failed one stays Due
   backend.on("recordDrillAttempt").reply((attempt) => {
     if (attempt.passed) due.delete(attempt.gap_position_key);

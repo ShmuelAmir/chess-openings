@@ -18,5 +18,7 @@ from game_result import player_result
         ("", True, ""),
     ],
 )
-def test_the_users_result_from_whites_chess_com_result(white_result, user_is_white, expected):
+def test_the_users_result_from_whites_chess_com_result(
+    white_result, user_is_white, expected
+):
     assert player_result(white_result, user_is_white) == expected

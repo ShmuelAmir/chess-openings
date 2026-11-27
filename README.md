@@ -72,7 +72,16 @@ cd frontend
 npm test
 ```
 
-From the repo root, `make test` runs both suites.
+From the repo root, `make test` runs both suites. It also works from a git worktree: when the worktree has no venv or `node_modules` of its own, it uses the main checkout's copies (linking `./node_modules` to them).
+
+### Lint and format
+
+Ruff lints and formats the backend; Prettier formats the frontend. From the repo root:
+
+```bash
+make lint     # check only; fails on lint errors, unsorted imports or unformatted files
+make format   # rewrite files to fix what lint reports
+```
 
 ### Creating Your Repertoire on Lichess
 

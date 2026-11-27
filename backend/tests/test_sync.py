@@ -7,13 +7,26 @@ from pipeline import RepertoireAnalysisPipeline, RepertoireSource
 from recall_gaps import RecallFilters
 from repertoire import RepertoireBuilder
 from sources import CacheGameSource
-from sync import ChessComSync, GamesSyncResult, GapChanges, RepertoireSyncLog, Sync, gap_changes
+from sync import (
+    ChessComSync,
+    GamesSyncResult,
+    GapChanges,
+    RepertoireSyncLog,
+    Sync,
+    gap_changes,
+)
 
 ARCHIVES = "https://api.chess.com/pub/player/magnus/games/{}/{:02d}"
 
 
 def game(url, moves=("e4",), date=1):
-    return {"url": url, "date": date, "white": "magnus", "black": "hikaru", "moves": list(moves)}
+    return {
+        "url": url,
+        "date": date,
+        "white": "magnus",
+        "black": "hikaru",
+        "moves": list(moves),
+    }
 
 
 class FakeChessCom:
@@ -37,7 +50,9 @@ class FakeChessCom:
         self.fetched.append((year, month))
         if (year, month) in self.failing:
             raise RuntimeError("Chess.com is down")
-        return [g if isinstance(g, dict) else game(g) for g in self.months[(year, month)]]
+        return [
+            g if isinstance(g, dict) else game(g) for g in self.months[(year, month)]
+        ]
 
 
 def chess_com_sync(tmp_path, account, now=datetime(2024, 3, 15)):
@@ -172,7 +187,9 @@ class ItalianStudy(RepertoireSource):
         if self.error:
             raise self.error
         builder = RepertoireBuilder()
-        builder.add_study("\n\n".join(self.lines) + "\n", "Italian Game", study_id="italian")
+        builder.add_study(
+            "\n\n".join(self.lines) + "\n", "Italian Game", study_id="italian"
+        )
         return builder.build()
 
 
@@ -205,12 +222,18 @@ class World:
         self.clock = Clock()
         self.studies = ItalianStudy()
         self.games = CountedGames(self.cache)
-        self.pipeline = RepertoireAnalysisPipeline(self.studies, self.games, clock=self.clock)
-        self.games_sync = ChessComSync(self.cache, client=lambda: self.account, now=lambda: now)
+        self.pipeline = RepertoireAnalysisPipeline(
+            self.studies, self.games, clock=self.clock
+        )
+        self.games_sync = ChessComSync(
+            self.cache, client=lambda: self.account, now=lambda: now
+        )
         self.repertoire_log = InMemoryLog()
 
     def sync(self):
-        return Sync(self.pipeline, self.games_sync, self.repertoire_log, clock=self.clock)
+        return Sync(
+            self.pipeline, self.games_sync, self.repertoire_log, clock=self.clock
+        )
 
     def analyse(self):
         """Open the recall view, as the page does: the last analysis."""
@@ -222,12 +245,18 @@ def run(sync, account="magnus"):
 
 
 def test_a_sync_reports_new_games_and_reanalyses(tmp_path):
-    world = World(tmp_path, {(2024, 3): [game("a", MISS), game("b", BOOK), game("c", BOOK)]})
+    world = World(
+        tmp_path, {(2024, 3): [game("a", MISS), game("b", BOOK), game("c", BOOK)]}
+    )
     world.analyse()
 
     result = run(world.sync())
 
-    assert (result.games_changed, result.repertoire_changed, result.new_games) == (True, False, 3)
+    assert (result.games_changed, result.repertoire_changed, result.new_games) == (
+        True,
+        False,
+        3,
+    )
     assert world.games.reads == 2
 
 
@@ -277,7 +306,11 @@ def test_each_source_records_its_own_last_success(tmp_path):
     status = sync.status("magnus")
     assert status["sources"]["chess_com"]["status"] == "ok"
     assert status["sources"]["chess_com"]["last_success_at"] is not None
-    assert status["sources"]["lichess"] == {"status": "ok", "last_success_at": 1000, "error": None}
+    assert status["sources"]["lichess"] == {
+        "status": "ok",
+        "last_success_at": 1000,
+        "error": None,
+    }
 
 
 def test_last_synced_is_the_older_of_the_two_sources(tmp_path):
@@ -287,8 +320,12 @@ def test_last_synced_is_the_older_of_the_two_sources(tmp_path):
     world.clock.at = 4_000_000_000  # Lichess syncs after the game cache's real time
     assert sync.status("magnus")["last_synced_at"] is None
     run(sync)
-    chess_com_synced_at = sync.status("magnus")["sources"]["chess_com"]["last_success_at"]
-    assert sync.status("magnus")["last_synced_at"] == chess_com_synced_at < 4_000_000_000
+    chess_com_synced_at = sync.status("magnus")["sources"]["chess_com"][
+        "last_success_at"
+    ]
+    assert (
+        sync.status("magnus")["last_synced_at"] == chess_com_synced_at < 4_000_000_000
+    )
 
 
 def test_a_failed_lichess_refresh_keeps_the_new_games(tmp_path):
@@ -300,7 +337,9 @@ def test_a_failed_lichess_refresh_keeps_the_new_games(tmp_path):
 
     assert result.games_changed
     assert sync.status("magnus")["sources"]["lichess"] == {
-        "status": "failed", "last_success_at": None, "error": "Lichess is down",
+        "status": "failed",
+        "last_success_at": None,
+        "error": "Lichess is down",
     }
     assert sync.status("magnus")["sources"]["chess_com"]["status"] == "ok"
     assert sync.status("magnus")["cached_games"] == 2
@@ -428,19 +467,26 @@ def test_the_lichess_last_success_survives_a_restart(tmp_path):
 
 def test_a_sync_reports_what_changed_in_the_analysis(tmp_path):
     # Two Recall Gaps as White: Bc4 for 2. Nf3 (X) and Bb5 for 3. Bc4 (Y)
-    world = World(tmp_path, {(2024, 2): [
-        game("g1", MISS, date=10),                                 # X
-        game("g2", ["e4", "e5", "Nf3", "Nc6", "Bb5"], date=20),   # Y; X book once
-        game("g3", BOOK, date=30),                                 # X book twice: Closed
-    ]})
+    world = World(
+        tmp_path,
+        {
+            (2024, 2): [
+                game("g1", MISS, date=10),  # X
+                game(
+                    "g2", ["e4", "e5", "Nf3", "Nc6", "Bb5"], date=20
+                ),  # Y; X book once
+                game("g3", BOOK, date=30),  # X book twice: Closed
+            ]
+        },
+    )
     world.studies.lines = ["1. e4 e5 2. Nf3 Nc6 3. Bc4 *", "1. e4 c5 2. Nf3 *"]
     run(world.sync())
     world.analyse()
     world.account.months[(2024, 3)] = [
         game("g4", ["e4", "e5", "Nf3", "Nc6", "Bc4"], date=40),
         game("g5", ["e4", "e5", "Nf3", "Nc6", "Bc4"], date=50),  # Y Closed
-        game("g6", MISS, date=60),                                 # X reopened
-        game("g7", ["e4", "c5", "Nc3"], date=70),                  # a new gap
+        game("g6", MISS, date=60),  # X reopened
+        game("g7", ["e4", "c5", "Nc3"], date=70),  # a new gap
     ]
     sync = world.sync()
 
@@ -488,7 +534,9 @@ class Accounts(FakeChessCom):
 
     def __init__(self, months_by_account):
         super().__init__({})
-        self.accounts = {name: FakeChessCom(months) for name, months in months_by_account.items()}
+        self.accounts = {
+            name: FakeChessCom(months) for name, months in months_by_account.items()
+        }
         self.held: dict[str, asyncio.Event] = {}
 
     async def get_archives(self, username):
@@ -498,14 +546,18 @@ class Accounts(FakeChessCom):
 
     async def get_all_games_for_month(self, username, year, month):
         self.fetched.append((username, year, month))
-        return await self.accounts[username].get_all_games_for_month(username, year, month)
+        return await self.accounts[username].get_all_games_for_month(
+            username, year, month
+        )
 
 
 def test_a_start_for_another_account_runs_after_the_running_sync(tmp_path):
-    accounts = Accounts({
-        "magnus": {(2024, 3): [game("a")]},
-        "hikaru": {(2024, 3): [game("b"), game("c")]},
-    })
+    accounts = Accounts(
+        {
+            "magnus": {(2024, 3): [game("a")]},
+            "hikaru": {(2024, 3): [game("b"), game("c")]},
+        }
+    )
     world = World(tmp_path, account=accounts)
     sync = world.sync()
 
@@ -523,17 +575,30 @@ def test_a_start_for_another_account_runs_after_the_running_sync(tmp_path):
 
     waiting, magnus_done = asyncio.run(scenario())
 
-    assert (waiting["running"], waiting["progress"]) == (True, "Waiting for another Sync…")
+    assert (waiting["running"], waiting["progress"]) == (
+        True,
+        "Waiting for another Sync…",
+    )
     assert (waiting["result"], waiting["runs"]) == (None, 0)
     assert (magnus_done["result"]["new_games"], magnus_done["runs"]) == (1, 1)
     assert accounts.fetched == [("magnus", 2024, 3), ("hikaru", 2024, 3)]
     hikaru = sync.status("hikaru")
-    assert (hikaru["result"]["new_games"], hikaru["runs"], hikaru["cached_games"]) == (2, 1, 2)
+    assert (hikaru["result"]["new_games"], hikaru["runs"], hikaru["cached_games"]) == (
+        2,
+        1,
+        2,
+    )
     magnus = sync.status("magnus")
-    assert (magnus["result"]["new_games"], magnus["runs"], magnus["cached_games"]) == (1, 1, 1)
+    assert (magnus["result"]["new_games"], magnus["runs"], magnus["cached_games"]) == (
+        1,
+        1,
+        1,
+    )
 
 
-def test_another_accounts_status_has_its_own_chess_com_side_and_the_users_lichess_side(tmp_path):
+def test_another_accounts_status_has_its_own_chess_com_side_and_the_users_lichess_side(
+    tmp_path,
+):
     accounts = Accounts({"magnus": {(2024, 3): [game("a")]}, "hikaru": {}})
     world = World(tmp_path, account=accounts)
     sync = world.sync()
@@ -541,10 +606,22 @@ def test_another_accounts_status_has_its_own_chess_com_side_and_the_users_liches
     run(sync, "magnus")
 
     hikaru = sync.status("hikaru")
-    assert (hikaru["running"], hikaru["progress"], hikaru["result"]) == (False, None, None)
-    assert hikaru["sources"]["chess_com"] == {"status": "never", "error": None, "last_success_at": None}
+    assert (hikaru["running"], hikaru["progress"], hikaru["result"]) == (
+        False,
+        None,
+        None,
+    )
+    assert hikaru["sources"]["chess_com"] == {
+        "status": "never",
+        "error": None,
+        "last_success_at": None,
+    }
     assert (hikaru["cached_games"], hikaru["last_synced_at"]) == (0, None)
-    assert hikaru["sources"]["lichess"] == {"status": "ok", "error": None, "last_success_at": 1000}
+    assert hikaru["sources"]["lichess"] == {
+        "status": "ok",
+        "error": None,
+        "last_success_at": 1000,
+    }
 
 
 def test_only_the_latest_start_for_another_account_waits_its_turn(tmp_path):
@@ -568,11 +645,17 @@ def test_only_the_latest_start_for_another_account_waits_its_turn(tmp_path):
     hikaru_replaced = asyncio.run(scenario())
 
     assert hikaru_replaced["running"] is False
-    assert [sync.status(name)["runs"] for name in ("magnus", "hikaru", "fabiano")] == [1, 0, 1]
+    assert [sync.status(name)["runs"] for name in ("magnus", "hikaru", "fabiano")] == [
+        1,
+        0,
+        1,
+    ]
 
 
 def test_the_account_waiting_its_turn_still_runs_when_the_running_sync_breaks(tmp_path):
-    accounts = Accounts({"magnus": {(2024, 3): [game("a")]}, "hikaru": {(2024, 3): [game("b")]}})
+    accounts = Accounts(
+        {"magnus": {(2024, 3): [game("a")]}, "hikaru": {(2024, 3): [game("b")]}}
+    )
     world = World(tmp_path, account=accounts)
     sync = world.sync()
     invalidate_games = world.pipeline.invalidate_games
@@ -596,10 +679,16 @@ def test_the_account_waiting_its_turn_still_runs_when_the_running_sync_breaks(tm
     asyncio.run(scenario())
 
     hikaru = sync.status("hikaru")
-    assert (hikaru["runs"], hikaru["result"]["new_games"], hikaru["progress"]) == (1, 1, None)
+    assert (hikaru["runs"], hikaru["result"]["new_games"], hikaru["progress"]) == (
+        1,
+        1,
+        None,
+    )
 
 
-def test_after_switching_account_and_back_a_sync_does_not_diff_against_the_other_account(tmp_path):
+def test_after_switching_account_and_back_a_sync_does_not_diff_against_the_other_account(
+    tmp_path,
+):
     accounts = Accounts({"magnus": {(2024, 3): [game("a", MISS)]}, "hikaru": {}})
     world = World(tmp_path, account=accounts)
     sync = world.sync()
@@ -616,7 +705,14 @@ def test_after_switching_account_and_back_a_sync_does_not_diff_against_the_other
 
 def test_gap_changes_count_new_newly_closed_and_reopened_gaps():
     before = {"a": "open", "b": "open", "c": "closed", "d": "closed"}
-    after = {"a": "open", "b": "closed", "c": "open", "d": "closed", "e": "open", "f": "open"}
+    after = {
+        "a": "open",
+        "b": "closed",
+        "c": "open",
+        "d": "closed",
+        "e": "open",
+        "f": "open",
+    }
 
     assert gap_changes(before, after) == GapChanges(new=2, closed=1, reopened=1)
 

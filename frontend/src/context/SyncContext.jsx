@@ -30,7 +30,9 @@ export function SyncProvider({ children }) {
 
   useEffect(() => {
     if (!lichessToken || !chessComUsername) return;
-    const backend = sampleAccount?.backend ?? createHttpBackend({ lichessToken, chessComUsername });
+    const backend =
+      sampleAccount?.backend ??
+      createHttpBackend({ lichessToken, chessComUsername });
     const client = createSyncClient(backend);
     setAccount({ backend, client });
     return () => {
@@ -39,7 +41,9 @@ export function SyncProvider({ children }) {
     };
   }, [lichessToken, chessComUsername, sampleAccount]);
 
-  return <SyncContext.Provider value={account}>{children}</SyncContext.Provider>;
+  return (
+    <SyncContext.Provider value={account}>{children}</SyncContext.Provider>
+  );
 }
 
 /** The Sync state, read from the account's Sync client. */

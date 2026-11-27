@@ -16,7 +16,8 @@ import { formatLine } from "./format";
 const OPPONENT_DELAY_MS = 400;
 const SELECTED_STYLE = { background: "rgba(255, 255, 0, 0.4)" };
 const TARGET_STYLE = {
-  background: "radial-gradient(circle, rgba(0, 0, 0, 0.25) 22%, transparent 24%)",
+  background:
+    "radial-gradient(circle, rgba(0, 0, 0, 0.25) 22%, transparent 24%)",
 };
 
 /**
@@ -72,7 +73,11 @@ export default function DrillBoard({
   const onSquareClick = (square, piece) => {
     const move = targets.find((m) => m.to === square);
     if (move) tryMove(move);
-    else if (square !== selected && piece?.[0] === gap.color[0] && movesFrom(drill, square).length)
+    else if (
+      square !== selected &&
+      piece?.[0] === gap.color[0] &&
+      movesFrom(drill, square).length
+    )
       setSelected(square);
     else setSelected(null);
   };
@@ -96,13 +101,17 @@ export default function DrillBoard({
         onPieceDragBegin={() => setSelected(null)}
         onSquareClick={onSquareClick}
         customSquareStyles={squareStyles}
-        isDraggablePiece={({ piece }) => Boolean(turn) && piece[0] === gap.color[0]}
+        isDraggablePiece={({ piece }) =>
+          Boolean(turn) && piece[0] === gap.color[0]
+        }
       />
       <div className="rv-line big">{formatLine(drillLine(drill))}</div>
 
       {drill.done ? (
         <div className={`rv-drill-msg ${passed ? "good" : "bad"}`}>
-          {passed ? "Passed — every move was book." : "Failed — this attempt missed a book move."}
+          {passed
+            ? "Passed — every move was book."
+            : "Failed — this attempt missed a book move."}
           {saveState === "saving" && <span className="rv-muted"> Saving…</span>}
           {saveState === "failed" && (
             <span>
@@ -139,7 +148,9 @@ export default function DrillBoard({
             Next
           </button>
         )}
-        {drill.done && !onNext && <button onClick={onAgain}>Drill again</button>}
+        {drill.done && !onNext && (
+          <button onClick={onAgain}>Drill again</button>
+        )}
         <button className="secondary" onClick={onClose}>
           {drill.done && !onNext ? "Close" : "Stop"}
         </button>

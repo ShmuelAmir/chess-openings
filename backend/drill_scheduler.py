@@ -3,6 +3,7 @@ Drill scheduler - pure, no I/O. Decides which Recall Gaps are due for a
 Drill Attempt, from their Drill Attempts and latest real-game occurrence.
 See Drill Attempt in GLOSSARY.md.
 """
+
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
 
@@ -16,7 +17,8 @@ INTERVAL_DAYS = (1, 3, 7)
 
 @dataclass(frozen=True)
 class Schedule:
-    due: list[str] = field(default_factory=list)  # position keys due now, in the given order
+    # position keys due now, in the given order
+    due: list[str] = field(default_factory=list)
     next_due: dict[str, int] = field(default_factory=dict)  # each gap's next due time
 
 
@@ -45,7 +47,9 @@ def practice_queue(
     """
     open_gaps = [gap for gap in gaps if gap.status == "open"]
     result = schedule(
-        {gap.position_key: last_occurrences[gap.position_key] for gap in open_gaps}, attempts, now
+        {gap.position_key: last_occurrences[gap.position_key] for gap in open_gaps},
+        attempts,
+        now,
     )
     due = set(result.due)
     return [

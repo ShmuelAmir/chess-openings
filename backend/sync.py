@@ -5,6 +5,7 @@ local cache, and the user's Lichess Repertoire. See Sync in GLOSSARY.md.
 Each source succeeds or fails on its own; the analysis is re-run only if
 something changed.
 """
+
 import asyncio
 import logging
 import sqlite3
@@ -16,7 +17,6 @@ from typing import Callable, Optional
 from game_cache import GameCache
 from pipeline import RepertoireAnalysisPipeline
 
-
 logger = logging.getLogger(__name__)
 
 Month = tuple[int, int]  # (year, month)
@@ -25,6 +25,7 @@ Month = tuple[int, int]  # (year, month)
 @dataclass(frozen=True)
 class GamesSyncResult:
     """The outcome of syncing a Chess.com account's games into the cache."""
+
     new_games: int
     failed_months: list[Month]
 
@@ -99,7 +100,8 @@ class ChessComSync:
                 {m for m in map(_archive_month, archives) if m is not None}
             )
             to_fetch = [
-                m for m in available
+                m
+                for m in available
                 if m not in cached
                 or m in failed_before
                 or (last_synced is not None and m >= last_synced)
@@ -113,7 +115,9 @@ class ChessComSync:
                 try:
                     games = await client.get_all_games_for_month(username, year, month)
                 except Exception as e:
-                    logger.warning(f"Failed to fetch {year}-{month:02d} for {username}: {e}")
+                    logger.warning(
+                        f"Failed to fetch {year}-{month:02d} for {username}: {e}"
+                    )
                     failed.append((year, month))
                     continue
                 if games:
@@ -178,6 +182,7 @@ GapStatuses = dict[str, str]  # each Recall Gap's status, by position key
 @dataclass(frozen=True)
 class GapChanges:
     """How the Recall Gaps differ from the previous analysis."""
+
     new: int = 0
     closed: int = 0  # newly Closed
     reopened: int = 0
@@ -200,6 +205,7 @@ def gap_changes(before: GapStatuses, after: GapStatuses) -> GapChanges:
 @dataclass(frozen=True)
 class SyncResult:
     """What a Sync changed."""
+
     games_changed: bool
     repertoire_changed: bool
     new_games: int
@@ -209,6 +215,7 @@ class SyncResult:
 @dataclass
 class SourceStatus:
     """One source's state after the last Sync in this process."""
+
     status: str = "never"  # "never", "ok" or "failed"
     error: Optional[str] = None
 
@@ -228,6 +235,7 @@ REPERTOIRE_FRESH_SECONDS = 30
 @dataclass
 class _AccountSyncs:
     """One Chess.com account's finished Syncs in this process."""
+
     chess_com: SourceStatus
     result: SyncResult
     runs: int = 0  # so a client can tell a new result
@@ -316,7 +324,9 @@ class Sync:
         try:
             games = await self.games.sync(
                 chess_com_username,
-                lambda year, month: self._set_progress(f"Fetching games… {year}-{month:02d}"),
+                lambda year, month: self._set_progress(
+                    f"Fetching games… {year}-{month:02d}"
+                ),
             )
             new_games = games.new_games
             games_changed = new_games > 0
@@ -357,11 +367,15 @@ class Sync:
         result = SyncResult(games_changed, repertoire_changed, new_games, gaps)
         account = chess_com_username.lower()
         previous = self._accounts.get(account)
-        self._accounts[account] = _AccountSyncs(chess_com, result, (previous.runs if previous else 0) + 1)
+        self._accounts[account] = _AccountSyncs(
+            chess_com, result, (previous.runs if previous else 0) + 1
+        )
         self.progress = None
         return result
 
-    async def _gap_statuses_after(self, chess_com_username: str) -> Optional[GapStatuses]:
+    async def _gap_statuses_after(
+        self, chess_com_username: str
+    ) -> Optional[GapStatuses]:
         """Each Recall Gap's status after the Sync, or None if the analysis failed."""
         try:
             return await self.pipeline.gap_statuses(chess_com_username)
@@ -376,9 +390,17 @@ class Sync:
         """The Sync's state for the account, as the API reports it."""
         account = chess_com_username.lower()
         last = self._accounts.get(account)
-        if self.running and self._running_account and self._running_account.lower() == account:
+        if (
+            self.running
+            and self._running_account
+            and self._running_account.lower() == account
+        ):
             running, progress = True, self.progress
-        elif self.running and self._next_account and self._next_account.lower() == account:
+        elif (
+            self.running
+            and self._next_account
+            and self._next_account.lower() == account
+        ):
             running, progress = True, "Waiting for another Sync…"
         else:
             running, progress = False, None
@@ -387,7 +409,10 @@ class Sync:
             **(last.chess_com if last else SourceStatus()).as_dict(),
             "last_success_at": self.games.last_success(chess_com_username),
         }
-        lichess = {**self.lichess.as_dict(), "last_success_at": self.repertoire_log.last_success()}
+        lichess = {
+            **self.lichess.as_dict(),
+            "last_success_at": self.repertoire_log.last_success(),
+        }
         last_successes = [chess_com["last_success_at"], lichess["last_success_at"]]
         return {
             "running": running,

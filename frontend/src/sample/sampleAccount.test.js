@@ -13,7 +13,12 @@ import {
 } from "../components/recall/drill";
 
 const NOW = new Date("2026-10-09T12:00:00Z");
-const ALL_GAMES = { timeClasses: [], dateRange: "all", ratedOnly: false, studies: [] };
+const ALL_GAMES = {
+  timeClasses: [],
+  dateRange: "all",
+  ratedOnly: false,
+  studies: [],
+};
 
 /** Let the sample backend's answers reach the recall view. */
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -46,13 +51,17 @@ describe("sample account", () => {
     const { view: recall, shownGaps, closedCount, error } = await open();
 
     expect(error).toBeNull();
-    expect(new Set(recall.studies.map((study) => study.color))).toEqual(new Set(["white", "black"]));
+    expect(new Set(recall.studies.map((study) => study.color))).toEqual(
+      new Set(["white", "black"]),
+    );
     expect(shownGaps.length).toBeGreaterThan(3);
     expect(closedCount).toBeGreaterThan(0);
     const occurrences = shownGaps.map((gap) => gap.occurrences);
     expect(occurrences).toEqual([...occurrences].sort((a, b) => b - a));
     expect(recall.totals.trend).toHaveLength(12);
-    expect(recall.totals.trend.every((month) => month.miss_depths.length === 9)).toBe(true);
+    expect(
+      recall.totals.trend.every((month) => month.miss_depths.length === 9),
+    ).toBe(true);
   });
 
   it("narrows the gaps and the totals to the selected Study", async () => {
@@ -63,7 +72,11 @@ describe("sample account", () => {
 
     expect(shownGaps.length).toBeGreaterThan(0);
     expect(shownGaps.length).toBeLessThan(all.shownGaps.length);
-    expect(shownGaps.every((gap) => gap.studies.some((study) => study.id === "sNajdorf"))).toBe(true);
+    expect(
+      shownGaps.every((gap) =>
+        gap.studies.some((study) => study.id === "sNajdorf"),
+      ),
+    ).toBe(true);
     expect(najdorf.totals.analysed).toBeLessThan(all.view.totals.analysed);
     // The Study filter never changes the list of Studies
     expect(najdorf.studies).toEqual(all.view.studies);
@@ -85,7 +98,9 @@ describe("sample account", () => {
     await settle();
     const queue = view.getSnapshot().practice.queue;
     expect(queue.length).toBeGreaterThan(0);
-    expect(queue.map((gap) => gap.position_key)).not.toContain(first.position_key);
+    expect(queue.map((gap) => gap.position_key)).not.toContain(
+      first.position_key,
+    );
   });
 
   it("has a playable drill for every gap, wrong moves included", async () => {
@@ -119,7 +134,9 @@ function moveOf(drill, san) {
 function drillAt(gap) {
   let drill = startDrill(gap);
   while (drill.ply < drill.gapPly) {
-    drill = userTurn(drill) ? playUserMove(drill, moveOf(drill, drill.path[drill.ply])) : playOpponent(drill);
+    drill = userTurn(drill)
+      ? playUserMove(drill, moveOf(drill, drill.path[drill.ply]))
+      : playOpponent(drill);
   }
   return drill;
 }
