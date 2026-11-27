@@ -102,10 +102,8 @@ class RepertoireWalker:
         try:
             next_board.push_san(move_san)
         except ValueError:
-            # Invalid move
             return None
         
-        # Calculate if next move is user's turn (alternates each move)
         next_is_your_turn = not node.is_your_turn
         
         return WalkerPosition(
@@ -188,7 +186,6 @@ class RepertoireWalker:
             try:
                 board.push_san(move_san)
             except ValueError:
-                # Invalid move, stop analysis
                 return not_analysed()
 
         return WalkRecord(

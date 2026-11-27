@@ -183,7 +183,6 @@ class RepertoireAnalysisPipeline:
                     record=walker.walk_game(game.color, moves),
                 ))
             except Exception as e:
-                # Log and continue on individual game analysis failures
                 logger.warning(f"Failed to analyze game {game.url or 'unknown'}: {e}")
 
         self._walked_cache = (username.lower(), repertoire, walked)

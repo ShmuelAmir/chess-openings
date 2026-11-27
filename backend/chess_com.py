@@ -85,11 +85,9 @@ class ChessComClient:
         games = []
         
         for game in raw_games:
-            # Extract opening name from eco URL
             eco_url = game.get("eco", "")
             opening_name = OpeningNormalizer.from_eco_url(eco_url)
             
-            # Parse PGN to extract moves
             pgn_str = game.get("pgn", "")
             parsed_game = self._parse_pgn(pgn_str)
             
@@ -123,14 +121,12 @@ class ChessComClient:
             if not game:
                 return {"moves": [], "headers": {}}
             
-            # Extract moves in SAN format
             moves = []
             board = game.board()
             for move in game.mainline_moves():
                 moves.append(board.san(move))
                 board.push(move)
             
-            # Extract headers
             headers = dict(game.headers)
             
             return {"moves": moves, "headers": headers}

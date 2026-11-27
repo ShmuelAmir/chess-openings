@@ -39,15 +39,12 @@ class OpeningNormalizer:
         # E.g., "Vienna: Accepted" -> "Accepted"
         name = OpeningNormalizer._remove_redundant_prefix(name)
 
-        # Rule 2: Replace hyphens with spaces
-        # E.g., "Italian-Game-Two-Knights" -> "Italian Game Two Knights"
         name = name.replace("-", " ")
 
         # Rule 3: Remove move numbers at the end
         # E.g., "Italian Game-4.exd5" -> "Italian Game"
         name = re.sub(r"\s*-?\d+\..*$", "", name)
 
-        # Rule 4: Clean up excessive whitespace
         name = " ".join(name.split())
 
         return name
@@ -103,7 +100,6 @@ class OpeningNormalizer:
             return ""
 
         opening_slug = match.group(1)
-        # Normalize the slug
         return OpeningNormalizer.normalize(opening_slug)
 
     @staticmethod

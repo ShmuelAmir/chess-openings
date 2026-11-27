@@ -60,7 +60,6 @@ class LichessRepertoireSource(RepertoireSource):
                 study_id, study_name = study["id"], study["name"]
                 try:
                     logger.debug(f"Fetching study {study_id} ({study_name})")
-                    # Deepen: LichessClient handles opening name normalization
                     pgn, opening_name = await client.get_study_pgn_with_normalized_name(
                         study_id=study_id,
                         study_name=study_name,

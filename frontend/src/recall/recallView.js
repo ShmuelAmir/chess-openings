@@ -1,6 +1,32 @@
 import { loadFilters, saveFilters } from "./storedFilters";
 
 /**
+ * The drill on the board. `drillNumber` tells it from the drill before;
+ * `saveState` is null until the drill is finished.
+ * @typedef {{ drillNumber: number, saveState: null | "saving" | "saved" | "failed" }} DrillProgress
+ */
+
+/**
+ * A single drill of a Recall Gap, as the gap was when the drill started.
+ * @typedef {DrillProgress & { kind: "drill", gap: object }} SingleDrill
+ */
+
+/**
+ * A practice session: the due Recall Gaps in ranking order (`queue`, null
+ * while it loads), the one being drilled (`index`), how many gaps have been
+ * drilled, and why the queue failed to load, until it loads again.
+ * @typedef {DrillProgress & {
+ *   kind: "session",
+ *   queue: object[] | null,
+ *   index: number,
+ *   drilled: number,
+ *   error: string | null,
+ * }} PracticeSession
+ */
+
+/** @typedef {SingleDrill | PracticeSession} Practice */
+
+/**
  * The recall view, for as long as the recall page is open: the ranked Recall
  * Gaps and totals under the Game Filters, which gap is selected, and the
  * practice in progress.
@@ -25,12 +51,7 @@ export function createRecallView({ backend, syncClient }) {
     // Whether the Progress panel shows in place of the selected gap; never
     // during practice
     progressOpen: false,
-    // The practice in progress: null, { kind: "drill", gap } with the gap as
-    // it was when the drill started, or the practice session { kind:
-    // "session", queue, index, drilled, error }. Both carry
-    // `drillNumber`, which tells the drill on the board from the one before,
-    // and `saveState`: null, then "saving", "saved" or "failed" once the
-    // drill is finished
+    /** @type {Practice | null} */
     practice: null,
     // The last Sync's result, for the "what changed" line: held during
     // practice with the analysis it describes
@@ -185,17 +206,14 @@ export function createRecallView({ backend, syncClient }) {
       if (disposed || state.practice) return;
       setState({ progressOpen: true });
     },
-    /** Close the Progress panel: the selected gap shows again. */
     closeProgress() {
       if (disposed) return;
       setState({ progressOpen: false });
     },
-    /** Show or hide the Closed Recall Gaps. */
     toggleClosed() {
       if (disposed) return;
       setState({ showClosed: !state.showClosed });
     },
-    /** Start a single drill of the selected Recall Gap. */
     startDrill() {
       if (disposed || !snapshot.selected) return;
       startPractice({ kind: "drill", gap: snapshot.selected });
@@ -208,12 +226,9 @@ export function createRecallView({ backend, syncClient }) {
       if (disposed) return;
       startPractice({
         kind: "session",
-        // The due Recall Gaps in ranking order; null while they are loaded
         queue: null,
         index: 0,
-        // How many gaps the session has drilled
         drilled: 0,
-        // Why the queue failed to load, until it is loaded again
         error: null,
       });
       loadQueue();
