@@ -21,6 +21,8 @@ export default function GapList({
   syncResult,
   practicing,
   onPractice,
+  progressOpen,
+  onOpenProgress,
 }) {
   const openCount = gaps.filter((gap) => gap.status === "open").length;
   const changes = syncing ? null : formatSyncChanges(syncResult);
@@ -51,7 +53,15 @@ export default function GapList({
             Miss Rate <b>{formatMissRate(totals.miss_rate)}</b> · {totals.analysed}{" "}
             {totals.analysed === 1 ? "game" : "games"}
           </span>
-          <Sparkline trend={totals.trend} />
+          <button
+            className="rv-missrate-open"
+            onClick={onOpenProgress}
+            disabled={!onOpenProgress}
+            aria-pressed={progressOpen}
+            title="Show progress: Miss Rate and Miss Depth by month"
+          >
+            <Sparkline trend={totals.trend} />
+          </button>
           <span className="rv-muted">
             {totals.open_gaps} Open · {totals.closed_in_range} Closed in range
           </span>

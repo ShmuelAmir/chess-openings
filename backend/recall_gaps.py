@@ -7,6 +7,7 @@ view. No I/O. See Recall Gap in CONTEXT.md.
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from statistics import median_low
 from typing import Iterable, Optional
 
 import chess
@@ -20,6 +21,11 @@ GAMES_TO_CLOSE = 2
 # Months in the Miss Rate trend, and the fewest games a month needs to get a Miss Rate
 TREND_MONTHS = 12
 MIN_TREND_GAMES = 5
+# Miss Depth rows: the user's 2nd move up to the last, which also holds every later move
+FIRST_MISS_DEPTH = 2
+LAST_MISS_DEPTH = 10
+# The fewest misses a month needs to get a median Miss Depth
+MIN_MEDIAN_MISSES = 3
 # Date range presets of the recall view, in days back from now (None = all time)
 DATE_RANGE_DAYS = {"month": 30, "3months": 91, "year": 365, "all": None}
 DAY = 24 * 60 * 60
@@ -144,6 +150,11 @@ class TrendMonth:
     month: str  # "YYYY-MM", in UTC
     games: int  # analysed games
     miss_rate: Optional[float]  # None with fewer than MIN_TREND_GAMES games
+    # Misses by Miss Depth: the user's 2nd move first, the last also counting every later move
+    miss_depths: list[int] = field(default_factory=list)
+    # The month's median Miss Depth (the earlier middle move of an even count);
+    # None with fewer than MIN_MEDIAN_MISSES misses
+    median_miss_depth: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -307,6 +318,21 @@ def _miss_rate(games: list[WalkedGame]) -> Optional[float]:
     return sum(1 for g in games if _is_miss(g)) / len(games)
 
 
+def _miss_depths(games: list[WalkedGame]) -> list[int]:
+    """How many of the games missed at each Miss Depth, the user's 2nd move first."""
+    counts = [0] * (LAST_MISS_DEPTH - FIRST_MISS_DEPTH + 1)
+    for g in games:
+        if _is_miss(g):
+            counts[min(g.record.deviation.move_number, LAST_MISS_DEPTH) - FIRST_MISS_DEPTH] += 1
+    return counts
+
+
+def _median_miss_depth(games: list[WalkedGame]) -> Optional[int]:
+    """The median Miss Depth of the games' misses, or None with too few of them."""
+    depths = [g.record.deviation.move_number for g in games if _is_miss(g)]
+    return median_low(depths) if len(depths) >= MIN_MEDIAN_MISSES else None
+
+
 def _month(ts: int) -> str:
     return datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m")
 
@@ -330,6 +356,8 @@ def _trend(games: list[WalkedGame], now: int) -> list[TrendMonth]:
             month=month,
             games=len(games_in),
             miss_rate=_miss_rate(games_in) if len(games_in) >= MIN_TREND_GAMES else None,
+            miss_depths=_miss_depths(games_in),
+            median_miss_depth=_median_miss_depth(games_in),
         ))
     return trend
 

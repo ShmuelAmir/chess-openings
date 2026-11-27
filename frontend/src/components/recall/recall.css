@@ -110,3 +110,22 @@
 .rv-listactions { display: flex; align-items: center; gap: 1rem; }
 .rv-session { padding: 0.3rem 0.8rem; font-size: 0.85rem; }
 .rv-session-head { margin-bottom: 0.6rem; }
+
+/* Progress panel: the monthly Miss Rate and Miss Depth */
+.rv-progress-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2rem; }
+.rv-progress-chart { width: 100%; height: auto; overflow: visible; }
+.rv-progress-chart polyline { fill: none; stroke: #e0b44c; stroke-width: 2; stroke-linejoin: round; }
+.rv-progress-chart circle { fill: #e0b44c; stroke: #22223a; stroke-width: 2; }
+.rv-progress-grid line { stroke: #34345a; stroke-width: 1; }
+.rv-progress-grid text { fill: #8a8aa0; font-size: 9px; }
+.rv-depth { display: grid; gap: 2px; font-size: 0.7rem; }
+.rv-depth-label { color: #8a8aa0; display: flex; align-items: center; }
+.rv-depth-month { color: #8a8aa0; text-align: center; }
+.rv-depth-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 3px; background: #2a2a45; color: #ddd; }
+.rv-depth-cell.hit { background: rgba(224, 180, 76, var(--depth)); color: #fff; font-weight: 600; }
+.rv-depth-cell.strong { color: #1a1a2e; }
+.rv-depth-cell.median { outline: 2px solid #ddd; outline-offset: -2px; }
+.rv-progress-note { margin-top: 0.6rem; }
+.rv-missrate-open { background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; }
+.rv-missrate-open:hover .rv-spark-base { stroke: #8a8aa0; }
+.rv-missrate-open:disabled { cursor: default; }

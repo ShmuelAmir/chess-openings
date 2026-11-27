@@ -608,3 +608,66 @@ def test_a_preset_carries_the_other_game_filters():
         time_classes=["blitz"], rated_only=True, studies=frozenset({"italian"})
     )
     assert RecallFilters.for_date_range("all", now=NOW, studies=[]) == RecallFilters()
+
+
+MOVE_2_MISS = ["e4", "e5", "d4"]  # the user's 2nd move is off-book; BB5_MISS misses the 3rd
+
+
+def trend_month(games, month, filters=RecallFilters(), rep=REPERTOIRE):
+    return next(m for m in aggregate(games, filters, rep, now=NOW).totals.trend if m.month == month)
+
+
+def test_miss_depth_counts_each_months_misses_by_the_users_move():
+    games = [game_at(MOVE_2_MISS, utc(2026, 9, d)) for d in (1, 2)] + [
+        game_at(BB5_MISS, utc(2026, 10, 1)),
+        game_at(IN_BOOK, utc(2026, 10, 2)),
+    ]
+
+    assert trend_month(games, "2026-09").miss_depths == [2, 0, 0, 0, 0, 0, 0, 0, 0]
+    assert trend_month(games, "2026-10").miss_depths == [0, 1, 0, 0, 0, 0, 0, 0, 0]
+
+
+LONG_LINE = "1. Nf3 Nf6 2. Nc3 Nc6 3. Ng1 Ng8 4. Nb1 Nb8 5. Nf3 Nf6 6. Nc3 Nc6 7. Ng1 Ng8 8. Nb1 Nb8 9. Nf3 Nf6 10. Nc3 Nc6 11. Ng1 *"
+LONG_REPERTOIRE = repertoire(("long", f'[Event "Long"]\n\n{LONG_LINE}\n'))
+
+
+def long_miss(user_move, date):
+    """A game following LONG_LINE that misses at the user's `user_move`-th move."""
+    book = LONG_LINE.replace(".", " ").split()
+    moves = [m for m in book if not m.isdigit() and m != "*"][: 2 * (user_move - 1)] + ["e4"]
+    return game_at(moves, date, rep=LONG_REPERTOIRE)
+
+
+def test_misses_from_the_users_10th_move_on_share_the_last_miss_depth():
+    games = [long_miss(9, utc(2026, 10, 1)), long_miss(10, utc(2026, 10, 2)), long_miss(11, utc(2026, 10, 3))]
+
+    assert trend_month(games, "2026-10", rep=LONG_REPERTOIRE).miss_depths == [0, 0, 0, 0, 0, 0, 0, 1, 2]
+
+
+def test_a_black_miss_depth_counts_blacks_own_moves():
+    games = [game_at(SICILIAN_GAP, utc(2026, 10, 1), color=chess.BLACK, rep=STUDY_REPERTOIRE)]
+
+    assert trend_month(games, "2026-10", rep=STUDY_REPERTOIRE).miss_depths[0] == 1
+
+
+def test_a_months_median_miss_depth_needs_three_misses():
+    games = [long_miss(m, utc(2026, 9, d)) for d, m in ((1, 2), (2, 3), (3, 3), (4, 11))]
+    games += [long_miss(m, utc(2026, 10, d)) for d, m in ((1, 2), (2, 5))]
+
+    assert trend_month(games, "2026-09", rep=LONG_REPERTOIRE).median_miss_depth == 3
+    assert trend_month(games, "2026-10", rep=LONG_REPERTOIRE).median_miss_depth is None
+
+
+def test_the_median_miss_depth_of_an_even_count_is_the_earlier_middle_move():
+    games = [long_miss(m, utc(2026, 9, d)) for d, m in ((1, 2), (2, 3), (3, 5), (4, 6))]
+
+    assert trend_month(games, "2026-09", rep=LONG_REPERTOIRE).median_miss_depth == 3
+
+
+def test_miss_depth_follows_the_study_filter():
+    games = [game_at(SICILIAN_GAP, utc(2026, 10, 1), color=chess.BLACK, rep=STUDY_REPERTOIRE)]
+    games += [game_at(ITALIAN_ONLY_GAP, utc(2026, 10, 2), rep=STUDY_REPERTOIRE)]
+
+    month = trend_month(games, "2026-10", RecallFilters(studies=frozenset({"italian"})), STUDY_REPERTOIRE)
+
+    assert month.miss_depths == [0, 1, 0, 0, 0, 0, 0, 0, 0]

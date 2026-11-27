@@ -22,6 +22,9 @@ export function createRecallView({ backend, syncClient }) {
     error: null,
     selectedKey: null,
     showClosed: false,
+    // Whether the Progress panel shows in place of the selected gap; never
+    // during practice
+    progressOpen: false,
     // The practice in progress: null, { kind: "drill", gap } with the gap as
     // it was when the drill started, or the practice session { kind:
     // "session", queue, index, drilled, error }. Both carry
@@ -122,7 +125,7 @@ export function createRecallView({ backend, syncClient }) {
   // under way is dropped
   function startPractice(practice) {
     latestQueueLoad++;
-    const changes = { practice: { ...practice, ...newDrill() } };
+    const changes = { practice: { ...practice, ...newDrill() }, progressOpen: false };
     if (state.loading) {
       latestLoad++;
       loadOwed = true;
@@ -175,7 +178,17 @@ export function createRecallView({ backend, syncClient }) {
       if (disposed) return;
       const { practice } = state;
       if (practice?.kind === "drill" && positionKey !== practice.gap.position_key) endPractice();
-      setState({ selectedKey: positionKey });
+      setState({ selectedKey: positionKey, progressOpen: false });
+    },
+    /** Open the Progress panel in place of the selected gap; not during practice. */
+    openProgress() {
+      if (disposed || state.practice) return;
+      setState({ progressOpen: true });
+    },
+    /** Close the Progress panel: the selected gap shows again. */
+    closeProgress() {
+      if (disposed) return;
+      setState({ progressOpen: false });
     },
     /** Show or hide the Closed Recall Gaps. */
     toggleClosed() {
