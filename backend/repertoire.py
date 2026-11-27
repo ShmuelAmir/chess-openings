@@ -18,13 +18,11 @@ class RepertoireNode:
     children: dict[str, "RepertoireNode"] = field(default_factory=dict)
     # The opening/study this line belongs to
     opening_name: Optional[str] = None
-    # The study name this came from
     study_name: Optional[str] = None
     # Lichess study ID this line came from
     study_id: Optional[str] = None
     # Lichess chapter ID this line came from
     chapter_id: Optional[str] = None
-    # Is this a position where it's your turn to move?
     is_your_turn: bool = False
 
 
@@ -151,7 +149,6 @@ class RepertoireBuilder:
             self.repertoire.study_names[study_id] = study_name
 
         for game in chapters:
-            # Extract chapter name from PGN headers
             # Lichess uses the game name or title as chapter name
             chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
             chapter_id = self._chapter_id(game.headers)
@@ -163,7 +160,6 @@ class RepertoireBuilder:
                 study_name, chapter_name
             )
 
-            # Use normalized study name for consistency
             opening_name = norm_study
 
             # If chapter is empty after normalization, fall back to None so
@@ -216,7 +212,6 @@ class RepertoireBuilder:
         # group(2) is the optional chapter id (may be None)
         chapter = match.group(2)
         if chapter:
-            # Normalize common delimiters and strip whitespace
             return chapter.strip().strip("/")
         return None
     
@@ -230,7 +225,6 @@ class RepertoireBuilder:
         chapter_id: Optional[str],
     ):
         """Process a single game/chapter into its study's color tree."""
-        # Process the main line and all variations
         self._process_node(
             game,
             self.repertoire.get_tree(color),
@@ -281,7 +275,6 @@ class RepertoireBuilder:
             if child.chapter_id is None:
                 child.chapter_id = chapter_id
 
-            # Recursively process this variation
             self._process_node(
                 variation,
                 child,

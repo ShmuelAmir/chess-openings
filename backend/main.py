@@ -85,7 +85,6 @@ async def lichess_auth():
     code_verifier, code_challenge = generate_pkce()
     state = secrets.token_urlsafe(32)
     
-    # Store verifier for callback
     pkce_store[state] = code_verifier
     
     params = {

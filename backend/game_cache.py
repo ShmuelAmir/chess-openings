@@ -85,7 +85,6 @@ class GameCache:
         games = []
         for row in rows:
             game = dict(row)
-            # Parse JSON fields
             game["moves"] = json.loads(game["moves"]) if game["moves"] else []
             game["headers"] = json.loads(game["headers"]) if game["headers"] else {}
             game["rated"] = bool(game["rated"])
@@ -219,7 +218,6 @@ class GameCache:
             )
             row = cursor.fetchone()
             if row and row[0]:
-                # Get actual minimum month for that year
                 cursor = conn.execute(
                     "SELECT MIN(month) FROM games WHERE username = ? AND year = ?",
                     (username_lower, row[0])
