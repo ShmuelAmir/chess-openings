@@ -23,8 +23,12 @@ test-backend:
 	@test -n "$(PYTEST)" || { echo "No Python venv in backend/ here or in the main checkout ($(MAIN_ROOT)). Run 'make install-all'." >&2; exit 1; }
 	cd backend && $(PYTEST)
 
-# Backend and frontend suites
-test: test-backend test-frontend
+# Backend, frontend and repo-script suites
+test: test-backend test-frontend test-scripts
+
+test-scripts:
+	@test -n "$(PYTEST)" || { echo "No Python venv in backend/ here or in the main checkout ($(MAIN_ROOT)). Run 'make install-all'." >&2; exit 1; }
+	$(PYTEST) -q scripts
 
 # Frontend commands
 dev:
@@ -45,17 +49,21 @@ test-frontend:
 	@if [ "$(NODE_MODULES)" != "$(CURDIR)/frontend/node_modules" ] && { [ -L node_modules ] || [ ! -e node_modules ]; }; then ln -sfn "$(NODE_MODULES)" node_modules; fi
 	cd frontend && npm test
 
-# Lint and format (ruff for the backend, Prettier for the frontend).
+# Lint and format (ruff for the backend, Prettier for the frontend, and a check
+# that every Markdown doc named in code or docs exists).
 # `lint` only checks; `format` rewrites files. Both report every half and every
 # check before failing, so one problem doesn't hide another.
 lint:
-	@$(MAKE) -k lint-backend lint-frontend
+	@$(MAKE) -k lint-backend lint-frontend lint-docs
 
 lint-backend:
 	cd backend && venv/bin/ruff check .; s=$$?; venv/bin/ruff format --check . && exit $$s
 
 lint-frontend:
 	cd frontend && npm run lint
+
+lint-docs:
+	python3 scripts/check_md_links.py
 
 format:
 	@$(MAKE) -k format-backend format-frontend
@@ -71,5 +79,5 @@ format-frontend:
 install-all: install
 	cd frontend && npm install
 
-.PHONY: run install test test-backend test-frontend dev dev-sample build install-all \
-	lint lint-backend lint-frontend format format-backend format-frontend
+.PHONY: run install test test-backend test-frontend test-scripts dev dev-sample build install-all \
+	lint lint-backend lint-frontend lint-docs format format-backend format-frontend
