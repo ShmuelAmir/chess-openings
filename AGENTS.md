@@ -12,4 +12,4 @@ Uses standard triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `r
 
 ### Domain docs
 
-Single-context layout: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context layout: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`. The glossary holds domain language only. Layers, seams, caching and data flows live in `docs/architecture.md`.

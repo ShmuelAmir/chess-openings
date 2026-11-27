@@ -1,7 +1,7 @@
 """
 The app's Users, each identified by their Lichess token: their Lichess
 account, their analysis pipeline and their Sync, kept between requests. See
-User in CONTEXT.md.
+User in GLOSSARY.md.
 """
 import asyncio
 import hashlib

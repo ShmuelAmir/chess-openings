@@ -1,7 +1,7 @@
 """
 Drill scheduler - pure, no I/O. Decides which Recall Gaps are due for a
 Drill Attempt, from their Drill Attempts and latest real-game occurrence.
-See Drill Attempt in CONTEXT.md.
+See Drill Attempt in GLOSSARY.md.
 """
 from dataclasses import dataclass, field
 from typing import Iterable, Mapping, Sequence
