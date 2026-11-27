@@ -23,8 +23,27 @@ build:
 test-frontend:
 	cd frontend && npm test
 
+# Lint and format (ruff for the backend, Prettier for the frontend).
+# `lint` only checks; `format` rewrites files.
+lint: lint-backend lint-frontend
+
+lint-backend:
+	cd backend && venv/bin/ruff check . && venv/bin/ruff format --check .
+
+lint-frontend:
+	cd frontend && npm run lint
+
+format: format-backend format-frontend
+
+format-backend:
+	cd backend && venv/bin/ruff check --fix . && venv/bin/ruff format .
+
+format-frontend:
+	cd frontend && npm run format
+
 # Install all dependencies
 install-all: install
 	cd frontend && npm install
 
-.PHONY: run install test test-backend test-frontend dev build install-all
+.PHONY: run install test test-backend test-frontend dev build install-all \
+	lint lint-backend lint-frontend format format-backend format-frontend
