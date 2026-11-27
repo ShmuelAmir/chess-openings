@@ -1,4 +1,5 @@
-# Runs the same checks as `make test` and `make lint` on every PR and on main.
+# Runs the Makefile's own `test` and `lint` targets, so CI and local runs check
+# the same things.
 name: CI
 
 on:
@@ -6,9 +7,11 @@ on:
   push:
     branches: [main]
 
+# A new push to a PR supersedes its running check; on main every commit keeps
+# its own result.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:

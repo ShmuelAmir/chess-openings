@@ -11,6 +11,8 @@ VITEST := $(call find-dep,frontend/node_modules/.bin/vitest)
 NODE_MODULES := $(VITEST:%/.bin/vitest=%)
 
 # Backend commands
+# `.` rather than `source`: make runs recipes in /bin/sh, which is dash on
+# Ubuntu (and the CI runner) and has no `source`.
 run:
 	cd backend && . venv/bin/activate && uvicorn main:app --reload
 
