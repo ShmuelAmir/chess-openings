@@ -83,6 +83,10 @@ make lint     # check only; fails on lint errors, unsorted imports or unformatte
 make format   # rewrite files to fix what lint reports
 ```
 
+### CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `make test` and `make lint` on every pull request and every push to `main`, after a fresh install of both halves. A PR is green only when both pass, so running those two targets locally checks the same things.
+
 ### Creating Your Repertoire on Lichess
 
 1. Go to [lichess.org/study](https://lichess.org/study)
