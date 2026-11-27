@@ -12,10 +12,10 @@ NODE_MODULES := $(VITEST:%/.bin/vitest=%)
 
 # Backend commands
 run:
-	cd backend && source venv/bin/activate && uvicorn main:app --reload
+	cd backend && . venv/bin/activate && uvicorn main:app --reload
 
 install:
-	cd backend && python3 -m venv venv && source venv/bin/activate && pip install -r requirements-dev.txt
+	cd backend && python3 -m venv venv && . venv/bin/activate && pip install -r requirements-dev.txt
 
 test-backend:
 	@test -n "$(PYTEST)" || { echo "No Python venv in backend/ here or in the main checkout ($(MAIN_ROOT)). Run 'make install-all'." >&2; exit 1; }
