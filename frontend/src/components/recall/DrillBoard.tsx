@@ -1,5 +1,9 @@
 import { useState, useEffect } from "react";
+import type { ComponentProps } from "react";
 import { Chessboard } from "react-chessboard";
+import type { PieceSymbol, Square } from "chess.js";
+import type { DrillAttempt, RecallGap } from "../../backend/backend";
+import type { SaveState } from "../../recall/recallView";
 import {
   startDrill,
   userTurn,
@@ -10,6 +14,7 @@ import {
   drillPassed,
   drillLine,
   movesFrom,
+  type BoardMove,
 } from "./drill";
 import { formatLine } from "./format";
 
@@ -19,6 +24,24 @@ const TARGET_STYLE = {
   background:
     "radial-gradient(circle, rgba(0, 0, 0, 0.25) 22%, transparent 24%)",
 };
+
+// A board piece such as "wQ"; react-chessboard doesn't export its type
+type BoardPiece = Parameters<
+  NonNullable<ComponentProps<typeof Chessboard>["onPieceDrop"]>
+>[2];
+
+interface DrillBoardProps {
+  gap: RecallGap;
+  boardWidth: number;
+  saveState: SaveState;
+  onFinished: (attempt: DrillAttempt) => void;
+  onRetrySave: () => void;
+  onClose: () => void;
+  /** In a practice session: move on once the attempt is saved. */
+  onNext?: () => void;
+  /** In a single drill: drill the gap again. */
+  onAgain?: () => void;
+}
 
 /**
  * A Drill Attempt of one Recall Gap on an in-app board, oriented to the
@@ -36,10 +59,10 @@ export default function DrillBoard({
   onClose,
   onNext,
   onAgain,
-}) {
+}: DrillBoardProps) {
   const [drill, setDrill] = useState(() => startDrill(gap));
   // The square of the piece picked up by a click, waiting for its target
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<Square | null>(null);
 
   const turn = userTurn(drill);
 
@@ -54,7 +77,7 @@ export default function DrillBoard({
     if (drill.done) onFinished(drillAttempt(drill));
   }, [drill.done]);
 
-  const tryMove = (move) => {
+  const tryMove = (move: BoardMove) => {
     setSelected(null);
     const next = playUserMove(drill, move);
     if (!next) return false;
@@ -62,15 +85,17 @@ export default function DrillBoard({
     return true;
   };
 
-  const onPieceDrop = (from, to, piece) => {
+  const onPieceDrop = (from: Square, to: Square, piece: BoardPiece) => {
     // A promotion arrives as the chosen piece, e.g. "wQ"
-    const promotion = piece[1] === "P" ? undefined : piece[1].toLowerCase();
+    // The piece letter lowercased is its chess.js symbol
+    const promotion =
+      piece[1] === "P" ? undefined : (piece[1].toLowerCase() as PieceSymbol);
     return tryMove({ from, to, promotion });
   };
 
   // Click a piece, then its target square; a click promotes to a queen
   const targets = selected ? movesFrom(drill, selected) : [];
-  const onSquareClick = (square, piece) => {
+  const onSquareClick = (square: Square, piece: BoardPiece | undefined) => {
     const move = targets.find((m) => m.to === square);
     if (move) tryMove(move);
     else if (
@@ -126,7 +151,8 @@ export default function DrillBoard({
       ) : drill.wrongMove ? (
         <div className="rv-drill-msg bad">
           {drill.wrongMove} is not book, so this attempt failed. Play one of:{" "}
-          <b>{turn.book_moves.join(", ")}</b>
+          {/* A wrong move waits at the user's turn, so `turn` is set here */}
+          <b>{turn?.book_moves.join(", ")}</b>
         </div>
       ) : drill.alsoBook ? (
         <div className="rv-drill-msg good">

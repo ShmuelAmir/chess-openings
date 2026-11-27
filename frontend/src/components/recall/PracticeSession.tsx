@@ -1,3 +1,5 @@
+import type { DrillAttempt } from "../../backend/backend";
+import type { ShownPractice } from "../../recall/recallView";
 import DrillBoard from "./DrillBoard";
 
 const BOARD_WIDTH = 306;
@@ -7,6 +9,15 @@ const BOARD_WIDTH = 306;
  * ranking order, until nothing is due or the user stops. `session` is the
  * recall view's practice session.
  */
+interface PracticeSessionProps {
+  session: Extract<ShownPractice, { kind: "session" }>;
+  onFinished: (attempt: DrillAttempt) => void;
+  onRetrySave: () => void;
+  onNext: () => void;
+  onRetryQueue: () => void;
+  onEnd: () => void;
+}
+
 export default function PracticeSession({
   session,
   onFinished,
@@ -14,17 +25,18 @@ export default function PracticeSession({
   onNext,
   onRetryQueue,
   onEnd,
-}) {
+}: PracticeSessionProps) {
   const { queue, index, gap, drilled, error } = session;
 
   return (
     <section className="rv-detail">
       <div className="rv-session-head">
         <strong>Practice session</strong>
+        {/* A gap to drill means the queue has loaded */}
         {gap && (
           <span className="rv-muted">
             {" "}
-            · {index + 1} of {queue.length} due
+            · {index + 1} of {queue?.length} due
           </span>
         )}
       </div>

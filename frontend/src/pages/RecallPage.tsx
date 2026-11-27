@@ -1,6 +1,7 @@
 import { useState, useLayoutEffect, useSyncExternalStore } from "react";
 import { useSync } from "../context/SyncContext";
 import { createRecallView } from "../recall/recallView";
+import type { RecallViewStore } from "../recall/recallView";
 import FilterRail from "../components/recall/FilterRail";
 import GapList from "../components/recall/GapList";
 import GapDetail from "../components/recall/GapDetail";
@@ -15,11 +16,12 @@ const BOARD_WIDTH = 306;
 /** Keeps one recall view while the page is open, for the account's Sync client. */
 export default function RecallPage() {
   const { backend, syncClient } = useSync();
-  const [recallView, setRecallView] = useState(null);
+  const [recallView, setRecallView] = useState<RecallViewStore | null>(null);
 
   // Before the first paint, so the page never shows empty
   useLayoutEffect(() => {
-    if (!syncClient) return;
+    // The backend and the Sync client are both set or both null
+    if (!backend || !syncClient) return;
     const created = createRecallView({ backend, syncClient });
     setRecallView(created);
     return () => {
@@ -31,7 +33,7 @@ export default function RecallPage() {
   return recallView && <Recall recallView={recallView} />;
 }
 
-function Recall({ recallView }) {
+function Recall({ recallView }: { recallView: RecallViewStore }) {
   const { syncStatus, syncing, syncError, startSync } = useSync();
   const {
     filters,
