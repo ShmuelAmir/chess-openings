@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSync } from "../context/SyncContext";
+import { errorMessage } from "../errorMessage";
 import GameFilters, {
   type OpeningDistributionFilters,
 } from "../components/GameFilters";
@@ -88,8 +89,7 @@ export default function OpeningDistributionPage() {
         setData(result);
         setActiveFilters(defaultFilters);
       } catch (err) {
-        // fetch and response.json throw only Errors, and so does this block
-        setError(err instanceof Error ? err.message : String(err));
+        setError(errorMessage(err));
       } finally {
         setLoading(false);
       }

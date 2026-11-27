@@ -169,3 +169,8 @@ export interface Backend {
 
 /** The name of one of the Backend's calls. */
 export type BackendCall = keyof Backend;
+
+/** A FastAPI error body; empty when a failed response's body wasn't JSON. */
+export interface ApiErrorBody {
+  detail?: string;
+}

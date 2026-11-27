@@ -1,8 +1,6 @@
 import type { Backend, BackendCall } from "./backend";
 
-/** The arguments a call takes. */
 type Args<K extends BackendCall> = Parameters<Backend[K]>;
-/** What a call resolves with. */
 type Result<K extends BackendCall> = Awaited<ReturnType<Backend[K]>>;
 
 interface Script<K extends BackendCall> {

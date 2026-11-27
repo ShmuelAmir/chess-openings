@@ -5,6 +5,8 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
+import type { ApiErrorBody } from "../backend/backend";
+import { errorMessage } from "../errorMessage";
 import { useSampleAccount } from "./SampleAccountContext";
 
 /**
@@ -99,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         `/api/chess-com/validate/${encodeURIComponent(username)}`,
       );
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
+        const data: ApiErrorBody = await response.json().catch(() => ({}));
         setChessComError(
           data.detail || `Could not verify '${username}' on Chess.com`,
         );
@@ -109,8 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setChessComUsername(username);
       return true;
     } catch (err) {
-      // fetch throws only Errors (a TypeError when the network fails)
-      setChessComError(err instanceof Error ? err.message : String(err));
+      setChessComError(errorMessage(err));
       return false;
     } finally {
       setValidatingChessCom(false);

@@ -118,7 +118,8 @@ describe("sample account", () => {
     view.endPractice();
     view.startSession();
     await settle();
-    const queue = session().queue ?? [];
+    const { queue } = session();
+    if (!queue) throw new Error("The practice queue has not loaded");
     expect(queue.length).toBeGreaterThan(0);
     expect(queue.map((gap) => gap.position_key)).not.toContain(
       first.position_key,
