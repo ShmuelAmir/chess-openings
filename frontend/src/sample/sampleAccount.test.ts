@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSyncClient } from "../sync/syncClient";
-import { createRecallView } from "../recall/recallView";
+import { createSyncClient, type SyncClient } from "../sync/syncClient";
+import {
+  createRecallView,
+  type RecallViewSnapshot,
+  type RecallViewStore,
+} from "../recall/recallView";
 import { createSampleAccount } from "./sampleAccount";
 import { Chess } from "chess.js";
 import {
@@ -10,6 +14,7 @@ import {
   playUserMove,
   startDrill,
   userTurn,
+  type DrillState as Drill,
 } from "../components/recall/drill";
 import type {
   DrillAttempt,
@@ -17,34 +22,6 @@ import type {
   RecallGap,
   RecallView,
 } from "../backend/backend";
-
-/*
- * The part of the Recall view store these tests use. The store is still
- * JavaScript, so its inferred snapshot type has lost these fields; this goes
- * once the store is TypeScript (#92).
- */
-interface RecallViewStore {
-  getSnapshot(): {
-    view: RecallView;
-    error: string | null;
-    shownGaps: RecallGap[];
-    closedCount: number;
-    practice: {
-      gap: RecallGap;
-      queue: RecallGap[];
-      saveState: string | null;
-    };
-    selected: RecallGap | undefined;
-  };
-  setFilters(filters: GameFilters): void;
-  toggleClosed(): void;
-  startSession(): void;
-  finishDrill(attempt: DrillAttempt): void;
-  endPractice(): void;
-  dispose(): void;
-}
-
-type Drill = ReturnType<typeof startDrill>;
 
 const NOW = new Date("2026-10-09T12:00:00Z");
 const ALL_GAMES: GameFilters = {
@@ -58,7 +35,7 @@ const ALL_GAMES: GameFilters = {
 const settle = () => vi.advanceTimersByTimeAsync(0);
 
 describe("sample account", () => {
-  let syncClient: ReturnType<typeof createSyncClient>;
+  let syncClient: SyncClient;
   let view: RecallViewStore;
 
   beforeEach(() => {
@@ -75,19 +52,23 @@ describe("sample account", () => {
   async function open() {
     const { backend } = createSampleAccount();
     syncClient = createSyncClient(backend);
-    // The store's inferred snapshot lacks fields it has at runtime (see
-    // RecallViewStore above), so the types don't overlap enough for a plain cast
-    view = createRecallView({
-      backend,
-      syncClient,
-    }) as unknown as RecallViewStore;
+    view = createRecallView({ backend, syncClient });
     view.setFilters(ALL_GAMES);
     await settle();
     return view.getSnapshot();
   }
 
+  /** The practice session in progress. */
+  function session() {
+    const { practice } = view.getSnapshot();
+    if (practice?.kind !== "session") throw new Error("No practice session");
+    return practice;
+  }
+
   it("opens the recall view on Studies of both colors, ranked gaps and a year of trend", async () => {
-    const { view: recall, shownGaps, closedCount, error } = await open();
+    const snapshot = await open();
+    const { shownGaps, closedCount, error } = snapshot;
+    const recall = loaded(snapshot);
 
     expect(error).toBeNull();
     expect(new Set(recall.studies.map((study) => study.color))).toEqual(
@@ -107,7 +88,8 @@ describe("sample account", () => {
     const all = await open();
     view.setFilters({ ...ALL_GAMES, studies: ["sNajdorf"] });
     await settle();
-    const { view: najdorf, shownGaps } = view.getSnapshot();
+    const { shownGaps } = view.getSnapshot();
+    const najdorf = loaded(view.getSnapshot());
 
     expect(shownGaps.length).toBeGreaterThan(0);
     expect(shownGaps.length).toBeLessThan(all.shownGaps.length);
@@ -116,26 +98,27 @@ describe("sample account", () => {
         gap.studies.some((study) => study.id === "sNajdorf"),
       ),
     ).toBe(true);
-    expect(najdorf.totals.analysed).toBeLessThan(all.view.totals.analysed);
+    expect(najdorf.totals.analysed).toBeLessThan(loaded(all).totals.analysed);
     // The Study filter never changes the list of Studies
-    expect(najdorf.studies).toEqual(all.view.studies);
+    expect(najdorf.studies).toEqual(loaded(all).studies);
   });
 
   it("practises the due gaps, and a passed drill is not due again", async () => {
     await open();
     view.startSession();
     await settle();
-    const first = view.getSnapshot().practice.gap;
+    const first = session().gap;
+    if (!first) throw new Error("Nothing is due");
     expect(first.status).toBe("open");
 
     view.finishDrill(playDrill(first));
     await settle();
-    expect(view.getSnapshot().practice.saveState).toBe("saved");
+    expect(session().saveState).toBe("saved");
 
     view.endPractice();
     view.startSession();
     await settle();
-    const queue = view.getSnapshot().practice.queue;
+    const queue = session().queue ?? [];
     expect(queue.length).toBeGreaterThan(0);
     expect(queue.map((gap) => gap.position_key)).not.toContain(
       first.position_key,
@@ -163,10 +146,23 @@ describe("sample account", () => {
   });
 });
 
+/** The Recall view the backend reported, which these tests wait for. */
+function loaded(snapshot: RecallViewSnapshot): RecallView {
+  if (!snapshot.view) throw new Error("The recall view has not loaded");
+  return snapshot.view;
+}
+
 /** The board move of a SAN move in the drill's current position. */
 function moveOf(drill: Drill, san: string) {
   const { from, to, promotion } = new Chess(drillFen(drill)).move(san);
   return { from, to, promotion };
+}
+
+/** The user plays a SAN move, which must be legal here. */
+function playUser(drill: Drill, san: string): Drill {
+  const next = playUserMove(drill, moveOf(drill, san));
+  if (!next) throw new Error(`${san} is illegal here`);
+  return next;
 }
 
 /** The drill of `gap`, played along its path up to the gap itself. */
@@ -174,7 +170,7 @@ function drillAt(gap: RecallGap): Drill {
   let drill = startDrill(gap);
   while (drill.ply < drill.gapPly) {
     drill = userTurn(drill)
-      ? playUserMove(drill, moveOf(drill, drill.path[drill.ply]))
+      ? playUser(drill, drill.path[drill.ply])
       : playOpponent(drill);
   }
   return drill;
@@ -183,5 +179,5 @@ function drillAt(gap: RecallGap): Drill {
 /** The Drill Attempt of `gap` played without a wrong move. */
 function playDrill(gap: RecallGap): DrillAttempt {
   const drill = drillAt(gap);
-  return drillAttempt(playUserMove(drill, moveOf(drill, gap.book_moves[0])));
+  return drillAttempt(playUser(drill, gap.book_moves[0]));
 }

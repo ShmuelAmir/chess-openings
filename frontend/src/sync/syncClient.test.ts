@@ -1,30 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemoryBackend } from "../backend/memoryBackend";
-import { createSyncClient } from "./syncClient";
+import type {
+  SyncResult,
+  SyncSourceStatus,
+  SyncState,
+} from "../backend/backend";
+import {
+  createMemoryBackend,
+  type MemoryBackend,
+} from "../backend/memoryBackend";
+import { createSyncClient, type SyncClient } from "./syncClient";
 
 const NOW = new Date("2026-10-09T12:00:00Z");
 const NOW_SECONDS = NOW.getTime() / 1000;
 const MINUTE = 60;
 
+const SOURCE_OK: SyncSourceStatus = {
+  status: "ok",
+  error: null,
+  last_success_at: NOW_SECONDS - MINUTE,
+};
+
 /** A Sync state as the backend reports it; synced a minute ago unless told otherwise. */
-function syncState(overrides = {}) {
+function syncState(overrides: Partial<SyncState> = {}): SyncState {
   return {
     running: false,
     runs: 0,
     progress: null,
     last_synced_at: NOW_SECONDS - MINUTE,
     cached_games: 120,
-    sources: {},
+    sources: { chess_com: SOURCE_OK, lichess: SOURCE_OK },
     result: null,
     ...overrides,
   };
 }
 
-const UNCHANGED = {
-  games_changed: false,
-  repertoire_changed: false,
-  new_games: 0,
-};
+/** What a Sync changed, as the backend reports it; nothing unless told otherwise. */
+function syncResult(overrides: Partial<SyncResult> = {}): SyncResult {
+  return {
+    games_changed: false,
+    repertoire_changed: false,
+    new_games: 0,
+    new_gaps: 0,
+    closed_gaps: 0,
+    reopened_gaps: 0,
+    ...overrides,
+  };
+}
+
+const UNCHANGED = syncResult();
 
 /** Let the backend's answers that are already due reach the client. */
 const settle = () => vi.advanceTimersByTimeAsync(0);
@@ -33,8 +56,8 @@ const settle = () => vi.advanceTimersByTimeAsync(0);
 const second = () => vi.advanceTimersByTimeAsync(1000);
 
 describe("Sync client", () => {
-  let backend;
-  let client;
+  let backend: MemoryBackend;
+  let client: SyncClient;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -66,7 +89,7 @@ describe("Sync client", () => {
 
       expect(backend.count("startSync")).toBe(1);
       expect(client.getSnapshot().syncing).toBe(true);
-      expect(client.getSnapshot().status.progress).toBe("Fetching games");
+      expect(client.getSnapshot().status?.progress).toBe("Fetching games");
     });
 
     it("starts a Sync when there has never been one", async () => {
@@ -87,7 +110,7 @@ describe("Sync client", () => {
 
       expect(backend.count("startSync")).toBe(0);
       expect(client.getSnapshot().syncing).toBe(false);
-      expect(client.getSnapshot().status.cached_games).toBe(120);
+      expect(client.getSnapshot().status?.cached_games).toBe(120);
     });
 
     it("does not start a second Sync when one is already running", async () => {
@@ -118,7 +141,7 @@ describe("Sync client", () => {
         .answer(syncState({ running: true, progress: "Month 2 of 3" }));
       await second();
       expect(backend.count("readSyncState")).toBe(2);
-      expect(client.getSnapshot().status.progress).toBe("Month 2 of 3");
+      expect(client.getSnapshot().status?.progress).toBe("Month 2 of 3");
 
       backend
         .on("readSyncState")
@@ -143,7 +166,7 @@ describe("Sync client", () => {
     it("tells subscribers of each new state", async () => {
       backend.on("readSyncState").answer(syncState({ running: true }));
       client = createSyncClient(backend);
-      const seen = [];
+      const seen: boolean[] = [];
       client.subscribe(() => seen.push(client.getSnapshot().syncing));
 
       await settle();
@@ -157,11 +180,7 @@ describe("Sync client", () => {
   });
 
   describe("a finished Sync", () => {
-    const CHANGED = {
-      games_changed: true,
-      repertoire_changed: false,
-      new_games: 4,
-    };
+    const CHANGED = syncResult({ games_changed: true, new_games: 4 });
 
     it("is not reported as new when it finished before the app opened", async () => {
       backend
@@ -231,11 +250,7 @@ describe("Sync client", () => {
         .on("startSync")
         .answer(syncState({ running: true, runs: 1, result: CHANGED }));
       await client.startSync();
-      const later = {
-        games_changed: false,
-        repertoire_changed: true,
-        new_games: 0,
-      };
+      const later = syncResult({ repertoire_changed: true });
       backend.on("readSyncState").answer(syncState({ runs: 2, result: later }));
       await second();
 
@@ -245,7 +260,7 @@ describe("Sync client", () => {
   });
 
   describe("announcing that something changed", () => {
-    async function finishSyncWith(result) {
+    async function finishSyncWith(result: SyncResult) {
       backend.on("readSyncState").answer(syncState({ running: true, runs: 0 }));
       const changes = vi.fn();
       client = createSyncClient(backend);
@@ -257,18 +272,14 @@ describe("Sync client", () => {
     }
 
     it("happens when the Sync changed the games", async () => {
-      const changes = await finishSyncWith({
-        games_changed: true,
-        repertoire_changed: false,
-      });
+      const changes = await finishSyncWith(syncResult({ games_changed: true }));
       expect(changes).toHaveBeenCalledTimes(1);
     });
 
     it("happens when the Sync changed the Repertoire", async () => {
-      const changes = await finishSyncWith({
-        games_changed: false,
-        repertoire_changed: true,
-      });
+      const changes = await finishSyncWith(
+        syncResult({ repertoire_changed: true }),
+      );
       expect(changes).toHaveBeenCalledTimes(1);
     });
 
@@ -282,12 +293,12 @@ describe("Sync client", () => {
     it("comes after the result is readable", async () => {
       backend.on("readSyncState").answer(syncState({ running: true, runs: 0 }));
       client = createSyncClient(backend);
-      let resultWhenAnnounced;
+      let resultWhenAnnounced: SyncResult | null = null;
       client.onChanged(
         () => (resultWhenAnnounced = client.getSnapshot().result),
       );
       await settle();
-      const result = { games_changed: true, repertoire_changed: false };
+      const result = syncResult({ games_changed: true });
       backend.on("readSyncState").answer(syncState({ runs: 1, result }));
       await second();
 
@@ -304,7 +315,7 @@ describe("Sync client", () => {
       backend.on("readSyncState").answer(
         syncState({
           runs: 1,
-          result: { games_changed: true, repertoire_changed: false },
+          result: syncResult({ games_changed: true }),
         }),
       );
       await second();
@@ -378,7 +389,7 @@ describe("Sync client", () => {
         .answer(syncState({ running: true, progress: "Month 2 of 3" }));
       await second();
       expect(client.getSnapshot().error).toBeNull();
-      expect(client.getSnapshot().status.progress).toBe("Month 2 of 3");
+      expect(client.getSnapshot().status?.progress).toBe("Month 2 of 3");
     });
   });
 
