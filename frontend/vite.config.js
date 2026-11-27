@@ -1,10 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig({
+// `--mode sample` runs on the sample account (see src/sample/sampleAccount.js),
+// on its own port so its remembered Game Filters stay apart from the real app's
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: mode === "sample" ? 5174 : 5173,
     proxy: {
       "/api": {
         target: "http://localhost:8000",
@@ -20,4 +22,4 @@ export default defineConfig({
     outDir: "../backend/static",
     emptyOutDir: true,
   },
-});
+}));

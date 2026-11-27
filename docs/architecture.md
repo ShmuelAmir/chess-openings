@@ -147,3 +147,9 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Abstract interface: `GameSource.games(username) -> list[Game]`; filtering is the reader's (the Recall Gap aggregator, the Opening Distribution)
    - Current adapter: `CacheGameSource` (local SQLite); `/api/opening-stats` reads through it too
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)
+
+3. **Frontend backend seam:**
+   - Interface: the backend adapter the frontend calls (`readSyncState`, `startSync`, `loadRecallView`, `loadPracticeQueue`, `recordDrillAttempt`)
+   - Current adapter: `createHttpBackend` (`frontend/src/backend/httpBackend.js`), one per account
+   - In-memory adapter: `createMemoryBackend` (`frontend/src/backend/memoryBackend.js`), scripted call by call. The frontend tests use it, and so does the sample mode
+   - **Sample mode:** `npm run dev:sample` (`vite --mode sample`, port 5174) runs the real frontend on the sample account (`frontend/src/sample/sampleAccount.js`): the in-memory adapter answering from made-up Studies, Recall Gaps and a year of games. `main.jsx` imports it only in that mode, so other builds leave it out, and `AuthProvider` and `SyncProvider` use it in place of the Lichess sign-in and the HTTP adapter. The Opening Distribution and Settings pages still call the backend server directly, so they show errors there

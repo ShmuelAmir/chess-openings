@@ -1,14 +1,17 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { useSampleAccount } from "./SampleAccountContext";
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
+  // The sample mode is signed in as the sample account from the start
+  const sample = useSampleAccount();
   const [lichessToken, setLichessToken] = useState(
-    localStorage.getItem("lichess_token"),
+    sample ? "sample" : localStorage.getItem("lichess_token"),
   );
-  const [lichessUser, setLichessUser] = useState(null);
+  const [lichessUser, setLichessUser] = useState(sample?.lichessUser ?? null);
   const [chessComUsername, setChessComUsername] = useState(
-    localStorage.getItem("chess_com_username") || "",
+    sample?.chessComUsername ?? (localStorage.getItem("chess_com_username") || ""),
   );
 
   const [chessComError, setChessComError] = useState(null);
@@ -16,7 +19,7 @@ export function AuthProvider({ children }) {
 
   // Fetch Lichess user info when token is available
   useEffect(() => {
-    if (lichessToken) {
+    if (lichessToken && !sample) {
       fetchLichessUser();
     }
   }, [lichessToken]);

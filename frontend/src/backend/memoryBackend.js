@@ -12,13 +12,15 @@ const unscripted = (name) => ({
 });
 
 /**
- * The in-memory backend adapter, for tests. Each call is scripted through
- * `on(name)`: answer it, fail it, or delay it. `count(name)` says how often
+ * The in-memory backend adapter, for tests and the sample mode. Each call is
+ * scripted through `on(name)`: answer it, reply from its arguments, fail it,
+ * or delay it. `count(name)` says how often
  * it was called, and `calls(name)` with what arguments each time.
  *
  *   backend.on("readSyncState").answer(state);
  *   backend.on("startSync").fail("Sync failed");
  *   backend.on("readSyncState").delay(500).answer(state);
+ *   backend.on("loadRecallView").reply((filters) => viewFor(filters));
  *
  * A script stays in force until the call is scripted again. A call answers
  * with the script in force when it was made.
@@ -35,8 +37,8 @@ export function createMemoryBackend() {
     backend[name] = (...args) => {
       calls[name].push(args);
       const { delayMs, settle } = scripts[name];
-      if (!delayMs) return settle();
-      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(settle);
+      if (!delayMs) return settle(args);
+      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(() => settle(args));
     };
   }
 
@@ -46,6 +48,11 @@ export function createMemoryBackend() {
     const handle = {
       answer(value) {
         script.settle = () => Promise.resolve(value);
+        return handle;
+      },
+      // Answer with what `respond` returns for the call's arguments; a throw fails the call
+      reply(respond) {
+        script.settle = (args) => Promise.resolve().then(() => respond(...args));
         return handle;
       },
       fail(message) {

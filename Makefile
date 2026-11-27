@@ -17,6 +17,10 @@ test: test-backend test-frontend
 dev:
 	cd frontend && npm run dev
 
+# The frontend on sample data, no Lichess sign-in or backend (port 5174)
+dev-sample:
+	cd frontend && npm run dev:sample
+
 build:
 	cd frontend && npm run build
 
@@ -27,4 +31,4 @@ test-frontend:
 install-all: install
 	cd frontend && npm install
 
-.PHONY: run install test test-backend test-frontend dev build install-all
+.PHONY: run install test test-backend test-frontend dev dev-sample build install-all

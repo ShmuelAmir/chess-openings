@@ -1,5 +1,9 @@
 # Agent skills
 
+## Checking UI changes
+
+Whenever you change the frontend, run `make dev-sample` (or `cd frontend && npm run dev:sample`) and open http://localhost:5174 to see the change on the real Recall page with sample data, no Lichess sign-in or backend needed, and take a screenshot before you finish.
+
 ## Agent skills
 
 ### Issue tracker

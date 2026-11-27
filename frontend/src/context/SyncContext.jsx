@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useAuth } from "./AuthContext";
+import { useSampleAccount } from "./SampleAccountContext";
 import { createHttpBackend } from "../backend/httpBackend";
 import { createSyncClient } from "../sync/syncClient";
 
@@ -20,22 +21,23 @@ const NO_ACCOUNT = { backend: null, client: null };
 
 /**
  * Keeps one backend adapter and one Sync client per account: new ones when
- * the account changes.
+ * the account changes. The sample mode's adapter is the sample account's.
  */
 export function SyncProvider({ children }) {
   const { lichessToken, chessComUsername } = useAuth();
+  const sample = useSampleAccount();
   const [account, setAccount] = useState(NO_ACCOUNT);
 
   useEffect(() => {
     if (!lichessToken || !chessComUsername) return;
-    const backend = createHttpBackend({ lichessToken, chessComUsername });
+    const backend = sample?.backend ?? createHttpBackend({ lichessToken, chessComUsername });
     const client = createSyncClient(backend);
     setAccount({ backend, client });
     return () => {
       client.dispose();
       setAccount(NO_ACCOUNT);
     };
-  }, [lichessToken, chessComUsername]);
+  }, [lichessToken, chessComUsername, sample]);
 
   return <SyncContext.Provider value={account}>{children}</SyncContext.Provider>;
 }
