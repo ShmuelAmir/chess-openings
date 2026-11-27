@@ -2,16 +2,39 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import "../components/recall/recall.css";
 
-async function readStudies(response) {
+/**
+ * A Lichess Study the user owns, and whether they marked it "not repertoire".
+ * `opening_name` is the name with its opening normalized, as the Recall view
+ * shows it.
+ */
+interface OwnedStudy {
+  id: string;
+  name: string;
+  opening_name: string;
+  excluded: boolean;
+}
+
+/** What `/api/not-repertoire` returns, to a GET and a PUT alike. */
+interface NotRepertoireView {
+  studies: OwnedStudy[];
+}
+
+/** A FastAPI error body; empty when the body wasn't JSON. */
+interface ErrorBody {
+  detail?: string;
+}
+
+async function readStudies(response: Response): Promise<OwnedStudy[]> {
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
+    const data: ErrorBody = await response.json().catch(() => ({}));
     throw new Error(
       response.status === 429
         ? "Lichess rate limit reached. Please wait a minute and try again."
         : data.detail || "Could not load your studies",
     );
   }
-  return (await response.json()).studies;
+  const view: NotRepertoireView = await response.json();
+  return view.studies;
 }
 
 /**
@@ -22,9 +45,9 @@ async function readStudies(response) {
 export default function SettingsPage() {
   const { lichessToken } = useAuth();
 
-  const [studies, setStudies] = useState(null);
+  const [studies, setStudies] = useState<OwnedStudy[] | null>(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!lichessToken) return;
@@ -36,7 +59,9 @@ export default function SettingsPage() {
       .catch((err) => setError(err.message));
   }, [lichessToken]);
 
-  const toggle = async (id) => {
+  const toggle = async (id: string) => {
+    // The switches show only once the studies are loaded
+    if (!studies) return;
     const excluded = studies
       .filter((study) => (study.id === id ? !study.excluded : study.excluded))
       .map((study) => study.id);
@@ -54,7 +79,8 @@ export default function SettingsPage() {
       });
       setStudies(await readStudies(response));
     } catch (err) {
-      setError(err.message);
+      // fetch and readStudies throw only Errors
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }

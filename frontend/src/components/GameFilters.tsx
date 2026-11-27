@@ -1,4 +1,34 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import type { TimeClass } from "../backend/backend";
+
+/** Which color's games the Opening Distribution shows. */
+export type ColorFilter = "white" | "black" | "both";
+
+/**
+ * The Opening Distribution's Game Filters. The months bound the range;
+ * the timestamps (Unix seconds), when set, narrow it to exact moments.
+ */
+export interface OpeningDistributionFilters {
+  fromYear: number;
+  fromMonth: number;
+  toYear: number;
+  toMonth: number;
+  fromTimestamp: number | null;
+  toTimestamp: number | null;
+  /** null when none is picked */
+  timeClasses: TimeClass[] | null;
+  colorFilter: ColorFilter;
+  ratedOnly: boolean;
+}
+
+interface GameFiltersProps {
+  onAnalyze: (
+    filters: OpeningDistributionFilters & { username: string },
+  ) => void;
+  loading: boolean;
+  showUsernameField?: boolean;
+  buttonText?: string;
+}
 
 const WEEK_SECONDS = 7 * 24 * 60 * 60;
 
@@ -15,7 +45,7 @@ function GameFilters({
   loading,
   showUsernameField = true,
   buttonText = "Analyze Games",
-}) {
+}: GameFiltersProps) {
   const currentDate = new Date();
   const initialLastWeekRange = getLastWeekRange();
   const initialFromDate = new Date(initialLastWeekRange.fromTs * 1000);
@@ -24,20 +54,22 @@ function GameFilters({
   const [fromMonth, setFromMonth] = useState(initialFromDate.getMonth() + 1);
   const [toYear, setToYear] = useState(currentDate.getFullYear());
   const [toMonth, setToMonth] = useState(currentDate.getMonth() + 1);
-  const [timeClasses, setTimeClasses] = useState({
+  const [timeClasses, setTimeClasses] = useState<Record<TimeClass, boolean>>({
     bullet: false,
     blitz: false,
     rapid: true,
     daily: false,
   });
-  const [colorFilter, setColorFilter] = useState("both"); // "white", "black", or "both"
+  const [colorFilter, setColorFilter] = useState<ColorFilter>("both");
   const [ratedOnly, setRatedOnly] = useState(true);
-  const [fromTimestamp, setFromTimestamp] = useState(
+  const [fromTimestamp, setFromTimestamp] = useState<number | null>(
     initialLastWeekRange.fromTs,
   );
-  const [toTimestamp, setToTimestamp] = useState(initialLastWeekRange.toTs);
+  const [toTimestamp, setToTimestamp] = useState<number | null>(
+    initialLastWeekRange.toTs,
+  );
 
-  const handleTimeClassToggle = (tc) => {
+  const handleTimeClassToggle = (tc: TimeClass) => {
     setTimeClasses((prev) => ({ ...prev, [tc]: !prev[tc] }));
   };
 
@@ -45,14 +77,15 @@ function GameFilters({
     setTimeClasses({ bullet: true, blitz: true, rapid: true, daily: true });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (showUsernameField && !username.trim()) return;
 
     // Get selected time classes as array
     const selectedTimeClasses = Object.entries(timeClasses)
       .filter(([_, selected]) => selected)
-      .map(([tc, _]) => tc);
+      // Object.entries types keys as string; these are the TimeClass keys
+      .map(([tc, _]) => tc as TimeClass);
 
     onAnalyze({
       username: username.trim(),
@@ -97,7 +130,7 @@ function GameFilters({
   }
 
   // Quick select helpers
-  const selectFullYear = (year) => {
+  const selectFullYear = (year: number) => {
     setFromYear(year);
     setFromMonth(1);
     setToYear(year);
@@ -106,7 +139,7 @@ function GameFilters({
     setToTimestamp(null);
   };
 
-  const selectLastNMonths = (n) => {
+  const selectLastNMonths = (n: number) => {
     const end = new Date();
     const start = new Date();
     start.setMonth(start.getMonth() - n + 1);
@@ -267,12 +300,14 @@ function GameFilters({
         <div className="form-group" style={{ flex: 1 }}>
           <label>Time Controls</label>
           <div className="time-controls-row">
-            {[
-              { id: "bullet", icon: "⚡", label: "Bullet" },
-              { id: "blitz", icon: "🔥", label: "Blitz" },
-              { id: "rapid", icon: "⏱️", label: "Rapid" },
-              { id: "daily", icon: "📅", label: "Daily" },
-            ].map((tc) => (
+            {(
+              [
+                { id: "bullet", icon: "⚡", label: "Bullet" },
+                { id: "blitz", icon: "🔥", label: "Blitz" },
+                { id: "rapid", icon: "⏱️", label: "Rapid" },
+                { id: "daily", icon: "📅", label: "Daily" },
+              ] satisfies { id: TimeClass; icon: string; label: string }[]
+            ).map((tc) => (
               <button
                 key={tc.id}
                 type="button"
@@ -303,11 +338,13 @@ function GameFilters({
         <div className="form-group" style={{ flex: 1 }}>
           <label>Play As</label>
           <div className="color-filter-row">
-            {[
-              { id: "both", label: "Both" },
-              { id: "white", label: "White", dot: true },
-              { id: "black", label: "Black", dot: true },
-            ].map((opt) => (
+            {(
+              [
+                { id: "both", label: "Both" },
+                { id: "white", label: "White", dot: true },
+                { id: "black", label: "Black", dot: true },
+              ] satisfies { id: ColorFilter; label: string; dot?: boolean }[]
+            ).map((opt) => (
               <button
                 key={opt.id}
                 type="button"
