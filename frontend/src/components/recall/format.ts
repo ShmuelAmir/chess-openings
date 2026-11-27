@@ -1,17 +1,33 @@
+// The parameter shapes below name only the fields each helper reads. They give
+// way to the shared domain types (RecallGap, SyncState) once those exist (#82).
+
+/** What a Sync changed, as the backend reports it in its result. */
+interface SyncChanges {
+  new_games: number;
+  new_gaps: number;
+  closed_gaps: number;
+  reopened_gaps: number;
+}
+
+/** A Recall Gap's status fields: when it closed, or its progress toward it. */
+type GapStatusFields =
+  | { status: "closed"; closed_at: number }
+  | { status: "open"; progress: number; games_to_close: number };
+
 /** SAN moves as a numbered line: ["e4", "c5", "Nf3"] -> "1.e4 c5 2.Nf3". */
-export function formatLine(moves) {
+export function formatLine(moves: readonly string[]): string {
   return moves
     .map((san, i) => (i % 2 === 0 ? `${i / 2 + 1}.${san}` : san))
     .join(" ");
 }
 
 /** A Unix timestamp as a local YYYY-MM-DD date. */
-export function formatDate(ts) {
+export function formatDate(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString("en-CA");
 }
 
 /** A Unix timestamp as how long ago it was: "just now", "12 min ago", "3 h ago". */
-export function formatAgo(ts) {
+export function formatAgo(ts: number): string {
   const minutes = Math.floor((Date.now() / 1000 - ts) / 60);
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes} min ago`;
@@ -23,9 +39,12 @@ export function formatAgo(ts) {
  * What a Sync changed, leaving out zero counts:
  * "+4 games · 1 new gap · 1 closed · 1 reopened", or null if nothing did.
  */
-export function formatSyncChanges(result) {
+export function formatSyncChanges(
+  result: SyncChanges | null | undefined,
+): string | null {
   if (!result) return null;
-  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
   const parts = [
     result.new_games > 0 && `+${plural(result.new_games, "game")}`,
     result.new_gaps > 0 && plural(result.new_gaps, "new gap"),
@@ -36,7 +55,7 @@ export function formatSyncChanges(result) {
 }
 
 /** A Miss Rate (a share, or null without games) as a percentage: "31%" or "–". */
-export function formatMissRate(rate) {
+export function formatMissRate(rate: number | null): string {
   return rate === null ? "–" : `${Math.round(rate * 100)}%`;
 }
 
@@ -44,9 +63,11 @@ export function formatMissRate(rate) {
  * A trend's plotted points split into runs of consecutive months that have a
  * Miss Rate (a point's `y` is null without one), each drawn as its own line.
  */
-export function missRateRuns(points) {
-  const runs = [];
-  let run = [];
+export function missRateRuns<P extends { y: number | null }>(
+  points: readonly P[],
+): P[][] {
+  const runs: P[][] = [];
+  let run: P[] = [];
   for (const p of points) {
     if (p.y === null) {
       if (run.length) runs.push(run);
@@ -60,7 +81,7 @@ export function missRateRuns(points) {
 }
 
 /** A Recall Gap's status: its progress toward closing, or when it closed. */
-export function formatStatus(gap) {
+export function formatStatus(gap: GapStatusFields): string {
   return gap.status === "closed"
     ? `Closed ${formatDate(gap.closed_at)}`
     : `${gap.progress}/${gap.games_to_close} since last miss`;
