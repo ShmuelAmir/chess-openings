@@ -55,10 +55,14 @@ export function AuthProvider({ children }) {
     setChessComError(null);
     setValidatingChessCom(true);
     try {
-      const response = await fetch(`/api/chess-com/validate/${encodeURIComponent(username)}`);
+      const response = await fetch(
+        `/api/chess-com/validate/${encodeURIComponent(username)}`,
+      );
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setChessComError(data.detail || `Could not verify '${username}' on Chess.com`);
+        setChessComError(
+          data.detail || `Could not verify '${username}' on Chess.com`,
+        );
         return false;
       }
       localStorage.setItem("chess_com_username", username);

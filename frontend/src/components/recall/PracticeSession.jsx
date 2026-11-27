@@ -56,7 +56,8 @@ export default function PracticeSession({
         <>
           <p className="rv-drill-msg good">
             Nothing is due.
-            {drilled > 0 && ` You drilled ${drilled} ${drilled === 1 ? "gap" : "gaps"}.`}
+            {drilled > 0 &&
+              ` You drilled ${drilled} ${drilled === 1 ? "gap" : "gaps"}.`}
           </p>
           <button className="secondary" onClick={onEnd}>
             Close

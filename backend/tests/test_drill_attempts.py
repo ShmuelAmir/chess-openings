@@ -25,7 +25,9 @@ def test_a_pass_and_a_fail_are_recorded_oldest_first(tmp_path):
 
 
 def test_drill_attempts_persist_across_restarts(tmp_path):
-    DrillAttemptStore("me", tmp_path / "app.db").record(GAP, passed=True, first_miss_position_key=None, at=100)
+    DrillAttemptStore("me", tmp_path / "app.db").record(
+        GAP, passed=True, first_miss_position_key=None, at=100
+    )
 
     assert len(DrillAttemptStore("me", tmp_path / "app.db").attempts()) == 1
 
@@ -50,7 +52,9 @@ def test_each_account_has_its_own_drill_attempts(tmp_path):
     assert theirs.attempts() == []
 
 
-def test_drill_attempts_stored_before_accounts_belong_to_the_first_account_to_open_them(tmp_path):
+def test_drill_attempts_stored_before_accounts_belong_to_the_first_account_to_open_them(
+    tmp_path,
+):
     with sqlite3.connect(tmp_path / "app.db") as conn:
         conn.execute("""
             CREATE TABLE drill_attempts (
@@ -61,11 +65,16 @@ def test_drill_attempts_stored_before_accounts_belong_to_the_first_account_to_op
                 first_miss_position_key TEXT
             )
         """)
-        conn.execute("INSERT INTO drill_attempts (gap_position_key, at, passed) VALUES (?, 100, 1)", (GAP,))
+        conn.execute(
+            "INSERT INTO drill_attempts (gap_position_key, at, passed) VALUES (?, 100, 1)",
+            (GAP,),
+        )
 
     first = DrillAttemptStore("me", tmp_path / "app.db")
     later = DrillAttemptStore("them", tmp_path / "app.db")
 
-    assert first.attempts() == [DrillAttempt(GAP, at=100, passed=True, first_miss_position_key=None)]
+    assert first.attempts() == [
+        DrillAttempt(GAP, at=100, passed=True, first_miss_position_key=None)
+    ]
     assert later.attempts() == []
     assert len(DrillAttemptStore("me", tmp_path / "app.db").attempts()) == 1

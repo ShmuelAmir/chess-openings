@@ -37,7 +37,9 @@ export function SyncProvider({ children }) {
     };
   }, [lichessToken, chessComUsername]);
 
-  return <SyncContext.Provider value={account}>{children}</SyncContext.Provider>;
+  return (
+    <SyncContext.Provider value={account}>{children}</SyncContext.Provider>
+  );
 }
 
 /** The Sync state, read from the account's Sync client. */

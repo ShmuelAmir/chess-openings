@@ -1,18 +1,22 @@
 """
 Repertoire Parser - Builds a move tree from Lichess study PGNs
 """
+
 import io
 import re
-import chess
-import chess.pgn
 from dataclasses import dataclass, field
 from typing import NamedTuple, Optional
+
+import chess
+import chess.pgn
+
 from opening_normalizer import OpeningNormalizer
 
 
 @dataclass
 class RepertoireNode:
     """A node in the repertoire tree."""
+
     # For opponent moves: multiple possible moves they can play
     # For your moves: exactly one correct response
     children: dict[str, "RepertoireNode"] = field(default_factory=dict)
@@ -28,12 +32,15 @@ class RepertoireNode:
 
 class ChapterLocation(NamedTuple):
     """Where a position sits in a study, for an "open in study" deep link."""
+
     chapter_id: Optional[str]
     # Half-moves from the chapter start; None when the position is off the mainline
     mainline_ply: Optional[int]
 
 
-def study_url(study_id: str, chapter_id: Optional[str], mainline_ply: Optional[int]) -> str:
+def study_url(
+    study_id: str, chapter_id: Optional[str], mainline_ply: Optional[int]
+) -> str:
     """
     Link to a position in a Lichess study: the chapter at the ply when the
     position is on the chapter's mainline, else the chapter itself.
@@ -59,6 +66,7 @@ def side_to_move(key: str) -> chess.Color:
 @dataclass
 class Repertoire:
     """Complete repertoire with separate trees for White and Black."""
+
     white_tree: RepertoireNode = field(default_factory=RepertoireNode)
     black_tree: RepertoireNode = field(default_factory=RepertoireNode)
     # study id -> the one color the study belongs to
@@ -66,7 +74,9 @@ class Repertoire:
     # study id -> the study's name on Lichess
     study_names: dict[str, str] = field(default_factory=dict)
     # (study color, position key) -> {study id: where the position sits in that study}
-    _study_membership: dict[tuple[chess.Color, str], dict[str, ChapterLocation]] = field(default_factory=dict)
+    _study_membership: dict[tuple[chess.Color, str], dict[str, ChapterLocation]] = (
+        field(default_factory=dict)
+    )
 
     def get_tree(self, color: chess.Color) -> RepertoireNode:
         """Get the repertoire tree for a specific color."""
@@ -82,7 +92,9 @@ class Repertoire:
         """The chapter (and mainline ply, if any) to deep-link this position in a study."""
         return self.study_locations(key, color).get(study_id)
 
-    def study_locations(self, key: str, color: chess.Color) -> dict[str, ChapterLocation]:
+    def study_locations(
+        self, key: str, color: chess.Color
+    ) -> dict[str, ChapterLocation]:
         """Where the position sits in each study of this color that contains it, by study id."""
         return self._study_membership.get((color, key), {})
 
@@ -95,7 +107,9 @@ class Repertoire:
         """
         locations = self._study_membership.setdefault((color, key), {})
         known = locations.get(study_id)
-        if known is None or (known.mainline_ply is None and location.mainline_ply is not None):
+        if known is None or (
+            known.mainline_ply is None and location.mainline_ply is not None
+        ):
             locations[study_id] = location
 
 
@@ -107,11 +121,12 @@ class RepertoireBuilder:
     _LICHESS_STUDY_SITE_RE = re.compile(
         r"https?://(?:www\.)?lichess\.org/study/([^/\s]+)(?:/([^/?#\s]+))?"
     )
-    
+
     def __init__(self):
         self.repertoire = Repertoire()
-        self._studies: list[tuple[str, str, str, Optional[str]]] = []  # (pgn, opening_name, study_name, study_id)
-    
+        # (pgn, opening_name, study_name, study_id)
+        self._studies: list[tuple[str, str, str, Optional[str]]] = []
+
     def add_study(
         self,
         pgn: str,
@@ -121,13 +136,13 @@ class RepertoireBuilder:
     ):
         """Add a study PGN to be processed."""
         self._studies.append((pgn, opening_name, study_name or opening_name, study_id))
-    
+
     def build(self) -> Repertoire:
         """Process all studies and build the repertoire trees."""
         for pgn, opening_name, study_name, study_id in self._studies:
             self._process_study(pgn, opening_name, study_name, study_id)
         return self.repertoire
-    
+
     def _process_study(
         self,
         pgn: str,
@@ -150,7 +165,9 @@ class RepertoireBuilder:
 
         for game in chapters:
             # Lichess uses the game name or title as chapter name
-            chapter_name = game.headers.get("Event") or game.headers.get("Site") or study_name
+            chapter_name = (
+                game.headers.get("Event") or game.headers.get("Site") or study_name
+            )
             chapter_id = self._chapter_id(game.headers)
 
             # Normalize study & chapter pair, avoiding redundancy.
@@ -166,7 +183,9 @@ class RepertoireBuilder:
             # callers/UI can decide how to render (avoids producing "Study - ").
             chapter_name = norm_chapter if norm_chapter else None
 
-            full_chapter_name = f"{study_name} - {chapter_name}" if chapter_name else study_name
+            full_chapter_name = (
+                f"{study_name} - {chapter_name}" if chapter_name else study_name
+            )
             self._process_game(
                 game,
                 color,
@@ -190,7 +209,11 @@ class RepertoireBuilder:
 
         A missing header is read as White, Lichess's default orientation.
         """
-        return chess.BLACK if game.headers.get("Orientation", "").lower() == "black" else chess.WHITE
+        return (
+            chess.BLACK
+            if game.headers.get("Orientation", "").lower() == "black"
+            else chess.WHITE
+        )
 
     def _chapter_id(self, headers: chess.pgn.Headers) -> Optional[str]:
         """The chapter id from the first Lichess chapter URL in the headers."""
@@ -214,7 +237,7 @@ class RepertoireBuilder:
         if chapter:
             return chapter.strip().strip("/")
         return None
-    
+
     def _process_game(
         self,
         game: chess.pgn.Game,

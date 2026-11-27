@@ -15,7 +15,10 @@ export default function Sparkline({ trend }) {
     ...m,
     x: PAD + i * step,
     // A higher Miss Rate sits higher
-    y: m.miss_rate === null ? null : HEIGHT - PAD - m.miss_rate * (HEIGHT - 2 * PAD),
+    y:
+      m.miss_rate === null
+        ? null
+        : HEIGHT - PAD - m.miss_rate * (HEIGHT - 2 * PAD),
   }));
 
   const segments = missRateRuns(points);
@@ -29,15 +32,30 @@ export default function Sparkline({ trend }) {
       role="img"
       aria-label="Miss Rate over the last 12 months"
     >
-      <line className="rv-spark-base" x1={PAD} x2={WIDTH - PAD} y1={HEIGHT - PAD} y2={HEIGHT - PAD} />
+      <line
+        className="rv-spark-base"
+        x1={PAD}
+        x2={WIDTH - PAD}
+        y1={HEIGHT - PAD}
+        y2={HEIGHT - PAD}
+      />
       {segments.map((seg) => (
-        <polyline key={seg[0].month} points={seg.map((p) => `${p.x},${p.y}`).join(" ")} />
+        <polyline
+          key={seg[0].month}
+          points={seg.map((p) => `${p.x},${p.y}`).join(" ")}
+        />
       ))}
       {points.map((p) => (
         <g key={p.month}>
           {p.y !== null && <circle cx={p.x} cy={p.y} r={1.5} />}
           {/* A full-height hover target per month */}
-          <rect x={p.x - step / 2} y={0} width={step || WIDTH} height={HEIGHT} fill="transparent">
+          <rect
+            x={p.x - step / 2}
+            y={0}
+            width={step || WIDTH}
+            height={HEIGHT}
+            fill="transparent"
+          >
             <title>
               {p.month}:{" "}
               {p.miss_rate === null

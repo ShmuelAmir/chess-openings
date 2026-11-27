@@ -36,7 +36,9 @@ export function createMemoryBackend() {
       calls[name].push(args);
       const { delayMs, settle } = scripts[name];
       if (!delayMs) return settle();
-      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(settle);
+      return new Promise((resolve) => setTimeout(resolve, delayMs)).then(
+        settle,
+      );
     };
   }
 

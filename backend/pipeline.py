@@ -4,16 +4,14 @@ Abstracts fetching repertoire and games from the orchestration logic.
 """
 
 import asyncio
+import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
-import logging
 
-from games import Game
-from repertoire import Repertoire
-from repertoire_walker import RepertoireWalker
 from drill_attempts import DrillAttempt
 from drill_scheduler import practice_queue
+from games import Game
 from recall_gaps import (
     RecallFilters,
     RecallGap,
@@ -22,19 +20,20 @@ from recall_gaps import (
     aggregate,
     last_occurrences,
 )
-
+from repertoire import Repertoire
+from repertoire_walker import RepertoireWalker
 
 logger = logging.getLogger(__name__)
 
 
 class RepertoireSource(ABC):
     """Abstract interface for fetching and building repertoires."""
-    
+
     @abstractmethod
     async def fetch_repertoire(self) -> Repertoire:
         """
         Fetch the user's studies and build their Repertoire.
-        
+
         Returns:
             Repertoire object with white/black trees and study membership
         """
@@ -43,12 +42,12 @@ class RepertoireSource(ABC):
 
 class GameSource(ABC):
     """Abstract interface for fetching the user's games."""
-    
+
     @abstractmethod
     async def games(self, username: str) -> list[Game]:
         """
         Every game of the user's, each with their color and result decided.
-        
+
         Args:
             username: Chess.com username
         """
@@ -58,11 +57,11 @@ class GameSource(ABC):
 class RepertoireAnalysisPipeline:
     """
     Orchestrates the full analysis pipeline: fetch repertoire, fetch games, analyze.
-    
+
     Caches the user's Repertoire (with TTL) to avoid rebuilding on repeated requests.
     A study created on Lichess joins the Repertoire at the next rebuild.
     """
-    
+
     def __init__(
         self,
         repertoire_source: RepertoireSource,
@@ -80,7 +79,7 @@ class RepertoireAnalysisPipeline:
         self.drill_attempts = drill_attempts
         self.clock = clock
         self.repertoire_ttl_seconds = repertoire_ttl_seconds
-        
+
         # The user's Repertoire and when it was built
         self._repertoire_cache: Optional[tuple[Repertoire, float]] = None
         # Bumped by each rebuild, so a fetch begun before it isn't cached
@@ -90,7 +89,7 @@ class RepertoireAnalysisPipeline:
         self._walked_cache: Optional[tuple[str, Repertoire, list[WalkedGame]]] = None
         # The Repertoire fetch in flight: (generation, when it began, task)
         self._inflight: Optional[tuple[int, float, asyncio.Future]] = None
-    
+
     async def recall_view(
         self,
         username: str,
@@ -137,7 +136,9 @@ class RepertoireAnalysisPipeline:
         repertoire = await self._get_repertoire()
         walked = await self._walk_games(username, repertoire)
         view = aggregate(walked, filters, repertoire, now=now)
-        queue = practice_queue(view.gaps, last_occurrences(walked), self.drill_attempts(), now)
+        queue = practice_queue(
+            view.gaps, last_occurrences(walked), self.drill_attempts(), now
+        )
         return [queued.gap for queued in queue]
 
     async def gap_statuses(self, username: str) -> dict[str, str]:
@@ -158,7 +159,9 @@ class RepertoireAnalysisPipeline:
         view = aggregate(walked, RecallFilters(), repertoire)
         return {gap.position_key: gap.status for gap in view.gaps}
 
-    async def _walk_games(self, username: str, repertoire: Repertoire) -> list[WalkedGame]:
+    async def _walk_games(
+        self, username: str, repertoire: Repertoire
+    ) -> list[WalkedGame]:
         """Every cached game walked through the Repertoire, reusing the last analysis."""
         if self._walked_cache is not None:
             cached_username, cached_repertoire, cached_walked = self._walked_cache
@@ -172,16 +175,18 @@ class RepertoireAnalysisPipeline:
         for game in games:
             try:
                 moves = list(game.moves)
-                walked.append(WalkedGame(
-                    url=game.url,
-                    date=game.date or 0,
-                    time_class=game.time_class,
-                    rated=game.rated,
-                    result=game.result,
-                    moves=moves,
-                    color=game.color,
-                    record=walker.walk_game(game.color, moves),
-                ))
+                walked.append(
+                    WalkedGame(
+                        url=game.url,
+                        date=game.date or 0,
+                        time_class=game.time_class,
+                        rated=game.rated,
+                        result=game.result,
+                        moves=moves,
+                        color=game.color,
+                        record=walker.walk_game(game.color, moves),
+                    )
+                )
             except Exception as e:
                 logger.warning(f"Failed to analyze game {game.url or 'unknown'}: {e}")
 
@@ -232,24 +237,24 @@ class RepertoireAnalysisPipeline:
     async def _get_repertoire(self) -> Repertoire:
         """
         Get the user's Repertoire from cache or fetch and cache it.
-        
+
         Returns:
             Repertoire object
         """
         now = self.clock()
-        
+
         if self._repertoire_cache is not None:
             cached_repertoire, cached_time = self._repertoire_cache
             if now - cached_time < self.repertoire_ttl_seconds:
                 logger.debug("Using cached repertoire")
                 return cached_repertoire
-        
+
         logger.debug("Fetching fresh repertoire")
         generation = self._repertoire_generation
         repertoire, started = await self._fetch_repertoire()
         if generation == self._repertoire_generation:
             self._repertoire_cache = (repertoire, started)
-        
+
         return repertoire
 
     async def _fetch_repertoire(self) -> tuple[Repertoire, float]:

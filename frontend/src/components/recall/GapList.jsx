@@ -35,13 +35,21 @@ export default function GapList({
           <span className="rv-listactions">
             {closedCount > 0 && (
               <label className="rv-switch">
-                <input type="checkbox" checked={showClosed} onChange={onToggleClosed} />
+                <input
+                  type="checkbox"
+                  checked={showClosed}
+                  onChange={onToggleClosed}
+                />
                 <span className="rv-switch-track" />
                 Show closed ({closedCount})
               </label>
             )}
             {!practicing && (
-              <button className="rv-session" onClick={onPractice} disabled={openCount === 0}>
+              <button
+                className="rv-session"
+                onClick={onPractice}
+                disabled={openCount === 0}
+              >
                 Practice due gaps
               </button>
             )}
@@ -49,8 +57,8 @@ export default function GapList({
         </span>
         <span className="rv-missrate">
           <span>
-            Miss Rate <b>{formatMissRate(totals.miss_rate)}</b> · {totals.analysed}{" "}
-            {totals.analysed === 1 ? "game" : "games"}
+            Miss Rate <b>{formatMissRate(totals.miss_rate)}</b> ·{" "}
+            {totals.analysed} {totals.analysed === 1 ? "game" : "games"}
           </span>
           <button
             className="rv-missrate-open"
@@ -65,8 +73,8 @@ export default function GapList({
           </span>
         </span>
         <span className="rv-muted">
-          opponent left book{" "}
-          {totals.opponent_left_book} · book completed {totals.book_completed}
+          opponent left book {totals.opponent_left_book} · book completed{" "}
+          {totals.book_completed}
           {syncing ? " · Syncing…" : loading && " · updating…"}
         </span>
         {changes && <span className="rv-changes">{changes}</span>}
@@ -104,8 +112,9 @@ export default function GapList({
               </span>
               <span className="rv-line">{formatLine(gap.path)}</span>
               <span className="rv-moves">
-                you: {gap.wrong_moves.map((m) => `${m.san}×${m.count}`).join(", ")}{" "}
-                · book: {gap.book_moves.join(" / ")}
+                you:{" "}
+                {gap.wrong_moves.map((m) => `${m.san}×${m.count}`).join(", ")} ·
+                book: {gap.book_moves.join(" / ")}
               </span>
             </span>
             <span className="rv-count">

@@ -2,7 +2,17 @@ import { formatMissRate, missRateRuns } from "./format";
 
 // The Miss Depth rows, as the backend counts them: the user's 2nd move first,
 // the last also holding every later move
-const DEPTH_LABELS = ["2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10+"];
+const DEPTH_LABELS = [
+  "2nd",
+  "3rd",
+  "4th",
+  "5th",
+  "6th",
+  "7th",
+  "8th",
+  "9th",
+  "10+",
+];
 const FIRST_DEPTH = 2;
 
 const CHART_WIDTH = 300;
@@ -11,7 +21,10 @@ const PAD = { top: 8, right: 6, bottom: 4, left: 30 };
 
 /** "2026-03" as its month's initial: "M". */
 function monthInitial(month) {
-  return new Date(`${month}-01T00:00:00Z`).toLocaleString("en", { month: "narrow", timeZone: "UTC" });
+  return new Date(`${month}-01T00:00:00Z`).toLocaleString("en", {
+    month: "narrow",
+    timeZone: "UTC",
+  });
 }
 
 /** "2026-03" as "Mar 2026". */
@@ -38,7 +51,8 @@ export default function ProgressPanel({ trend, studyNames, onClose }) {
         </button>
       </div>
       <div className="rv-muted">
-        {studyNames.length > 0 ? studyNames.join(", ") : "All studies"} · last {trend.length} months
+        {studyNames.length > 0 ? studyNames.join(", ") : "All studies"} · last{" "}
+        {trend.length} months
       </div>
 
       <div className="rv-label">Miss Rate</div>
@@ -47,8 +61,8 @@ export default function ProgressPanel({ trend, studyNames, onClose }) {
       <div className="rv-label">Miss Depth: the move you went wrong on</div>
       <MissDepthGrid trend={trend} />
       <div className="rv-muted rv-progress-note">
-        Misses moving down the grid means you are getting further into your lines.
-        The outlined cell is the month's median (3+ misses).
+        Misses moving down the grid means you are getting further into your
+        lines. The outlined cell is the month's median (3+ misses).
       </div>
     </section>
   );
@@ -78,14 +92,22 @@ function MissRateChart({ trend }) {
         return (
           <g key={v} className="rv-progress-grid">
             <line x1={PAD.left} x2={CHART_WIDTH - PAD.right} y1={y} y2={y} />
-            <text x={PAD.left - 6} y={y} dominantBaseline="middle" textAnchor="end">
+            <text
+              x={PAD.left - 6}
+              y={y}
+              dominantBaseline="middle"
+              textAnchor="end"
+            >
               {Math.round(v * 100)}%
             </text>
           </g>
         );
       })}
       {segments.map((seg) => (
-        <polyline key={seg[0].month} points={seg.map((p) => `${p.x},${p.y}`).join(" ")} />
+        <polyline
+          key={seg[0].month}
+          points={seg.map((p) => `${p.x},${p.y}`).join(" ")}
+        />
       ))}
       {points.map((p) => (
         <g key={p.month}>
@@ -115,13 +137,27 @@ function MissDepthGrid({ trend }) {
   const max = Math.max(1, ...trend.flatMap((m) => m.miss_depths));
   const totals = trend.map((m) => m.miss_depths.reduce((a, b) => a + b, 0));
   return (
-    <div className="rv-depth" style={{ gridTemplateColumns: `2.2rem repeat(${trend.length}, 1fr)` }}>
+    <div
+      className="rv-depth"
+      style={{ gridTemplateColumns: `2.2rem repeat(${trend.length}, 1fr)` }}
+    >
       {DEPTH_LABELS.map((label, row) => (
-        <DepthRow key={label} label={label} row={row} trend={trend} totals={totals} max={max} />
+        <DepthRow
+          key={label}
+          label={label}
+          row={row}
+          trend={trend}
+          totals={totals}
+          max={max}
+        />
       ))}
       <span />
       {trend.map((m) => (
-        <span key={m.month} className="rv-depth-month" title={monthName(m.month)}>
+        <span
+          key={m.month}
+          className="rv-depth-month"
+          title={monthName(m.month)}
+        >
           {monthInitial(m.month)}
         </span>
       ))}
@@ -137,7 +173,9 @@ function DepthRow({ label, row, trend, totals, max }) {
         const count = m.miss_depths[row];
         const median =
           m.median_miss_depth !== null &&
-          Math.min(m.median_miss_depth, FIRST_DEPTH + DEPTH_LABELS.length - 1) - FIRST_DEPTH === row;
+          Math.min(m.median_miss_depth, FIRST_DEPTH + DEPTH_LABELS.length - 1) -
+            FIRST_DEPTH ===
+            row;
         const total = totals[i];
         // How strongly the cell is shaded: by its count against the busiest cell
         const heat = count ? 0.2 + 0.8 * (count / max) : 0;

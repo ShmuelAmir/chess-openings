@@ -57,8 +57,15 @@ def test_a_position_contained_in_several_studies():
         ("london", chapter("1. d4 d5 2. Bf4")),
     )
 
-    assert repertoire.studies_containing(AFTER_E4_E5, chess.WHITE) == {"italian", "vienna"}
-    assert repertoire.studies_containing(START, chess.WHITE) == {"italian", "vienna", "london"}
+    assert repertoire.studies_containing(AFTER_E4_E5, chess.WHITE) == {
+        "italian",
+        "vienna",
+    }
+    assert repertoire.studies_containing(START, chess.WHITE) == {
+        "italian",
+        "vienna",
+        "london",
+    }
 
 
 def test_a_position_in_a_variation_is_contained_in_the_study():
@@ -81,32 +88,45 @@ def test_studies_of_the_other_color_do_not_contain_the_position():
 def test_a_mainline_position_keeps_its_chapter_and_ply():
     repertoire = build(("italian", chapter("1. e4 e5 2. Nf3", url=url("ch1"))))
 
-    assert repertoire.chapter_location(AFTER_E4_E5, chess.WHITE, "italian") == ChapterLocation("ch1", 2)
-    assert repertoire.chapter_location(START, chess.WHITE, "italian") == ChapterLocation("ch1", 0)
+    assert repertoire.chapter_location(
+        AFTER_E4_E5, chess.WHITE, "italian"
+    ) == ChapterLocation("ch1", 2)
+    assert repertoire.chapter_location(
+        START, chess.WHITE, "italian"
+    ) == ChapterLocation("ch1", 0)
 
 
 def test_a_position_off_the_mainline_keeps_only_its_chapter():
-    repertoire = build(("italian", chapter("1. e4 e5 (1... c5 2. c3) 2. Nf3", url=url("ch1"))))
+    repertoire = build(
+        ("italian", chapter("1. e4 e5 (1... c5 2. c3) 2. Nf3", url=url("ch1")))
+    )
 
-    assert repertoire.chapter_location(AFTER_E4_C5, chess.WHITE, "italian") == ChapterLocation("ch1", None)
+    assert repertoire.chapter_location(
+        AFTER_E4_C5, chess.WHITE, "italian"
+    ) == ChapterLocation("ch1", None)
 
 
 def test_a_mainline_chapter_is_preferred_over_a_variation():
-    pgn = (
-        chapter("1. e4 e5 (1... c5 2. c3) 2. Nf3", url=url("ch1"))
-        + chapter("1. e4 c5 2. c3", url=url("ch2"))
+    pgn = chapter("1. e4 e5 (1... c5 2. c3) 2. Nf3", url=url("ch1")) + chapter(
+        "1. e4 c5 2. c3", url=url("ch2")
     )
     repertoire = build(("italian", pgn))
 
-    assert repertoire.chapter_location(AFTER_E4_C5, chess.WHITE, "italian") == ChapterLocation("ch2", 2)
-    assert repertoire.chapter_location(AFTER_E4, chess.WHITE, "italian") == ChapterLocation("ch1", 1)
+    assert repertoire.chapter_location(
+        AFTER_E4_C5, chess.WHITE, "italian"
+    ) == ChapterLocation("ch2", 2)
+    assert repertoire.chapter_location(
+        AFTER_E4, chess.WHITE, "italian"
+    ) == ChapterLocation("ch1", 1)
 
 
 def test_the_chapter_id_is_read_from_the_site_header_too():
     pgn = f'[Event "Chapter"]\n[Site "{url("ch9")}"]\n\n1. e4 *\n'
     repertoire = build(("italian", pgn))
 
-    assert repertoire.chapter_location(AFTER_E4, chess.WHITE, "italian") == ChapterLocation("ch9", 1)
+    assert repertoire.chapter_location(
+        AFTER_E4, chess.WHITE, "italian"
+    ) == ChapterLocation("ch9", 1)
 
 
 def test_no_chapter_location_outside_the_study():
@@ -128,7 +148,9 @@ def test_the_repertoire_knows_each_studys_color():
 
 def named(study_name):
     builder = RepertoireBuilder()
-    builder.add_study(chapter("1. e4 e5"), "Italian Game", study_name=study_name, study_id="abc")
+    builder.add_study(
+        chapter("1. e4 e5"), "Italian Game", study_name=study_name, study_id="abc"
+    )
     return builder.build()
 
 

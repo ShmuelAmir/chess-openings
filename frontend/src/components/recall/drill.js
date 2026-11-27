@@ -108,7 +108,11 @@ export function movesFrom(drill, square) {
   const byTarget = new Map();
   for (const move of chess.moves({ square, verbose: true })) {
     if (!byTarget.has(move.to) || move.promotion === "q") {
-      byTarget.set(move.to, { from: move.from, to: move.to, promotion: move.promotion });
+      byTarget.set(move.to, {
+        from: move.from,
+        to: move.to,
+        promotion: move.promotion,
+      });
     }
   }
   return [...byTarget.values()];

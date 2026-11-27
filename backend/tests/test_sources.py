@@ -46,7 +46,9 @@ def repertoire_source(token):
     )
 
 
-def test_a_build_lists_the_studies_afresh_and_the_listing_cache_returns_them(monkeypatch):
+def test_a_build_lists_the_studies_afresh_and_the_listing_cache_returns_them(
+    monkeypatch,
+):
     lichess = FakeLichess("italian")
     monkeypatch.setattr(users, "LichessClient", lichess)
     monkeypatch.setattr(sources, "LichessClient", lichess)
@@ -79,28 +81,49 @@ def cached(url="g1", white="me", black="opponent", result="win", **fields):
 
 
 def test_a_cached_game_becomes_the_users_game(tmp_path):
-    games = cached_games(tmp_path, cached(
-        url="g1", date=100, time_class="blitz", rated=True,
-        opening_name="Italian Game", moves=["e4", "e5"],
-    ))
+    games = cached_games(
+        tmp_path,
+        cached(
+            url="g1",
+            date=100,
+            time_class="blitz",
+            rated=True,
+            opening_name="Italian Game",
+            moves=["e4", "e5"],
+        ),
+    )
 
-    assert games == [Game(
-        url="g1", date=100, month=(2026, 3), time_class="blitz", rated=True,
-        opening_name="Italian Game", moves=("e4", "e5"), color=chess.WHITE, result="win",
-    )]
+    assert games == [
+        Game(
+            url="g1",
+            date=100,
+            month=(2026, 3),
+            time_class="blitz",
+            rated=True,
+            opening_name="Italian Game",
+            moves=("e4", "e5"),
+            color=chess.WHITE,
+            result="win",
+        )
+    ]
 
 
-@pytest.mark.parametrize("white, result, expected", [
-    ("me", "win", (chess.WHITE, "win")),
-    ("me", "resigned", (chess.WHITE, "loss")),
-    ("me", "agreed", (chess.WHITE, "draw")),
-    ("opponent", "win", (chess.BLACK, "loss")),
-    ("opponent", "checkmated", (chess.BLACK, "win")),
-    ("opponent", "stalemate", (chess.BLACK, "draw")),
-    ("opponent", "kingofthehill", (chess.BLACK, "win")),
-    ("me", "", (chess.WHITE, "")),
-])
-def test_the_users_color_and_result_are_decided_from_whites_result_code(tmp_path, white, result, expected):
+@pytest.mark.parametrize(
+    "white, result, expected",
+    [
+        ("me", "win", (chess.WHITE, "win")),
+        ("me", "resigned", (chess.WHITE, "loss")),
+        ("me", "agreed", (chess.WHITE, "draw")),
+        ("opponent", "win", (chess.BLACK, "loss")),
+        ("opponent", "checkmated", (chess.BLACK, "win")),
+        ("opponent", "stalemate", (chess.BLACK, "draw")),
+        ("opponent", "kingofthehill", (chess.BLACK, "win")),
+        ("me", "", (chess.WHITE, "")),
+    ],
+)
+def test_the_users_color_and_result_are_decided_from_whites_result_code(
+    tmp_path, white, result, expected
+):
     black = "me" if white == "opponent" else "opponent"
 
     [game] = cached_games(tmp_path, cached(white=white, black=black, result=result))
@@ -110,7 +133,9 @@ def test_the_users_color_and_result_are_decided_from_whites_result_code(tmp_path
 
 def test_the_username_matches_whatever_its_case(tmp_path):
     cache = GameCache(tmp_path / "games.db")
-    cache.save_games("Me", [cached(white="ME", black="opponent", result="win")], 2026, 3)
+    cache.save_games(
+        "Me", [cached(white="ME", black="opponent", result="win")], 2026, 3
+    )
 
     [game] = asyncio.run(CacheGameSource(cache).games("mE"))
 
@@ -120,7 +145,19 @@ def test_the_username_matches_whatever_its_case(tmp_path):
 def test_a_cached_game_missing_its_details_has_their_empty_values(tmp_path):
     [game] = cached_games(tmp_path, {"url": "g1", "white": "opponent", "black": "me"})
 
-    assert (game.date, game.time_class, game.rated, game.opening_name, game.moves, game.result) == (
-        None, "", False, "", (), "",
+    assert (
+        game.date,
+        game.time_class,
+        game.rated,
+        game.opening_name,
+        game.moves,
+        game.result,
+    ) == (
+        None,
+        "",
+        False,
+        "",
+        (),
+        "",
     )
     assert game.color == chess.BLACK

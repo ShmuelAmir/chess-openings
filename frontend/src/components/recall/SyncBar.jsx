@@ -5,7 +5,9 @@ const SOURCE_NAMES = { chess_com: "Chess.com", lichess: "Lichess" };
 /** The Sync state above the list: last synced, the Sync button, failed sources. */
 export default function SyncBar({ status, syncing, error, onSync }) {
   const failed = status
-    ? Object.entries(status.sources).filter(([, source]) => source.status === "failed")
+    ? Object.entries(status.sources).filter(
+        ([, source]) => source.status === "failed",
+      )
     : [];
 
   return (
@@ -18,7 +20,12 @@ export default function SyncBar({ status, syncing, error, onSync }) {
               ? `Last synced ${formatAgo(status.last_synced_at)}`
               : "Not synced yet"}
         </span>
-        <button type="button" className="rv-link" onClick={onSync} disabled={syncing}>
+        <button
+          type="button"
+          className="rv-link"
+          onClick={onSync}
+          disabled={syncing}
+        >
           Sync
         </button>
       </div>
@@ -28,7 +35,10 @@ export default function SyncBar({ status, syncing, error, onSync }) {
           <span>
             {error ||
               failed
-                .map(([key, source]) => `${SOURCE_NAMES[key]} sync failed: ${source.error}`)
+                .map(
+                  ([key, source]) =>
+                    `${SOURCE_NAMES[key]} sync failed: ${source.error}`,
+                )
                 .join(" · ")}
           </span>
           <button type="button" className="rv-link" onClick={onSync}>

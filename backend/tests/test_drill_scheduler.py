@@ -50,18 +50,30 @@ def test_successive_passes_hold_the_gap_back_1_then_3_then_7_days_and_stay_at_7(
 
 def test_a_fail_resets_the_interval():
     at = OCCURRED + HOUR
-    attempts = [passed(at), passed(at + DAY), passed(at + 4 * DAY), failed(at + 11 * DAY)]
+    attempts = [
+        passed(at),
+        passed(at + DAY),
+        passed(at + 4 * DAY),
+        failed(at + 11 * DAY),
+    ]
 
     after_fail = schedule({GAP: OCCURRED}, attempts, now=at + 11 * DAY)
     assert after_fail.due == [GAP]
 
     attempts.append(passed(at + 12 * DAY))
-    assert schedule({GAP: OCCURRED}, attempts, now=at + 12 * DAY).next_due[GAP] == at + 13 * DAY
+    assert (
+        schedule({GAP: OCCURRED}, attempts, now=at + 12 * DAY).next_due[GAP]
+        == at + 13 * DAY
+    )
 
 
 def test_an_occurrence_newer_than_the_last_attempt_makes_the_gap_due():
     at = OCCURRED + HOUR
-    attempts = [passed(at), passed(at + DAY), passed(at + 4 * DAY)]  # held back to at + 11 days
+    attempts = [
+        passed(at),
+        passed(at + DAY),
+        passed(at + 4 * DAY),
+    ]  # held back to at + 11 days
     occurred_again = at + 5 * DAY
 
     result = schedule({GAP: occurred_again}, attempts, now=occurred_again + HOUR)
@@ -73,7 +85,12 @@ def test_an_occurrence_newer_than_the_last_attempt_makes_the_gap_due():
 def test_passes_before_a_new_occurrence_do_not_count():
     at = OCCURRED + HOUR
     occurred_again = at + 5 * DAY
-    attempts = [passed(at), passed(at + DAY), passed(at + 4 * DAY), passed(occurred_again + HOUR)]
+    attempts = [
+        passed(at),
+        passed(at + DAY),
+        passed(at + 4 * DAY),
+        passed(occurred_again + HOUR),
+    ]
 
     result = schedule({GAP: occurred_again}, attempts, now=occurred_again + HOUR)
 
@@ -86,8 +103,16 @@ THIRD = "rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -"
 
 def gap(key, status="open"):
     return RecallGap(
-        position_key=key, color="white", path=[], wrong_moves=[], book_moves=[],
-        studies=[], occurrences=1, last_seen=OCCURRED, games=[], status=status,
+        position_key=key,
+        color="white",
+        path=[],
+        wrong_moves=[],
+        book_moves=[],
+        studies=[],
+        occurrences=1,
+        last_seen=OCCURRED,
+        games=[],
+        status=status,
     )
 
 
@@ -97,11 +122,18 @@ def occurred(*gaps):
 
 def test_a_session_keeps_the_ranking_order_of_the_due_gaps():
     ranked = [gap(OTHER), gap(GAP), gap(THIRD)]
-    drilled = DrillAttempt(GAP, at=OCCURRED + HOUR, passed=True, first_miss_position_key=None)
+    drilled = DrillAttempt(
+        GAP, at=OCCURRED + HOUR, passed=True, first_miss_position_key=None
+    )
 
-    queue = practice_queue(ranked, occurred(*ranked), [drilled], now=OCCURRED + 2 * HOUR)
+    queue = practice_queue(
+        ranked, occurred(*ranked), [drilled], now=OCCURRED + 2 * HOUR
+    )
 
-    assert [(q.gap.position_key, q.due_at) for q in queue] == [(OTHER, OCCURRED), (THIRD, OCCURRED)]
+    assert [(q.gap.position_key, q.due_at) for q in queue] == [
+        (OTHER, OCCURRED),
+        (THIRD, OCCURRED),
+    ]
 
 
 def test_closed_gaps_are_left_out_of_sessions():

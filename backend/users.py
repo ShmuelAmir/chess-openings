@@ -3,6 +3,7 @@ The app's Users, each identified by their Lichess token: their Lichess
 account, their analysis pipeline and their Sync, kept between requests. See
 User in GLOSSARY.md.
 """
+
 import asyncio
 import hashlib
 import time
@@ -104,7 +105,12 @@ class User:
     @cached_property
     def sync(self) -> Sync:
         """The User's one Sync, made on first use (its log opens the database)."""
-        return Sync(self.pipeline, self.games_sync, RepertoireSyncLog(user=self.account), self.pipeline.clock)
+        return Sync(
+            self.pipeline,
+            self.games_sync,
+            RepertoireSyncLog(user=self.account),
+            self.pipeline.clock,
+        )
 
 
 _users: dict[str, User] = {}

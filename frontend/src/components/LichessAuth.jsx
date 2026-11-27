@@ -44,7 +44,7 @@ function LichessAuth({ user, onLogin, onLogout }) {
     try {
       const response = await fetch(
         `/api/auth/callback?code=${code}&state=${state}`,
-        { method: "POST" }
+        { method: "POST" },
       );
 
       if (response.ok) {

@@ -5,7 +5,14 @@ Pure. Shared by the recall view and the Opening Distribution.
 """
 
 # Chess.com result codes that end a game in a draw
-_DRAW_RESULTS = {"agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"}
+_DRAW_RESULTS = {
+    "agreed",
+    "repetition",
+    "stalemate",
+    "insufficient",
+    "50move",
+    "timevsinsufficient",
+}
 
 
 def player_result(white_result: str, user_is_white: bool) -> str:

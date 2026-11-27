@@ -7,13 +7,12 @@ from typing import Awaitable, Callable, Optional
 
 import chess
 
-from games import Game
-from pipeline import RepertoireSource, GameSource
-from repertoire import Repertoire, RepertoireBuilder
 from game_cache import GameCache
-from lichess import LichessClient
 from game_result import player_result
-
+from games import Game
+from lichess import LichessClient
+from pipeline import GameSource, RepertoireSource
+from repertoire import Repertoire, RepertoireBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,7 @@ class LichessRepertoireSource(RepertoireSource):
     Builds the user's Repertoire from every study they own on Lichess, except
     those marked "not repertoire".
     """
-    
+
     def __init__(
         self,
         lichess_token: str,
@@ -42,19 +41,19 @@ class LichessRepertoireSource(RepertoireSource):
         self.lichess_token = lichess_token
         self.list_studies = list_studies
         self.excluded_studies = excluded_studies
-    
+
     async def fetch_repertoire(self) -> Repertoire:
         """
         Fetch every owned study not marked "not repertoire" from Lichess and
         build the repertoire trees.
-        
+
         Returns:
             Repertoire object with white/black trees
         """
         builder = RepertoireBuilder()
         excluded = self.excluded_studies()
         studies = [s for s in await self.list_studies() if s["id"] not in excluded]
-        
+
         async with LichessClient(token=self.lichess_token) as client:
             for study in studies:
                 study_id, study_name = study["id"], study["name"]
@@ -64,7 +63,7 @@ class LichessRepertoireSource(RepertoireSource):
                         study_id=study_id,
                         study_name=study_name,
                     )
-                    
+
                     builder.add_study(
                         pgn=pgn,
                         opening_name=opening_name,
@@ -74,7 +73,7 @@ class LichessRepertoireSource(RepertoireSource):
                 except Exception as e:
                     logger.error(f"Failed to fetch study {study_id}: {e}")
                     raise
-        
+
         repertoire = builder.build()
         logger.debug(f"Built repertoire from {len(studies)} studies")
         return repertoire
@@ -82,18 +81,20 @@ class LichessRepertoireSource(RepertoireSource):
 
 class CacheGameSource(GameSource):
     """Reads the user's games from the local cache."""
-    
+
     def __init__(self, game_cache: Optional[GameCache] = None):
         self.game_cache = game_cache or GameCache()
-    
+
     async def games(self, username: str) -> list[Game]:
         """
         Every cached game of the user's, newest first.
-        
+
         Args:
             username: Chess.com username
         """
-        games = [_game(row, username) for row in self.game_cache.get_cached_games(username)]
+        games = [
+            _game(row, username) for row in self.game_cache.get_cached_games(username)
+        ]
         logger.debug(f"Found {len(games)} cached games for {username}")
         return games
 

@@ -42,12 +42,14 @@ export function createHttpBackend({ lichessToken, chessComUsername }) {
     /** The Sync state, as GET /api/sync reports it. */
     readSyncState: () => request(syncPath, { failure: "Sync failed" }),
     /** Start a Sync; resolves with the Sync state. */
-    startSync: () => request(syncPath, { method: "POST", failure: "Sync failed" }),
+    startSync: () =>
+      request(syncPath, { method: "POST", failure: "Sync failed" }),
     /** The recall view under the Game Filters, as GET /api/recall-view reports it. */
     loadRecallView: (filters) =>
       request(`/api/recall-view?${filterParams(filters)}`, {
         failure: "Could not load Recall Gaps",
-        rateLimit: "Lichess rate limit reached. Please wait a minute and try again.",
+        rateLimit:
+          "Lichess rate limit reached. Please wait a minute and try again.",
       }),
     /** The practice-session queue under the Game Filters: the due Open Recall Gaps, in ranking order. */
     loadPracticeQueue: async (filters) =>
