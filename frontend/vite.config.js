@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// `--mode sample` runs on the sample account (see src/sample/sampleAccount.js),
+// `--mode sample` runs on the sample account (see src/sample/sampleAccount.ts),
 // on its own port so its remembered Game Filters stay apart from the real app's
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
