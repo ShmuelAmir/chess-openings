@@ -87,3 +87,15 @@ def test_the_check_passes_when_every_mentioned_doc_exists(tmp_path):
     result = run_check(tmp_path)
 
     assert result.returncode == 0, result.stderr
+
+
+def test_a_fence_closes_only_on_its_own_marker(tmp_path):
+    doc = write(
+        tmp_path,
+        "README.md",
+        "```markdown\n~~~\nexample.md\n```\n\nSee `GONE.md`.\n",
+    )
+
+    assert find_broken_links(tmp_path, [doc]) == [
+        BrokenLink(Path("README.md"), 6, "GONE.md")
+    ]

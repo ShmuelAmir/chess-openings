@@ -30,6 +30,9 @@ SCANNED_SUFFIXES = {
 }
 SCANNED_NAMES = {"Makefile"}
 
+# This check's own tests name missing docs on purpose, as fixtures.
+SKIPPED_FILES = {"scripts/tests/test_check_md_links.py"}
+
 # Docs that steering docs mention on purpose without them existing: the
 # multi-context layout in docs/agents/domain.md applies only if one is added.
 OPTIONAL_DOCS = {"GLOSSARY-MAP.md"}
@@ -45,14 +48,17 @@ def find_broken_links(root: Path, files: list[Path]) -> list[BrokenLink]:
     broken = []
     for path in files:
         rel = path.relative_to(root)
-        in_fence = False
+        fence = None
         for number, line in enumerate(path.read_text().splitlines(), start=1):
             # Fenced blocks in Markdown hold example trees and snippets, not
-            # references to this repo's docs.
-            if path.suffix == ".md" and line.lstrip().startswith(("```", "~~~")):
-                in_fence = not in_fence
-                continue
-            if in_fence:
+            # references to this repo's docs. A block closes only on the marker
+            # that opened it, so a ``` block can show ~~~ inside it.
+            if path.suffix == ".md":
+                marker = line.lstrip()[:3]
+                if marker in ("```", "~~~") and fence in (None, marker):
+                    fence = None if fence else marker
+                    continue
+            if fence:
                 continue
             for match in MD_PATH.finditer(line):
                 target = match.group(1)
@@ -67,7 +73,9 @@ def tracked_files(root: Path) -> list[Path]:
     out = subprocess.run(
         ["git", "ls-files", "-z"], cwd=root, capture_output=True, text=True, check=True
     ).stdout
-    paths = (root / name for name in out.split("\0") if name)
+    paths = (
+        root / name for name in out.split("\0") if name and name not in SKIPPED_FILES
+    )
     return [
         p
         for p in paths
