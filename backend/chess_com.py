@@ -4,7 +4,6 @@ Chess.com API Client
 import httpx
 from typing import Optional
 import io
-import re
 import chess.pgn
 from opening_normalizer import OpeningNormalizer
 

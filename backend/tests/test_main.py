@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 import main
 import users
 from chess_com import ChessComAccountNotFoundError
-from drill_attempts import DrillAttempt, DrillAttemptStore
+from drill_attempts import DrillAttemptStore
 from exclusions import ExclusionStore
 from game_cache import GameCache
 from games import Game

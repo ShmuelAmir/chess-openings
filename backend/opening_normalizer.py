@@ -2,7 +2,6 @@
 Opening Name Normalizer - Centralized rules for cleaning and standardizing opening names.
 """
 import re
-from typing import Optional
 
 
 class OpeningNormalizer:
