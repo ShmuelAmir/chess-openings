@@ -3,10 +3,11 @@
 # A git worktree has no venv or node_modules of its own, so the test targets
 # fall back to the main checkout's copies. The test code still comes from here.
 MAIN_ROOT := $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || echo .git)")
-PYTEST := $(firstword $(wildcard $(CURDIR)/backend/venv/bin/pytest) $(wildcard $(MAIN_ROOT)/backend/venv/bin/pytest))
+find-dep = $(firstword $(wildcard $(CURDIR)/$1 $(MAIN_ROOT)/$1))
+PYTEST := $(call find-dep,backend/venv/bin/pytest)
 # Vitest leaves a cache in frontend/node_modules/.vite, so look for an installed
 # binary rather than the folder.
-VITEST := $(firstword $(wildcard $(CURDIR)/frontend/node_modules/.bin/vitest) $(wildcard $(MAIN_ROOT)/frontend/node_modules/.bin/vitest))
+VITEST := $(call find-dep,frontend/node_modules/.bin/vitest)
 NODE_MODULES := $(VITEST:%/.bin/vitest=%)
 
 # Backend commands
@@ -35,7 +36,7 @@ build:
 # frontend/ makes its own folder instead of writing through the link.
 test-frontend:
 	@test -n "$(NODE_MODULES)" || { echo "No node_modules in frontend/ here or in the main checkout ($(MAIN_ROOT)). Run 'make install-all'." >&2; exit 1; }
-	@if [ "$(NODE_MODULES)" != "$(CURDIR)/frontend/node_modules" ]; then ln -sfn "$(NODE_MODULES)" node_modules; fi
+	@if [ "$(NODE_MODULES)" != "$(CURDIR)/frontend/node_modules" ] && { [ -L node_modules ] || [ ! -e node_modules ]; }; then ln -sfn "$(NODE_MODULES)" node_modules; fi
 	cd frontend && npm test
 
 # Install all dependencies
