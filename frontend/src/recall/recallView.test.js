@@ -1030,6 +1030,51 @@ describe("recall view", () => {
     });
   });
 
+  describe("the Progress panel", () => {
+    it("is closed until opened, then closes again", async () => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
+      await open();
+      expect(view.getSnapshot().progressOpen).toBe(false);
+
+      view.openProgress();
+      expect(view.getSnapshot().progressOpen).toBe(true);
+
+      view.closeProgress();
+      expect(view.getSnapshot().progressOpen).toBe(false);
+    });
+
+    it("gives way to a Recall Gap when one is selected", async () => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a"), gap("b")] }));
+      await open();
+      view.openProgress();
+
+      view.selectGap("b");
+
+      expect(view.getSnapshot().progressOpen).toBe(false);
+      expect(view.getSnapshot().selected.position_key).toBe("b");
+    });
+
+    it("closes when practice starts", async () => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
+      await open();
+      view.openProgress();
+
+      view.startDrill();
+
+      expect(view.getSnapshot().progressOpen).toBe(false);
+    });
+
+    it("cannot be opened during practice", async () => {
+      backend.on("loadRecallView").answer(recallView({ gaps: [gap("a")] }));
+      await open();
+      view.startDrill();
+
+      view.openProgress();
+
+      expect(view.getSnapshot().progressOpen).toBe(false);
+    });
+  });
+
   describe("subscribers", () => {
     it("hear of each new snapshot until they unsubscribe", async () => {
       backend.on("loadRecallView").answer(recallView({ gaps: [gap("a"), gap("b")] }));

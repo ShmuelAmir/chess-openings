@@ -66,9 +66,22 @@ The share of analysed games in which the user made a player-error *Deviation*: t
 
 _Avoid:_ "accuracy", "error rate" — Chess.com uses "accuracy" for engine scores.
 
+### Miss Depth
+
+How far into a line the user gets before going wrong: the number of the user's own move at which a player-error *Deviation* happened — their 2nd move, 3rd move, and so on, the same count for White and Black (it matches the full-move number). It is the companion to Miss Rate: Miss Rate says how often the user goes wrong, Miss Depth says how deep. Misses moving to later moves over time is progress, even when the Miss Rate stays the same.
+
+- **Which games:** only games with a player-error Deviation; games where the opponent left book or the book was completed have no Miss Depth.
+- **Earliest:** the user's 2nd move — a game whose first move of the user's is off-book is not analysed at all.
+- **Per opening:** the Study filter narrows it as it narrows Miss Rate, so selecting a study gives that study's Miss Depth.
+- **Over time:** per month, how many misses fell at each move (2nd through 9th, then 10th or later), with the month's median move marked once it has at least 3 misses.
+
+_Avoid:_ "Book Depth", "Recall Depth" — those suggest games without a miss count too.
+
 ### Recall view
 
 The user's ranked Recall Gaps, totals and Miss Rate under the Game Filters, together with the Repertoire's studies — each with its name, color and number of Recall Gaps — listed for the Study filter. The studies list is part of the recall view, not a separate thing beside it.
+
+**Progress panel:** part of the recall view, opened from the Miss Rate trend: the monthly Miss Rate and Miss Depth over the last 12 months, under every Game Filter but the date range. Selecting one study shows the progress in that opening.
 
 ### Opening Distribution
 
@@ -139,7 +152,7 @@ The system is organized in horizontal layers from request → response:
 4. **Domain Logic Layer**
    - **`repertoire.py`:** Defines `Repertoire`, `RepertoireNode`, `RepertoireBuilder`
    - **`repertoire_walker.py`:** Walks one game through the Repertoire into a walk record (`RepertoireWalker`, `WalkRecord`)
-   - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into the recall view (studies, ranked Recall Gaps, totals) under the Game Filters. Its view dataclasses are the wire contract of `/api/recall-view`
+   - **`recall_gaps.py`:** The pure Recall Gap aggregator: groups walk records into the recall view (studies, ranked Recall Gaps, totals with the monthly Miss Rate and Miss Depth trend) under the Game Filters. Its view dataclasses are the wire contract of `/api/recall-view`
    - **`games.py`:** `Game`, one of the user's games as it crosses the game seam: URL, date, archive month, time class, rated, Chess.com's opening label, moves, and the user's color and result
    - **`opening_distribution.py`:** The pure Opening Distribution: filters the user's `Game`s by its own Game Filters (`DistributionFilters`: time controls, rated, color, archive-month and timestamp bounds), then counts openings by games played, the user's wins, draws and losses in each (by the result rule the recall view uses), first-move categories and the monthly trend, in UTC months, of the five most played openings
    - **`game_result.py`:** The pure result rule (`player_result`): the user's win, loss or draw from White's Chess.com result code, applied once by `CacheGameSource`, so the recall view and the Opening Distribution read the same result

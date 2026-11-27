@@ -40,6 +40,25 @@ export function formatMissRate(rate) {
   return rate === null ? "–" : `${Math.round(rate * 100)}%`;
 }
 
+/**
+ * A trend's plotted points split into runs of consecutive months that have a
+ * Miss Rate (a point's `y` is null without one), each drawn as its own line.
+ */
+export function missRateRuns(points) {
+  const runs = [];
+  let run = [];
+  for (const p of points) {
+    if (p.y === null) {
+      if (run.length) runs.push(run);
+      run = [];
+    } else {
+      run.push(p);
+    }
+  }
+  if (run.length) runs.push(run);
+  return runs;
+}
+
 /** A Recall Gap's status: its progress toward closing, or when it closed. */
 export function formatStatus(gap) {
   return gap.status === "closed"

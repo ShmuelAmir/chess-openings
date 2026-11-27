@@ -87,7 +87,7 @@ def test_the_recall_view_is_served_as_the_pipeline_returns_it(monkeypatch, tmp_p
         "analysed": 1, "opponent_left_book": 0, "book_completed": 0, "miss_rate": 1.0,
         "trend": view["totals"]["trend"], "open_gaps": 1, "closed_in_range": 0,
     }
-    assert set(view["totals"]["trend"][0]) == {"month", "games", "miss_rate"}
+    assert set(view["totals"]["trend"][0]) == {"month", "games", "miss_rate", "miss_depths", "median_miss_depth"}
     (gap,) = view["gaps"]
     assert gap == {
         "position_key": gap["position_key"],

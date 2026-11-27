@@ -1,3 +1,5 @@
+import { missRateRuns } from "./format";
+
 const WIDTH = 96;
 const HEIGHT = 20;
 const PAD = 2;
@@ -16,18 +18,7 @@ export default function Sparkline({ trend }) {
     y: m.miss_rate === null ? null : HEIGHT - PAD - m.miss_rate * (HEIGHT - 2 * PAD),
   }));
 
-  // Runs of consecutive months that have a Miss Rate
-  const segments = [];
-  let run = [];
-  for (const p of points) {
-    if (p.y === null) {
-      if (run.length) segments.push(run);
-      run = [];
-    } else {
-      run.push(p);
-    }
-  }
-  if (run.length) segments.push(run);
+  const segments = missRateRuns(points);
 
   return (
     <svg

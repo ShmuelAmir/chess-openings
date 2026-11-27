@@ -7,6 +7,7 @@ import GapDetail from "../components/recall/GapDetail";
 import DrillBoard from "../components/recall/DrillBoard";
 import PracticeSession from "../components/recall/PracticeSession";
 import SyncBar from "../components/recall/SyncBar";
+import ProgressPanel from "../components/recall/ProgressPanel";
 import "../components/recall/recall.css";
 
 const BOARD_WIDTH = 306;
@@ -43,6 +44,7 @@ function Recall({ recallView }) {
     selected,
     practice,
     syncResult,
+    progressOpen,
   } = useSyncExternalStore(recallView.subscribe, recallView.getSnapshot);
 
   return (
@@ -88,6 +90,7 @@ function Recall({ recallView }) {
             syncResult={syncResult}
             practicing={practice?.kind === "session"}
             onPractice={recallView.startSession}
+            onOpenProgress={practice ? null : recallView.openProgress}
           />
         )}
       </section>
@@ -115,6 +118,14 @@ function Recall({ recallView }) {
             onClose={recallView.endPractice}
           />
         </section>
+      ) : progressOpen ? (
+        <ProgressPanel
+          trend={view?.totals.trend ?? []}
+          studyNames={(view?.studies ?? [])
+            .filter((study) => filters.studies.includes(study.id))
+            .map((study) => study.name)}
+          onClose={recallView.closeProgress}
+        />
       ) : (
         <GapDetail
           key={selected?.position_key}
