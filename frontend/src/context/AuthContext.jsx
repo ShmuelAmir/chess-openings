@@ -4,14 +4,15 @@ import { useSampleAccount } from "./SampleAccountContext";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  // The sample mode is signed in as the sample account from the start
-  const sample = useSampleAccount();
+  // The sample mode is signed in as the sample account for good. Its token
+  // is never sent: SyncProvider uses the sample account's own backend
+  const sampleAccount = useSampleAccount();
   const [lichessToken, setLichessToken] = useState(
-    sample ? "sample" : localStorage.getItem("lichess_token"),
+    sampleAccount ? "sample" : localStorage.getItem("lichess_token"),
   );
-  const [lichessUser, setLichessUser] = useState(sample?.lichessUser ?? null);
+  const [lichessUser, setLichessUser] = useState(sampleAccount?.lichessUser ?? null);
   const [chessComUsername, setChessComUsername] = useState(
-    sample?.chessComUsername ?? (localStorage.getItem("chess_com_username") || ""),
+    sampleAccount?.chessComUsername ?? (localStorage.getItem("chess_com_username") || ""),
   );
 
   const [chessComError, setChessComError] = useState(null);
@@ -19,10 +20,10 @@ export function AuthProvider({ children }) {
 
   // Fetch Lichess user info when token is available
   useEffect(() => {
-    if (lichessToken && !sample) {
+    if (lichessToken && !sampleAccount) {
       fetchLichessUser();
     }
-  }, [lichessToken]);
+  }, [lichessToken, sampleAccount]);
 
   const fetchLichessUser = async () => {
     try {
@@ -46,7 +47,9 @@ export function AuthProvider({ children }) {
     setLichessToken(token);
   };
 
+  // Signing out of the sample account would leave nothing to sign in to
   const handleLogout = () => {
+    if (sampleAccount) return;
     localStorage.removeItem("lichess_token");
     setLichessToken(null);
     setLichessUser(null);
@@ -76,6 +79,7 @@ export function AuthProvider({ children }) {
   };
 
   const handleChessComClear = () => {
+    if (sampleAccount) return;
     localStorage.removeItem("chess_com_username");
     setChessComUsername("");
     setChessComError(null);

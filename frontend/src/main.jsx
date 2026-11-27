@@ -5,19 +5,22 @@ import { router } from "./router";
 import { SampleAccountContext } from "./context/SampleAccountContext";
 import "./index.css";
 
-// Only the sample mode loads the sample account; every other build drops
-// this import, so the sample data never reaches the production bundle
-const sampleAccount =
-  import.meta.env.MODE === "sample"
-    ? import("./sample/sampleAccount").then(({ createSampleAccount }) => createSampleAccount())
-    : Promise.resolve(null);
+const root = ReactDOM.createRoot(document.getElementById("root"));
 
-sampleAccount.then((account) => {
-  ReactDOM.createRoot(document.getElementById("root")).render(
+function render(sampleAccount) {
+  root.render(
     <React.StrictMode>
-      <SampleAccountContext.Provider value={account}>
+      <SampleAccountContext.Provider value={sampleAccount}>
         <RouterProvider router={router} />
       </SampleAccountContext.Provider>
     </React.StrictMode>,
   );
-});
+}
+
+// Only the sample mode loads the sample account; every other build drops
+// this import, so the sample data never reaches the production bundle
+if (import.meta.env.MODE === "sample") {
+  import("./sample/sampleAccount").then(({ createSampleAccount }) => render(createSampleAccount()));
+} else {
+  render(null);
+}

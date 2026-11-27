@@ -25,19 +25,19 @@ const NO_ACCOUNT = { backend: null, client: null };
  */
 export function SyncProvider({ children }) {
   const { lichessToken, chessComUsername } = useAuth();
-  const sample = useSampleAccount();
+  const sampleAccount = useSampleAccount();
   const [account, setAccount] = useState(NO_ACCOUNT);
 
   useEffect(() => {
     if (!lichessToken || !chessComUsername) return;
-    const backend = sample?.backend ?? createHttpBackend({ lichessToken, chessComUsername });
+    const backend = sampleAccount?.backend ?? createHttpBackend({ lichessToken, chessComUsername });
     const client = createSyncClient(backend);
     setAccount({ backend, client });
     return () => {
       client.dispose();
       setAccount(NO_ACCOUNT);
     };
-  }, [lichessToken, chessComUsername, sample]);
+  }, [lichessToken, chessComUsername, sampleAccount]);
 
   return <SyncContext.Provider value={account}>{children}</SyncContext.Provider>;
 }

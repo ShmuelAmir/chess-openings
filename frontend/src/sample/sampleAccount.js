@@ -24,6 +24,10 @@ const FIRST_MISS_DEPTH = 2;
 const LAST_MISS_DEPTH = 10;
 const TREND_MONTHS = 12;
 const TIME_CLASSES = ["blitz", "rapid", "blitz", "bullet", "rapid", "daily"];
+// How far back the sample games go: the trend's 12 months and a little more
+const HISTORY_DAYS = 395;
+// The latest move a sample miss comes on; the trend counts all from the 10th as one
+const LATEST_MISS_DEPTH = 14;
 
 const STUDIES = [
   { id: "sItalian", name: "Italian Game - Giuoco Piano", opening_name: "Italian Game Giuoco Piano", color: "white" },
@@ -33,22 +37,22 @@ const STUDIES = [
 ];
 
 /*
- * The Recall Gaps. `line` reaches the gap's position, `book` is what the
- * Repertoire has there, `wrong` the moves played instead, one per
- * occurrence, and `seen` how many days ago each occurrence was. A closed gap
+ * The Recall Gaps. `line` reaches the gap's position, `bookMoves` are its
+ * Book moves, `wrong` the moves played instead, one per occurrence, and
+ * `seen` how many days ago each occurrence was. A closed gap
  * closed `closedDaysAgo`; `due` says whether a practice session drills it.
  */
 const GAPS = [
-  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Bc5", book: ["c3", "d3"], wrong: ["O-O", "O-O", "Nc3", "O-O", "O-O", "Nc3"], seen: [2, 9, 15, 40, 120, 210], due: true },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3", book: ["a6"], wrong: ["e6", "Nc6", "e6", "g6", "e6"], seen: [1, 6, 22, 70, 150], due: true },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 e5", book: ["Bf5"], wrong: ["c5", "c5", "e6", "c5"], seen: [4, 12, 33, 95], due: false },
-  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 c5", book: ["c3"], wrong: ["Nf3", "dxc5", "Nf3", "Nf3"], seen: [3, 18, 50, 180], due: true },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4", book: ["cxd4"], wrong: ["Nf6", "Nf6", "e5"], seen: [8, 27, 200], due: true },
-  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Nf6", book: ["d3"], wrong: ["Ng5", "Nc3", "Ng5"], seen: [55, 130, 240], status: "closed", closedDaysAgo: 20, due: false },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 Nc3 dxe4 Nxe4", book: ["Bf5"], wrong: ["Nf6", "Nd7"], seen: [10, 60], progress: 1, due: false },
-  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 e6", book: ["Nf3"], wrong: ["Bd3", "c4"], seen: [75, 160], status: "closed", closedDaysAgo: 45, due: false },
-  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5", book: ["e6"], wrong: ["Nbd7", "e5"], seen: [100, 190], status: "closed", closedDaysAgo: 80, due: false },
-  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 exd5", book: ["cxd5"], wrong: ["Qxd5"], seen: [14], due: true },
+  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Bc5", bookMoves: ["c3", "d3"], wrong: ["O-O", "O-O", "Nc3", "O-O", "O-O", "Nc3"], seen: [2, 9, 15, 40, 120, 210], due: true },
+  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3", bookMoves: ["a6"], wrong: ["e6", "Nc6", "e6", "g6", "e6"], seen: [1, 6, 22, 70, 150], due: true },
+  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 e5", bookMoves: ["Bf5"], wrong: ["c5", "c5", "e6", "c5"], seen: [4, 12, 33, 95], due: false },
+  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 c5", bookMoves: ["c3"], wrong: ["Nf3", "dxc5", "Nf3", "Nf3"], seen: [3, 18, 50, 180], due: true },
+  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4", bookMoves: ["cxd4"], wrong: ["Nf6", "Nf6", "e5"], seen: [8, 27, 200], due: true },
+  { studies: ["sItalian"], line: "e4 e5 Nf3 Nc6 Bc4 Nf6", bookMoves: ["d3"], wrong: ["Ng5", "Nc3", "Ng5"], seen: [55, 130, 240], status: "closed", closedDaysAgo: 20, due: false },
+  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 Nc3 dxe4 Nxe4", bookMoves: ["Bf5"], wrong: ["Nf6", "Nd7"], seen: [10, 60], progress: 1, due: false },
+  { studies: ["sLondon"], line: "d4 d5 Bf4 Nf6 e3 e6", bookMoves: ["Nf3"], wrong: ["Bd3", "c4"], seen: [75, 160], status: "closed", closedDaysAgo: 45, due: false },
+  { studies: ["sNajdorf"], line: "e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5", bookMoves: ["e6"], wrong: ["Nbd7", "e5"], seen: [100, 190], status: "closed", closedDaysAgo: 80, due: false },
+  { studies: ["sCaroKann"], line: "e4 c6 d4 d5 exd5", bookMoves: ["cxd5"], wrong: ["Qxd5"], seen: [14], due: true },
 ];
 
 /** A seeded random number generator, so the sample data is the same every time. */
@@ -65,13 +69,16 @@ function seededRandom(seed) {
 /** A position's key: the FEN without its move counters, as the backend keys positions. */
 const positionKey = (chess) => chess.fen().split(" ").slice(0, 4).join(" ");
 
-/** The UTC month of a Unix timestamp, as "YYYY-MM". */
-const monthOf = (timestamp) => new Date(timestamp * 1000).toISOString().slice(0, 7);
+/** A date's UTC month, as "YYYY-MM". */
+const isoMonth = (date) => date.toISOString().slice(0, 7);
 
-/** "YYYY-MM", `back` months before the UTC month of `now`. */
+/** The UTC month of a Unix timestamp. */
+const monthOf = (timestamp) => isoMonth(new Date(timestamp * 1000));
+
+/** The month `back` months before the UTC month of `now`. */
 function monthBefore(now, back) {
   const date = new Date(now * 1000);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - back, 1)).toISOString().slice(0, 7);
+  return isoMonth(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - back, 1)));
 }
 
 const studyUrl = (id) => `https://lichess.org/study/${id}`;
@@ -90,7 +97,7 @@ function buildGaps(now) {
       chess.move(san);
     });
     const gapKey = positionKey(chess);
-    drillTurns.push({ ply: path.length, position_key: gapKey, book_moves: spec.book });
+    drillTurns.push({ ply: path.length, position_key: gapKey, book_moves: spec.bookMoves });
 
     const games = spec.seen.map((daysAgo, i) => ({
       url: `https://www.chess.com/game/live/${1000 + gapIndex * 20 + i}`,
@@ -106,7 +113,7 @@ function buildGaps(now) {
       position_key: gapKey,
       color,
       path,
-      book_moves: spec.book,
+      book_moves: spec.bookMoves,
       studies: spec.studies.map((id) => {
         const study = STUDIES.find((s) => s.id === id);
         return { id, name: study.name, url: studyUrl(id) };
@@ -130,8 +137,8 @@ function buildGaps(now) {
 function buildGames(now) {
   const random = seededRandom(79);
   const games = [];
-  for (let day = 395; day >= 0; day--) {
-    const progress = 1 - day / 395; // 0 a year ago, 1 today
+  for (let day = HISTORY_DAYS; day >= 0; day--) {
+    const progress = 1 - day / HISTORY_DAYS; // 0 at the start, 1 today
     const perDay = random() < 0.5 ? 1 : 2;
     for (let i = 0; i < perDay; i++) {
       const roll = random();
@@ -142,7 +149,7 @@ function buildGames(now) {
         outcome = "miss";
         const spread = 2 + Math.floor(random() * 5);
         depth = Math.round(2 + 4 * progress + spread * (random() - 0.3));
-        depth = Math.min(Math.max(depth, FIRST_MISS_DEPTH), 14);
+        depth = Math.min(Math.max(depth, FIRST_MISS_DEPTH), LATEST_MISS_DEPTH);
       } else if (roll < missRate + 0.25) {
         outcome = "opponent_left_book";
       } else if (roll < missRate + 0.35) {
@@ -222,16 +229,13 @@ export function createSampleAccount() {
     return days === undefined || days === null ? null : now - days * DAY;
   };
 
-  // The gaps under every Game Filter but the Study filter, ranked
-  const gapsInFilters = (filters) =>
-    gaps
-      .map((gap) => shownGap(gap, filters, sinceOf(filters)))
-      .filter(Boolean)
-      .sort(byRanking);
-
   function recallView(filters) {
     const since = sinceOf(filters);
-    const unfiltered = gapsInFilters(filters);
+    // The gaps under every Game Filter but the Study filter, ranked
+    const unfiltered = gaps
+      .map((gap) => shownGap(gap, filters, since))
+      .filter(Boolean)
+      .sort(byRanking);
     const shown = unfiltered.filter((gap) => inStudies(filters, gap.studies.map((s) => s.id)));
     const studyGames = games.filter((game) => inStudies(filters, [game.study]));
     const counted = studyGames.filter((game) => inFilters(game, filters, since));
@@ -305,8 +309,8 @@ export function createSampleAccount() {
   });
 
   return {
-    lichessUser: { id: "sample", username: "SamplePlayer" },
-    chessComUsername: "sample-player",
+    lichessUser: { id: "sample", username: "SampleUser" },
+    chessComUsername: "sample-user",
     backend,
   };
 }

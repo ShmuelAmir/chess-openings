@@ -1,9 +1,5 @@
 # Agent skills
 
-## Checking UI changes
-
-Whenever you change the frontend, run `make dev-sample` (or `cd frontend && npm run dev:sample`) and open http://localhost:5174 to see the change on the real Recall page with sample data, no Lichess sign-in or backend needed, and take a screenshot before you finish.
-
 ## Agent skills
 
 ### Issue tracker
@@ -17,3 +13,7 @@ Uses standard triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `r
 ### Domain docs
 
 Single-context layout: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`. The glossary holds domain language only. Layers, seams, caching and data flows live in `docs/architecture.md`.
+
+### Checking UI changes
+
+Whenever you change the frontend, run `make dev-sample` (or `cd frontend && npm run dev:sample`) and open http://localhost:5174 to see the change on the real Recall page with sample data, no Lichess sign-in or backend needed, and take a screenshot before you finish.
