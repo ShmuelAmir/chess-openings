@@ -16,7 +16,8 @@ export default defineConfig(({ mode }) => ({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.js"],
+    // .test.js until the TypeScript migration (#82) is done
+    include: ["src/**/*.test.{js,ts}"],
   },
   build: {
     outDir: "../backend/static",
