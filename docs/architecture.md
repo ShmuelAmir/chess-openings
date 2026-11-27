@@ -147,3 +147,8 @@ A **seam** is a boundary where behavior can be altered without editing the pipel
    - Abstract interface: `GameSource.games(username) -> list[Game]`; filtering is the reader's (the Recall Gap aggregator, the Opening Distribution)
    - Current adapter: `CacheGameSource` (local SQLite); `/api/opening-stats` reads through it too
    - Alternative adapters: `ChessComDirectGameSource` (fetch from Chess.com live, if API allowed it)
+
+3. **Frontend backend seam:**
+   - Interface: the backend object the recall view store (`createRecallView` in `frontend/src/recall/recallView.js`) and the sync client call: `readSyncState`, `startSync`, `loadRecallView`, `loadPracticeQueue`, `recordDrillAttempt`
+   - Current adapter: `createHttpBackend` (`frontend/src/backend/httpBackend.js`, calls the API)
+   - Test adapter: `createMemoryBackend` (`frontend/src/backend/memoryBackend.js`), where each call is scripted to answer, fail or delay. Frontend behaviour is tested here: the recall view store over the in-memory backend (`recallView.test.js`), not through components
