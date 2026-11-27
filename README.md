@@ -53,6 +53,8 @@ npm run dev
 
 5. **Open http://localhost:5173**
 
+To try the frontend without signing in to Lichess or running the backend, `make dev-sample` (or `npm run dev:sample` in `frontend/`) serves it at http://localhost:5174 on sample data: the Recall page, its Study filter, Gap Detail, the Progress panel and practice drills all work.
+
 ### Running Tests
 
 Backend tests use pytest and need no network access:
