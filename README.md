@@ -70,7 +70,7 @@ cd frontend
 npm test
 ```
 
-From the repo root, `make test` runs both suites.
+From the repo root, `make test` runs both suites. It also works from a git worktree: when the worktree has no venv or `node_modules` of its own, it uses the main checkout's copies (linking `./node_modules` to them).
 
 ### Creating Your Repertoire on Lichess
 
