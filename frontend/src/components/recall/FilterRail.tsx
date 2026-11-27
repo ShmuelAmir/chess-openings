@@ -1,6 +1,12 @@
+import type {
+  DateRange,
+  GameFilters,
+  Study,
+  TimeClass,
+} from "../../backend/backend";
 import { TIME_CLASSES, DATE_RANGES } from "../../recall/storedFilters";
 
-const COLORS = [
+const COLORS: { id: Study["color"]; label: string }[] = [
   { id: "white", label: "White" },
   { id: "black", label: "Black" },
 ];
@@ -10,10 +16,23 @@ const COLORS = [
  * stands in for a Color filter: color follows from the selected studies.
  * `disabled` during practice, when the Game Filters cannot be changed.
  */
-export default function FilterRail({ filters, studies, disabled, onChange }) {
-  const set = (patch) => onChange({ ...filters, ...patch });
+interface FilterRailProps {
+  filters: GameFilters;
+  studies: Study[];
+  disabled: boolean;
+  onChange: (filters: GameFilters) => void;
+}
 
-  const toggleStudy = (id) =>
+export default function FilterRail({
+  filters,
+  studies,
+  disabled,
+  onChange,
+}: FilterRailProps) {
+  const set = (patch: Partial<GameFilters>) =>
+    onChange({ ...filters, ...patch });
+
+  const toggleStudy = (id: string) =>
     set({
       studies: filters.studies.includes(id)
         ? filters.studies.filter((s) => s !== id)
@@ -21,7 +40,7 @@ export default function FilterRail({ filters, studies, disabled, onChange }) {
     });
 
   // All of a color's studies selected -> none of them; otherwise -> all of them
-  const toggleColor = (ids) => {
+  const toggleColor = (ids: string[]) => {
     const allOn = ids.every((id) => filters.studies.includes(id));
     const others = filters.studies.filter((id) => !ids.includes(id));
     set({ studies: allOn ? others : [...others, ...ids] });
@@ -30,7 +49,7 @@ export default function FilterRail({ filters, studies, disabled, onChange }) {
   // No study selected means all of them
   const noStudySelected = filters.studies.length === 0;
 
-  const toggleTimeClass = (tc) =>
+  const toggleTimeClass = (tc: TimeClass) =>
     set({
       timeClasses: filters.timeClasses.includes(tc)
         ? filters.timeClasses.filter((t) => t !== tc)
@@ -66,7 +85,10 @@ export default function FilterRail({ filters, studies, disabled, onChange }) {
           <select
             className="rv-select"
             value={filters.dateRange}
-            onChange={(e) => set({ dateRange: e.target.value })}
+            onChange={(e) =>
+              // The options are the DATE_RANGES ids
+              set({ dateRange: e.target.value as DateRange })
+            }
           >
             {DATE_RANGES.map((range) => (
               <option key={range.id} value={range.id}>

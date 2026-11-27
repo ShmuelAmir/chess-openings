@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+import type { TrendMonth } from "../../backend/backend";
 import { formatMissRate, missRateRuns } from "./format";
 
 // The Miss Depth rows, as the backend counts them: the user's 2nd move first,
@@ -20,7 +22,7 @@ const CHART_HEIGHT = 90;
 const PAD = { top: 8, right: 6, bottom: 4, left: 30 };
 
 /** "2026-03" as its month's initial: "M". */
-function monthInitial(month) {
+function monthInitial(month: string): string {
   return new Date(`${month}-01T00:00:00Z`).toLocaleString("en", {
     month: "narrow",
     timeZone: "UTC",
@@ -28,7 +30,7 @@ function monthInitial(month) {
 }
 
 /** "2026-03" as "Mar 2026". */
-function monthName(month) {
+function monthName(month: string): string {
   return new Date(`${month}-01T00:00:00Z`).toLocaleString("en", {
     month: "short",
     year: "numeric",
@@ -41,7 +43,17 @@ function monthName(month) {
  * months, under every Game Filter but the date range. See Miss Depth in
  * GLOSSARY.md.
  */
-export default function ProgressPanel({ trend, studyNames, onClose }) {
+interface ProgressPanelProps {
+  trend: TrendMonth[];
+  studyNames: string[];
+  onClose: () => void;
+}
+
+export default function ProgressPanel({
+  trend,
+  studyNames,
+  onClose,
+}: ProgressPanelProps) {
   return (
     <section className="rv-detail rv-progress">
       <div className="rv-progress-head">
@@ -68,7 +80,7 @@ export default function ProgressPanel({ trend, studyNames, onClose }) {
   );
 }
 
-function MissRateChart({ trend }) {
+function MissRateChart({ trend }: { trend: TrendMonth[] }) {
   const plotW = CHART_WIDTH - PAD.left - PAD.right;
   const plotH = CHART_HEIGHT - PAD.top - PAD.bottom;
   const step = trend.length > 1 ? plotW / (trend.length - 1) : 0;
@@ -133,7 +145,7 @@ function MissRateChart({ trend }) {
   );
 }
 
-function MissDepthGrid({ trend }) {
+function MissDepthGrid({ trend }: { trend: TrendMonth[] }) {
   const max = Math.max(1, ...trend.flatMap((m) => m.miss_depths));
   const totals = trend.map((m) => m.miss_depths.reduce((a, b) => a + b, 0));
   return (
@@ -165,7 +177,15 @@ function MissDepthGrid({ trend }) {
   );
 }
 
-function DepthRow({ label, row, trend, totals, max }) {
+interface DepthRowProps {
+  label: string;
+  row: number;
+  trend: TrendMonth[];
+  totals: number[];
+  max: number;
+}
+
+function DepthRow({ label, row, trend, totals, max }: DepthRowProps) {
   return (
     <>
       <span className="rv-depth-label">{label}</span>
@@ -185,7 +205,8 @@ function DepthRow({ label, row, trend, totals, max }) {
             className={`rv-depth-cell${count ? " hit" : ""}${heat > 0.55 ? " strong" : ""}${
               median ? " median" : ""
             }`}
-            style={count ? { "--heat": heat } : undefined}
+            // CSSProperties has no custom properties, so `--heat` needs the cast
+            style={count ? ({ "--heat": heat } as CSSProperties) : undefined}
             title={`${monthName(m.month)}, your ${label} move: ${count} of ${total} ${
               total === 1 ? "miss" : "misses"
             }${median ? " (median)" : ""}`}
