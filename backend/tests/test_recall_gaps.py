@@ -628,14 +628,21 @@ def test_miss_depth_counts_each_months_misses_by_the_users_move():
 
 
 LONG_LINE = "1. Nf3 Nf6 2. Nc3 Nc6 3. Ng1 Ng8 4. Nb1 Nb8 5. Nf3 Nf6 6. Nc3 Nc6 7. Ng1 Ng8 8. Nb1 Nb8 9. Nf3 Nf6 10. Nc3 Nc6 11. Ng1 *"
-LONG_REPERTOIRE = repertoire(("long", f'[Event "Long"]\n\n{LONG_LINE}\n'))
 
 
-def long_miss(user_move, date):
+def long_miss(user_move, date, color=chess.WHITE):
     """A game following LONG_LINE that misses at the user's `user_move`-th move."""
-    book = LONG_LINE.replace(".", " ").split()
-    moves = [m for m in book if not m.isdigit() and m != "*"][: 2 * (user_move - 1)] + ["e4"]
-    return game_at(moves, date, rep=LONG_REPERTOIRE)
+    book = [m for m in LONG_LINE.replace(".", " ").split() if not m.isdigit() and m != "*"]
+    played = 2 * (user_move - 1) + (0 if color == chess.WHITE else 1)
+    return game_at(book[:played] + ["e4" if color == chess.WHITE else "e5"], date, color=color, rep=long_repertoire(color))
+
+
+def long_repertoire(color):
+    orientation = "" if color == chess.WHITE else '[Orientation "black"]\n'
+    return repertoire(("long", f'[Event "Long"]\n{orientation}\n{LONG_LINE}\n'))
+
+
+LONG_REPERTOIRE = long_repertoire(chess.WHITE)
 
 
 def test_misses_from_the_users_10th_move_on_share_the_last_miss_depth():
@@ -648,6 +655,13 @@ def test_a_black_miss_depth_counts_blacks_own_moves():
     games = [game_at(SICILIAN_GAP, utc(2026, 10, 1), color=chess.BLACK, rep=STUDY_REPERTOIRE)]
 
     assert trend_month(games, "2026-10", rep=STUDY_REPERTOIRE).miss_depths[0] == 1
+
+
+def test_a_black_miss_at_blacks_5th_move_has_a_miss_depth_of_5():
+    black = long_repertoire(chess.BLACK)
+    games = [long_miss(5, utc(2026, 10, 1), color=chess.BLACK)]
+
+    assert trend_month(games, "2026-10", rep=black).miss_depths == [0, 0, 0, 1, 0, 0, 0, 0, 0]
 
 
 def test_a_months_median_miss_depth_needs_three_misses():

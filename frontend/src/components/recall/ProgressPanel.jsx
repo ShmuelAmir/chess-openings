@@ -1,4 +1,4 @@
-import { formatMissRate } from "./format";
+import { formatMissRate, missRateRuns } from "./format";
 
 // The Miss Depth rows, as the backend counts them: the user's 2nd move first,
 // the last also holding every later move
@@ -38,7 +38,7 @@ export default function ProgressPanel({ trend, studyNames, onClose }) {
         </button>
       </div>
       <div className="rv-muted">
-        {studyNames.length > 0 ? studyNames.join(", ") : "All studies"} · last 12 months
+        {studyNames.length > 0 ? studyNames.join(", ") : "All studies"} · last {trend.length} months
       </div>
 
       <div className="rv-label">Miss Rate</div>
@@ -64,18 +64,7 @@ function MissRateChart({ trend }) {
     y: m.miss_rate === null ? null : PAD.top + (1 - m.miss_rate) * plotH,
   }));
 
-  // Runs of consecutive months that have a Miss Rate
-  const segments = [];
-  let run = [];
-  for (const p of points) {
-    if (p.y === null) {
-      if (run.length) segments.push(run);
-      run = [];
-    } else {
-      run.push(p);
-    }
-  }
-  if (run.length) segments.push(run);
+  const segments = missRateRuns(points);
 
   return (
     <svg
@@ -123,11 +112,12 @@ function MissRateChart({ trend }) {
 }
 
 function MissDepthGrid({ trend }) {
-  const max = Math.max(1, ...trend.flatMap((m) => m.miss_depths ?? []));
+  const max = Math.max(1, ...trend.flatMap((m) => m.miss_depths));
+  const totals = trend.map((m) => m.miss_depths.reduce((a, b) => a + b, 0));
   return (
     <div className="rv-depth" style={{ gridTemplateColumns: `2.2rem repeat(${trend.length}, 1fr)` }}>
       {DEPTH_LABELS.map((label, row) => (
-        <DepthRow key={label} label={label} row={row} trend={trend} max={max} />
+        <DepthRow key={label} label={label} row={row} trend={trend} totals={totals} max={max} />
       ))}
       <span />
       {trend.map((m) => (
@@ -139,25 +129,25 @@ function MissDepthGrid({ trend }) {
   );
 }
 
-function DepthRow({ label, row, trend, max }) {
+function DepthRow({ label, row, trend, totals, max }) {
   return (
     <>
       <span className="rv-depth-label">{label}</span>
-      {trend.map((m) => {
-        const count = m.miss_depths?.[row] ?? 0;
+      {trend.map((m, i) => {
+        const count = m.miss_depths[row];
         const median =
           m.median_miss_depth !== null &&
-          m.median_miss_depth !== undefined &&
           Math.min(m.median_miss_depth, FIRST_DEPTH + DEPTH_LABELS.length - 1) - FIRST_DEPTH === row;
-        const total = (m.miss_depths ?? []).reduce((a, b) => a + b, 0);
-        const depth = count ? 0.2 + 0.8 * (count / max) : 0;
+        const total = totals[i];
+        // How strongly the cell is shaded: by its count against the busiest cell
+        const heat = count ? 0.2 + 0.8 * (count / max) : 0;
         return (
           <span
             key={m.month}
-            className={`rv-depth-cell${count ? " hit" : ""}${depth > 0.55 ? " strong" : ""}${
+            className={`rv-depth-cell${count ? " hit" : ""}${heat > 0.55 ? " strong" : ""}${
               median ? " median" : ""
             }`}
-            style={count ? { "--depth": depth } : undefined}
+            style={count ? { "--heat": heat } : undefined}
             title={`${monthName(m.month)}, your ${label} move: ${count} of ${total} ${
               total === 1 ? "miss" : "misses"
             }${median ? " (median)" : ""}`}

@@ -318,18 +318,21 @@ def _miss_rate(games: list[WalkedGame]) -> Optional[float]:
     return sum(1 for g in games if _is_miss(g)) / len(games)
 
 
-def _miss_depths(games: list[WalkedGame]) -> list[int]:
-    """How many of the games missed at each Miss Depth, the user's 2nd move first."""
+def _miss_moves(games: list[WalkedGame]) -> list[int]:
+    """The Miss Depth of each of the games that has a player error."""
+    return [g.record.deviation.move_number for g in games if _is_miss(g)]
+
+
+def _miss_depths(depths: list[int]) -> list[int]:
+    """How many of the misses fell at each Miss Depth, the user's 2nd move first."""
     counts = [0] * (LAST_MISS_DEPTH - FIRST_MISS_DEPTH + 1)
-    for g in games:
-        if _is_miss(g):
-            counts[min(g.record.deviation.move_number, LAST_MISS_DEPTH) - FIRST_MISS_DEPTH] += 1
+    for depth in depths:
+        counts[min(depth, LAST_MISS_DEPTH) - FIRST_MISS_DEPTH] += 1
     return counts
 
 
-def _median_miss_depth(games: list[WalkedGame]) -> Optional[int]:
-    """The median Miss Depth of the games' misses, or None with too few of them."""
-    depths = [g.record.deviation.move_number for g in games if _is_miss(g)]
+def _median_miss_depth(depths: list[int]) -> Optional[int]:
+    """The median of the Miss Depths, or None with too few of them."""
     return median_low(depths) if len(depths) >= MIN_MEDIAN_MISSES else None
 
 
@@ -352,12 +355,13 @@ def _trend(games: list[WalkedGame], now: int) -> list[TrendMonth]:
     trend = []
     for month in months:
         games_in = by_month.get(month, [])
+        depths = _miss_moves(games_in)
         trend.append(TrendMonth(
             month=month,
             games=len(games_in),
             miss_rate=_miss_rate(games_in) if len(games_in) >= MIN_TREND_GAMES else None,
-            miss_depths=_miss_depths(games_in),
-            median_miss_depth=_median_miss_depth(games_in),
+            miss_depths=_miss_depths(depths),
+            median_miss_depth=_median_miss_depth(depths),
         ))
     return trend
 

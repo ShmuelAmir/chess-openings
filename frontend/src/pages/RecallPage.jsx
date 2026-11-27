@@ -90,7 +90,6 @@ function Recall({ recallView }) {
             syncResult={syncResult}
             practicing={practice?.kind === "session"}
             onPractice={recallView.startSession}
-            progressOpen={progressOpen}
             onOpenProgress={practice ? null : recallView.openProgress}
           />
         )}
