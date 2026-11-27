@@ -72,6 +72,15 @@ npm test
 
 From the repo root, `make test` runs both suites.
 
+### Lint and format
+
+Ruff lints and formats the backend; Prettier formats the frontend. From the repo root:
+
+```bash
+make lint     # check only; fails on lint errors, unsorted imports or unformatted files
+make format   # rewrite files to fix what lint reports
+```
+
 ### Creating Your Repertoire on Lichess
 
 1. Go to [lichess.org/study](https://lichess.org/study)
